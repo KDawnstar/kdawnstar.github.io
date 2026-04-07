@@ -61,6 +61,234 @@ function normalizeDataArray(arr) {
     });
 }
 
+function pickRuntimeValue(...values) {
+    for (const value of values) {
+        if (value === null || value === undefined) continue;
+        if (typeof value === 'string' && value.trim() === '') continue;
+        return value;
+    }
+    return null;
+}
+
+function normalizePlayerRuntimeRow(row) {
+    const newRow = { ...row };
+
+    newRow.Character_ID = pickRuntimeValue(
+        row.Character_ID,
+        row.Dev_Name,
+        row.Use_Character
+    );
+
+    newRow.Character_Name = pickRuntimeValue(
+        row.Character_Name,
+        row.Name,
+        row.Dev_Name,
+        newRow.Character_ID
+    );
+
+    return newRow;
+}
+
+function normalizeActionRuntimeRow(row) {
+    const newRow = { ...row };
+
+    newRow.Character_ID = pickRuntimeValue(
+        row.Character_ID,
+        row.Use_Character
+    );
+
+    newRow.Action_ID = pickRuntimeValue(
+        row.Action_ID,
+        row.Dev_Name,
+        row.Action_Code
+    );
+
+    newRow.Action_Name = pickRuntimeValue(
+        row.Action_Name,
+        row.Name,
+        newRow.Action_ID
+    );
+
+    return newRow;
+}
+
+function normalizeMonsterRuntimeRow(row) {
+    const newRow = { ...row };
+
+    newRow.Monster_ID = pickRuntimeValue(
+        row.Dev_Name,
+        row.Monster_ID,
+        row.Monster_Code,
+        row.Monster_Key
+    );
+
+    newRow.Monster_Name = pickRuntimeValue(
+        row.Monster_Name,
+        row.Name,
+        row.Dev_Name,
+        newRow.Monster_ID
+    );
+
+    newRow.Model_Render_Type = pickRuntimeValue(
+        row.Model_Render_Type,
+        row.Render_Type
+    );
+
+    newRow.Model_Render_Color = pickRuntimeValue(
+        row.Model_Render_Color,
+        row.Render_Color
+    );
+
+    newRow.Weapon_Render_Type = pickRuntimeValue(
+        row.Weapon_Render_Type,
+        row.Weapon_Type
+    );
+
+    newRow.Weapon_Render_Color = pickRuntimeValue(
+        row.Weapon_Render_Color,
+        row.Weapon_Color
+    );
+
+    newRow.ATK_Effect_Render_Type = pickRuntimeValue(
+        row.ATK_Effect_Render_Type,
+        row.Attack_Effect_Render_Type
+    );
+
+    newRow.ATK_Projectile_Render_Type = pickRuntimeValue(
+        row.ATK_Projectile_Render_Type,
+        row.Attack_Projectile_Render_Type
+    );
+
+    return newRow;
+}
+
+function normalizePatternRuntimeRow(row) {
+    const newRow = { ...row };
+
+    newRow.AI_Name = pickRuntimeValue(
+        row.AI_Name,
+        row.Owner_AI,
+        row.Dev_Name,
+        row.AI_Code
+    );
+
+    newRow.Pattern_Name = pickRuntimeValue(
+        row.Pattern_Name,
+        row.Pattern_Code,
+        row.Name
+    );
+
+    return newRow;
+}
+
+function normalizeSkillRuntimeRow(row) {
+    const newRow = { ...row };
+
+    newRow.Skill_Code = pickRuntimeValue(
+        row.Dev_Name,
+        row.Skill_Code,
+        row.Skill_ID,
+        row.Skill_Name
+    );
+
+    newRow.Skill_Name = pickRuntimeValue(
+        row.Skill_Name,
+        row.Name,
+        newRow.Skill_Code
+    );
+
+    newRow.Monster_ID = pickRuntimeValue(
+        row.Use_Monster,
+        row.Monster_ID,
+        row.Owner_Monster_ID
+    );
+
+    newRow.Skill_Effect_Render_Type = pickRuntimeValue(
+        row.Skill_Effect_Render_Type,
+        row.Effect_Render_Type
+    );
+
+    newRow.Warning_Effect_Render_Type = pickRuntimeValue(
+        row.Warning_Effect_Render_Type,
+        row.Warning_Render_Type
+    );
+
+    return newRow;
+}
+
+function normalizeStageRuntimeRow(row) {
+    const newRow = { ...row };
+
+    newRow.Stage_ID = pickRuntimeValue(
+        row.Dev_Name,
+        row.Stage_ID,
+        row.Stage_Code
+    );
+
+    newRow.Stage_Name = pickRuntimeValue(
+        row.Stage_Name,
+        row.Name,
+        row.Dev_Name,
+        newRow.Stage_ID
+    );
+
+    newRow.Next_Stage_ID = pickRuntimeValue(
+        row.Next_Stage,
+        row.Next_Stage_ID,
+        row.Next_Stage_Code
+    );
+
+    newRow.Spawn_Monster_1_ID = pickRuntimeValue(
+        row.Spawn_Monster_1,
+        row.Spawn_Monster_1_ID
+    );
+
+    newRow.Spawn_Monster_2_ID = pickRuntimeValue(
+        row.Spawn_Monster_2,
+        row.Spawn_Monster_2_ID
+    );
+
+    newRow.Spawn_Monster_3_ID = pickRuntimeValue(
+        row.Spawn_Monster_3,
+        row.Spawn_Monster_3_ID
+    );
+
+    newRow.Spawn_Monster_1_Count = pickRuntimeValue(
+        row.Spawn_Count_1,
+        row.Spawn_Monster_1_Count
+    );
+
+    newRow.Spawn_Monster_2_Count = pickRuntimeValue(
+        row.Spawn_Count_2,
+        row.Spawn_Monster_2_Count
+    );
+
+    newRow.Spawn_Monster_3_Count = pickRuntimeValue(
+        row.Spawn_Count_3,
+        row.Spawn_Monster_3_Count
+    );
+
+    newRow.Stage_Background_Type = pickRuntimeValue(
+        row.Stage_Background_Type,
+        row.Background_Type
+    );
+
+    return newRow;
+}
+
+function normalizeRuntimeDataSet(data, type) {
+    const rows = normalizeDataArray(data);
+
+    if (type === 'player') return rows.map(normalizePlayerRuntimeRow);
+    if (type === 'action') return rows.map(normalizeActionRuntimeRow);
+    if (type === 'monster') return rows.map(normalizeMonsterRuntimeRow);
+    if (type === 'pattern') return rows.map(normalizePatternRuntimeRow);
+    if (type === 'skill') return rows.map(normalizeSkillRuntimeRow);
+    if (type === 'stage') return rows.map(normalizeStageRuntimeRow);
+
+    return rows;
+}
+
 const gameState = {
     WORLD_WIDTH: 2000,
     WORLD_DEPTH: 300,
@@ -74,7 +302,11 @@ const gameState = {
     effects: [],
     hitboxes: [],
     floatingTexts: [],
+
     targetUI: { monster: null, timer: 0 },
+
+    // 고정 UI 전용 시스템 알림 큐
+    systemNotices: [],
 
     keys: {},
     isDebugView: false,
@@ -99,21 +331,49 @@ const gameState = {
     gameMode: 'STAGE', // 'STAGE' or 'FREE_SPAWN'
 
     // 스테이지 상태
-    currentStageId: 'S001',
+    currentStageId: null,
     currentStage: null,
     stageClearPending: false,
     isStageCleared: false,
     activeWarp: null
 };
 
+
 let lastTime = performance.now();
+
+function pushSystemNotice(text, color = '#f1c40f', duration = 1.8) {
+    const msg = String(text || '').trim();
+    if (!msg) return;
+
+    const safeDuration = Math.max(0.3, parseFloat(duration) || 1.8);
+
+    gameState.systemNotices.push({
+        text: msg,
+        color: color || '#f1c40f',
+        timer: safeDuration,
+        maxTimer: safeDuration
+    });
+
+    if (gameState.systemNotices.length > 4) {
+        gameState.systemNotices.splice(0, gameState.systemNotices.length - 4);
+    }
+}
 
 // ==========================================
 // 스테이지 유틸
 // ==========================================
 
 function isBossMonsterId(monsterId) {
-    return String(monsterId || '').startsWith('B');
+    const key = String(monsterId || '').trim();
+    if (!key) return false;
+
+    const monsterData = gameState.DB_MONSTER ? gameState.DB_MONSTER[key] : null;
+    const grade = String(monsterData && monsterData.grade ? monsterData.grade : '').trim().toUpperCase();
+
+    if (grade.includes('BOSS')) return true;
+    if (key.startsWith('B')) return true;
+
+    return false;
 }
 
 function getStageById(stageId) {
@@ -229,34 +489,10 @@ function onStageCleared(stage) {
 
     if (stage.Next_Stage_ID) {
         createStageWarp(stage);
-
-        if (gameState.player && gameState.player.active) {
-            gameState.floatingTexts.push({
-                x: gameState.player.x,
-                y: gameState.player.y,
-                z: gameState.player.z + gameState.player.bodyZ + 60,
-                text: '🌀 워프가 열렸습니다!',
-                color: '#8e44ad',
-                size: '28px',
-                timer: 1.8,
-                isBubble: true
-            });
-        }
+        pushSystemNotice('🌀 워프가 열렸습니다!', '#8e44ad', 1.8);
     } else {
         gameState.activeWarp = null;
-
-        if (gameState.player && gameState.player.active) {
-            gameState.floatingTexts.push({
-                x: gameState.player.x,
-                y: gameState.player.y,
-                z: gameState.player.z + gameState.player.bodyZ + 60,
-                text: '🏆 모든 스테이지 클리어!',
-                color: '#2ecc71',
-                size: '32px',
-                timer: 2.0,
-                isBubble: true
-            });
-        }
+        pushSystemNotice('🏆 모든 스테이지 클리어!', '#2ecc71', 2.0);
     }
 
     buildUIButtons();
@@ -334,7 +570,6 @@ function loadStage(stageId) {
         spawnStageMonsterAt(bossId, bossX, bossY, true);
     }
 
-    // renderer.js에 배경 재구성 함수가 생기면 자동 연동 가능
     try {
         if (typeof GameRenderer.rebuildStageBackground === 'function') {
             GameRenderer.rebuildStageBackground(stage, gameState.WORLD_WIDTH, gameState.WORLD_DEPTH);
@@ -342,37 +577,14 @@ function loadStage(stageId) {
     } catch (e) {}
 
     buildUIButtons();
-
-    if (gameState.player && gameState.player.active) {
-        gameState.floatingTexts.push({
-            x: gameState.player.x,
-            y: gameState.player.y,
-            z: gameState.player.z + gameState.player.bodyZ + 60,
-            text: `🗺️ ${stage.Stage_Name}`,
-            color: '#f1c40f',
-            size: '28px',
-            timer: 1.5,
-            isBubble: true
-        });
-    }
+    pushSystemNotice(`🗺️ ${stage.Stage_Name}`, '#f1c40f', 1.5);
 }
 
 function nextStage(stage) {
     if (!stage) return;
     if (!stage.Next_Stage_ID) {
         console.log('마지막 스테이지 클리어');
-        if (gameState.player && gameState.player.active) {
-            gameState.floatingTexts.push({
-                x: gameState.player.x,
-                y: gameState.player.y,
-                z: gameState.player.z + gameState.player.bodyZ + 60,
-                text: '🏆 모든 스테이지 클리어!',
-                color: '#2ecc71',
-                size: '32px',
-                timer: 2.0,
-                isBubble: true
-            });
-        }
+        pushSystemNotice('🏆 모든 스테이지 클리어!', '#2ecc71', 2.0);
         return;
     }
 
@@ -409,21 +621,20 @@ function updateStageFlow() {
 function toggleGameMode() {
     gameState.gameMode = (gameState.gameMode === 'STAGE') ? 'FREE_SPAWN' : 'STAGE';
 
-    if (gameState.player && gameState.player.active) {
-        gameState.floatingTexts.push({
-            x: gameState.player.x,
-            y: gameState.player.y,
-            z: gameState.player.z + gameState.player.bodyZ + 60,
-            text: `🎮 모드: ${gameState.gameMode}`,
-            color: gameState.gameMode === 'STAGE' ? '#3498db' : '#9b59b6',
-            size: '24px',
-            timer: 1.5,
-            isBubble: true
-        });
-    }
-
     if (gameState.gameMode === 'STAGE') {
-        loadStage(gameState.currentStageId || 'S001');
+        if (!gameState.currentStageId && gameState.DB_STAGE.length > 0) {
+            const firstStage =
+                gameState.DB_STAGE.find(stage => stage && stage.Stage_ID) ||
+                gameState.DB_STAGE[0];
+
+            if (firstStage && firstStage.Stage_ID) {
+                gameState.currentStageId = firstStage.Stage_ID;
+            }
+        }
+
+        if (gameState.currentStageId) {
+            loadStage(gameState.currentStageId);
+        }
     } else {
         gameState.currentStage = null;
         clearCurrentStageEntities();
@@ -457,22 +668,32 @@ async function loadGameDataAndInit() {
 
         console.log("데이터 로딩 완료! 게임 엔진을 초기화합니다.");
 
-        const pData = normalizeDataArray(playerData);
-        const aData = normalizeDataArray(actionData);
-        const mData = normalizeDataArray(monsterData);
-        const ptData = normalizeDataArray(patternData);
-        const sData = normalizeDataArray(skillData);
-        const stData = normalizeDataArray(stageData);
+        const pData = normalizeRuntimeDataSet(playerData, 'player');
+        const aData = normalizeRuntimeDataSet(actionData, 'action');
+        const mData = normalizeRuntimeDataSet(monsterData, 'monster');
+        const ptData = normalizeRuntimeDataSet(patternData, 'pattern');
+        const sData = normalizeRuntimeDataSet(skillData, 'skill');
+        const stData = normalizeRuntimeDataSet(stageData, 'stage');
 
         PlayerManager.init(pData, aData, gameState);
         MonsterManager.init(mData, ptData, sData, gameState);
         gameState.DB_STAGE = stData || [];
 
+        if (gameState.DB_STAGE.length > 0) {
+            const firstStage =
+                gameState.DB_STAGE.find(stage => stage && stage.Stage_ID) ||
+                gameState.DB_STAGE[0];
+
+            if (firstStage && firstStage.Stage_ID) {
+                gameState.currentStageId = firstStage.Stage_ID;
+            }
+        }
+
         GameRenderer.init(document.getElementById('gameCanvas'), gameState.WORLD_WIDTH);
         buildUIButtons();
 
-        if (gameState.gameMode === 'STAGE') {
-            loadStage(gameState.currentStageId || 'S001');
+        if (gameState.gameMode === 'STAGE' && gameState.currentStageId) {
+            loadStage(gameState.currentStageId);
         }
 
         requestAnimationFrame(gameLoop);
@@ -560,9 +781,18 @@ function gameLoop(timestamp) {
         updateStageFlow();
         updateStageWarp();
 
+        const cameraBaseWidth = (GameRenderer && GameRenderer.canvas ? GameRenderer.canvas.width : 1600);
+        const cameraBaseHeight = (GameRenderer && GameRenderer.canvas ? GameRenderer.canvas.height : 900);
+
+        gameState.camera.width = Math.max(1, Math.min(cameraBaseWidth, gameState.WORLD_WIDTH));
+        gameState.camera.height = Math.max(1, Math.min(cameraBaseHeight, GameRenderer.GROUND_BASE_Y + gameState.WORLD_DEPTH));
+
         gameState.camera.x = Math.max(
             0,
-            Math.min(gameState.WORLD_WIDTH - gameState.camera.width, (gameState.player.x || 0) - gameState.camera.width / 2)
+         Math.min(
+         Math.max(0, gameState.WORLD_WIDTH - gameState.camera.width),
+         (gameState.player.x || 0) - gameState.camera.width / 2
+         )
         );
 
         GameRenderer.render(gameState);
@@ -574,8 +804,25 @@ function gameLoop(timestamp) {
 }
 
 function updateEnvironment(deltaTime) {
-    if (!gameState.player.active) return;
-    if (gameState.targetUI.timer > 0) gameState.targetUI.timer -= deltaTime;
+    for (let i = gameState.systemNotices.length - 1; i >= 0; i--) {
+    const notice = gameState.systemNotices[i];
+        if (!notice) {
+            gameState.systemNotices.splice(i, 1);
+            continue;
+        }
+
+        notice.timer -= deltaTime;
+        if (notice.timer <= 0) {
+            gameState.systemNotices.splice(i, 1);
+        }
+    }
+
+        if (!gameState.player.active) return;
+
+        if (gameState.targetUI.timer > 0) {
+            gameState.targetUI.timer -= deltaTime;
+        if (gameState.targetUI.timer < 0) gameState.targetUI.timer = 0;
+    }
 
     for (let i = gameState.auras.length - 1; i >= 0; i--) {
         let a = gameState.auras[i];
@@ -792,79 +1039,124 @@ function updateEnvironment(deltaTime) {
     }
 
     for (let i = gameState.floatingTexts.length - 1; i >= 0; i--) {
-        let ft = gameState.floatingTexts[i];
+    let ft = gameState.floatingTexts[i];
+        if (!ft) {
+            gameState.floatingTexts.splice(i, 1);
+            continue;
+        }
+
+        const text = String(ft.text || '').trim();
+        const isStageSystemBubble =
+            text === '🌀 워프가 열렸습니다!' ||
+            text === '🏆 모든 스테이지 클리어!' ||
+            text.startsWith('🗺️ ');
+
+        if (isStageSystemBubble) {
+            gameState.floatingTexts.splice(i, 1);
+            continue;
+        }
+
         ft.timer -= deltaTime;
         ft.z += 25 * deltaTime;
-        if (ft.timer <= 0) gameState.floatingTexts.splice(i, 1);
+
+        if (ft.timer <= 0) {
+            gameState.floatingTexts.splice(i, 1);
+        }
     }
 }
 
 function buildUIButtons() {
     const controls = document.getElementById('topRightUI');
+    const guideContent = document.getElementById('guideContent');
     if (!controls) return;
+
+    const p = gameState.player || { level: 1, active: false };
+    const dashReqLv = parseFloat((gameState.actions.find(a => a.Action_Name === '대쉬') || {}).Require_Level) || 2;
+    const swapReqLv = parseFloat((gameState.actions.find(a => a.Action_Name === '공격 모드 변경') || {}).Require_Level) || 3;
+    const waveReqLv = parseFloat((gameState.actions.find(a => a.Action_Name === '웨이브') || {}).Require_Level) || 4;
+    const cannonReqLv = parseFloat((gameState.actions.find(a => a.Action_Name === '캐논볼') || {}).Require_Level) || 5;
+
+    if (guideContent) {
+        const modeText = gameState.gameMode === 'STAGE' ? '스테이지 진행' : '자유 소환';
+        const testText = gameState.isTestMode ? 'ON' : 'OFF';
+        const autoSpawnText = gameState.isAutoSpawn ? 'ON' : 'OFF';
+
+        guideContent.innerHTML = `
+            <span class="key-hint">방향키</span> 8방향 이동 (X, Y축)<br>
+            <span class="key-hint">C</span> 점프 &nbsp; <span class="key-hint">Z</span> 대쉬 (Lv.${dashReqLv})<br>
+            <span class="key-hint">X</span> 평타 &nbsp; <span class="key-hint">F</span> 무기 스왑 (Lv.${swapReqLv})<br>
+            <span class="key-hint">A</span> 웨이브 (Lv.${waveReqLv}) &nbsp; <span class="key-hint">S</span> 캐논볼 (Lv.${cannonReqLv})<br>
+            <span class="key-hint">F6</span> 모드 전환 (${modeText})<br>
+            <span class="key-hint">T</span> 테스트 모드 (${testText})<br>
+            <span class="key-hint">V</span> 3D 히트박스 디버그<br>
+            ${gameState.gameMode === 'FREE_SPAWN'
+                ? `<span class="key-hint">1~9</span> 몬스터 스포너 / 보스 강림<br><span class="key-hint">자동 스폰</span> ${autoSpawnText}`
+                : `<span class="key-hint">목표</span> 적 처치 후 다음 워프 개방`
+            }
+        `;
+    }
+
     controls.innerHTML = '';
 
-    // 스테이지 모드 UI
     if (gameState.gameMode === 'STAGE') {
         const stage = gameState.currentStage;
-        let wrap = document.createElement('div');
-        wrap.style.background = 'rgba(8, 10, 14, 0.46)';
-        wrap.style.padding = '9px 10px';
+        const totalStageCount = Array.isArray(gameState.DB_STAGE) ? gameState.DB_STAGE.length : 0;
+
+        let currentStageIndex = 0;
+        if (stage) {
+            const stageNumber = parseInt(stage.Stage_Number);
+            if (!isNaN(stageNumber) && stageNumber > 0) {
+                currentStageIndex = stageNumber;
+            } else {
+                currentStageIndex = Math.max(
+                    1,
+                    (gameState.DB_STAGE || []).findIndex(s => s && s.Stage_ID === stage.Stage_ID) + 1
+                );
+            }
+        }
+
+        const clearConditionText = !stage
+            ? '로딩 중...'
+            : stage.Stage_Clear_Type === 'KILL_BOSS'
+                ? '보스 처치'
+                : '모든 적 처치';
+
+        const wrap = document.createElement('div');
+        wrap.style.background = 'rgba(8, 10, 14, 0.58)';
+        wrap.style.padding = '10px 12px';
         wrap.style.borderRadius = '10px';
         wrap.style.border = '1px solid rgba(255,255,255,0.10)';
         wrap.style.color = '#fff';
-        wrap.style.pointerEvents = 'auto';
+        wrap.style.pointerEvents = 'none';
         wrap.style.backdropFilter = 'blur(3px)';
         wrap.style.boxShadow = '0 6px 18px rgba(0,0,0,0.18)';
 
-        let title = stage ? `🗺️ ${stage.Stage_Name}` : '🗺️ 스테이지 로딩 중...';
-        let num = stage ? `Stage ${stage.Stage_Number}` : '';
-        let clearType = stage ? `Clear: ${stage.Stage_Clear_Type}` : '';
-        let bgType = stage ? `Theme: ${stage.Stage_Background_Type || 'DEFAULT'}` : '';
-        let warpInfo = '';
-
-        if (stage && gameState.isStageCleared) {
-            warpInfo = stage.Next_Stage_ID
-                ? '워프 활성화됨 - 닿으면 다음 스테이지 이동'
-                : '최종 스테이지 클리어 완료';
-        } else {
-            warpInfo = '적을 처치해 워프를 활성화하세요';
-        }
-
         wrap.innerHTML = `
-            <div style="font-weight:700; font-size:13px; color:#f1c40f; margin-bottom:4px; letter-spacing:0.2px;">${title}</div>
-            <div style="font-size:11px; color:rgba(255,255,255,0.86); line-height:1.55;">
-                ${num}<br>
-                ${clearType}<br>
-                ${bgType}<br>
-                ${warpInfo}<br>
-                F6 : 자유 소환 모드 전환<br>
-                T : 기존 테스트 모드 토글
+            <div style="font-size:11px; color:#9fc7ff; font-weight:700; margin-bottom:6px; letter-spacing:0.3px;">
+                진행현황 ${currentStageIndex}/${totalStageCount || '?'}
+            </div>
+            <div style="font-size:15px; color:#f1c40f; font-weight:800; margin-bottom:6px; line-height:1.3;">
+                ${stage ? stage.Stage_Name : '스테이지 로딩 중...'}
+            </div>
+            <div style="font-size:11px; color:rgba(255,255,255,0.88); line-height:1.45;">
+                클리어 조건 : ${clearConditionText}
             </div>
         `;
+
         controls.appendChild(wrap);
         return;
     }
 
-    // 자유 소환 모드 UI
-    if (!gameState.player.active) return;
+    if (!p.active) return;
 
     controls.innerHTML = `
         <button
             id="autoSpawnBtn"
             class="spawn-btn"
             style="
-                background:${gameState.isAutoSpawn ? 'rgba(230,126,34,0.82)' : 'rgba(127,140,141,0.72)'};
-                color:white;
-                text-align:center;
-                padding:7px 9px;
+                background:${gameState.isAutoSpawn ? '#e67e22' : '#7f8c8d'};
+                color:#fff;
                 margin-bottom:4px;
-                border:1px solid rgba(255,255,255,0.10);
-                border-radius:8px;
-                font-size:11px;
-                font-weight:700;
-                box-shadow:0 4px 10px rgba(0,0,0,0.22);
-                backdrop-filter:blur(2px);
             "
             onclick="toggleAutoSpawn()"
         >자동 스폰: ${gameState.isAutoSpawn ? 'ON' : 'OFF'}</button>
@@ -872,6 +1164,8 @@ function buildUIButtons() {
 
     for (let i = 0; i < gameState.MONSTER_KEYS.length; i++) {
         let m = gameState.DB_MONSTER[gameState.MONSTER_KEYS[i]];
+        if (!m) continue;
+
         let row = document.createElement('div');
         row.style.display = 'flex';
         row.style.gap = '4px';
@@ -898,7 +1192,7 @@ function buildUIButtons() {
         btnOne.style.backdropFilter = 'blur(2px)';
         btnOne.style.boxShadow = '0 4px 10px rgba(0,0,0,0.18)';
 
-        let isLocked = gameState.player.level < m.spawnReqLv && !gameState.isTestMode;
+        let isLocked = p.level < m.spawnReqLv && !gameState.isTestMode;
         if (isLocked) {
             btn.innerHTML = `<span style="margin-right:4px;">🔒</span> Lv.${m.spawnReqLv} 해금`;
             btn.style.backgroundColor = 'rgba(127,140,141,0.58)';
@@ -910,9 +1204,10 @@ function buildUIButtons() {
             btnOne.style.color = '#8a959b';
             btnOne.style.cursor = 'not-allowed';
         } else {
-            let isBoss = m.grade === 'Boss';
-            let prefix = isBoss ? '☠️' : `[${i + 1}]`;
-            let txtColor = isBoss ? '#ff8f8f' : '#f1c40f';
+            const monsterGrade = String(m.grade || '').trim().toUpperCase();
+            const isBoss = monsterGrade.includes('BOSS') || String(m.id || '').startsWith('B');
+            const prefix = isBoss ? '☠️' : `[${i + 1}]`;
+            const txtColor = isBoss ? '#ff8f8f' : '#f1c40f';
 
             btn.innerHTML = `<span style="color:${txtColor}; margin-right:4px; font-weight:900;">${prefix}</span> ${m.name}`;
             btn.style.backgroundColor = m.color;
@@ -959,71 +1254,174 @@ function updateHUD() {
     if (!p || !p.active) return;
 
     try {
-        document.getElementById('hudPlayerName').innerText = `Lv.${p.level} ${p.name}`;
-        let hpRatio = Math.max(0, p.hp / p.maxHp) * 100;
-        document.getElementById('hudHpFill').style.width = hpRatio + '%';
-        document.getElementById('hudHpText').innerText = `${Math.max(0, p.hp).toFixed(0)} / ${p.maxHp}`;
+        const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+        const getEl = (id) => document.getElementById(id);
 
-        let reqExp = p.level * p.baseNextExp;
-        let expRatio = Math.min(100, (p.exp / reqExp) * 100);
-        document.getElementById('hudExpFill').style.width = expRatio + '%';
-        document.getElementById('hudExpText').innerText = `${p.exp.toFixed(0)} / ${reqExp} (${expRatio.toFixed(1)}%)`;
+        const hudPlayerName = getEl('hudPlayerName');
+        const hudHpFill = getEl('hudHpFill');
+        const hudHpText = getEl('hudHpText');
+        const hudExpFill = getEl('hudExpFill');
+        const hudExpText = getEl('hudExpText');
+
+        if (hudPlayerName) {
+            hudPlayerName.innerText = `Lv.${p.level} ${p.name}`;
+        }
+
+        const meleeChip = document.querySelector('.hud-mode-chip.melee');
+        const rangeChip = document.querySelector('.hud-mode-chip.range');
+        const isMeleeMode = p.stance === 'Mode_Melee';
+        const isRangeMode = p.stance === 'Mode_Range';
+
+        if (meleeChip) {
+            meleeChip.innerText = '근접 모드';
+            meleeChip.style.opacity = isMeleeMode ? '1' : '0.42';
+            meleeChip.style.transform = isMeleeMode ? 'translateY(-1px) scale(1.03)' : 'scale(1)';
+            meleeChip.style.borderColor = isMeleeMode ? 'rgba(255,170,150,0.70)' : 'rgba(255,255,255,0.10)';
+            meleeChip.style.boxShadow = isMeleeMode
+                ? '0 0 14px rgba(192,57,43,0.22), inset 0 0 8px rgba(255,255,255,0.05)'
+                : 'inset 0 0 8px rgba(255,255,255,0.03)';
+            meleeChip.style.filter = isMeleeMode ? 'none' : 'saturate(0.7)';
+        }
+
+        if (rangeChip) {
+            rangeChip.innerText = '원거리 모드';
+            rangeChip.style.opacity = isRangeMode ? '1' : '0.42';
+            rangeChip.style.transform = isRangeMode ? 'translateY(-1px) scale(1.03)' : 'scale(1)';
+            rangeChip.style.borderColor = isRangeMode ? 'rgba(150,220,255,0.72)' : 'rgba(255,255,255,0.10)';
+            rangeChip.style.boxShadow = isRangeMode
+                ? '0 0 14px rgba(52,152,219,0.22), inset 0 0 8px rgba(255,255,255,0.05)'
+                : 'inset 0 0 8px rgba(255,255,255,0.03)';
+            rangeChip.style.filter = isRangeMode ? 'none' : 'saturate(0.7)';
+        }
+
+        const safeMaxHp = Math.max(1, parseFloat(p.maxHp) || 1);
+        const safeHp = clamp(parseFloat(p.hp) || 0, 0, safeMaxHp);
+        const hpRatio = clamp((safeHp / safeMaxHp) * 100, 0, 100);
+
+        if (hudHpFill) {
+            hudHpFill.style.width = '100%';
+            hudHpFill.style.height = hpRatio + '%';
+            hudHpFill.style.left = '0';
+            hudHpFill.style.bottom = '0';
+            hudHpFill.style.top = 'auto';
+            hudHpFill.style.transition = 'height 0.12s ease-out';
+        }
+
+        if (hudHpText) {
+            hudHpText.innerText = `${safeHp.toFixed(0)} / ${safeMaxHp.toFixed(0)}\n${hpRatio.toFixed(1)}%`;
+        }
+
+        let reqExp = (parseFloat(p.level) || 1) * (parseFloat(p.baseNextExp) || 100);
+        if (reqExp <= 0 || isNaN(reqExp)) reqExp = 100;
+
+        const safeExp = Math.max(0, parseFloat(p.exp) || 0);
+        const expRatio = clamp((safeExp / reqExp) * 100, 0, 100);
+
+        if (hudExpFill) {
+            hudExpFill.style.width = expRatio + '%';
+            hudExpFill.style.height = '100%';
+        }
+
+        if (hudExpText) {
+            hudExpText.innerText = `${safeExp.toFixed(0)} / ${reqExp.toFixed(0)} (${expRatio.toFixed(1)}%)`;
+        }
+
+        const setLockAndMask = (lockId, maskId, isUnlocked, ratio) => {
+            const lockEl = getEl(lockId);
+            const maskEl = getEl(maskId);
+
+            if (lockEl) lockEl.style.display = isUnlocked ? 'none' : 'flex';
+            if (maskEl) maskEl.style.height = clamp(ratio, 0, 100) + '%';
+        };
 
         let swapAct = gameState.actions.find(a => a.Action_Name === '공격 모드 변경');
-        let swapReq = swapAct ? parseFloat(swapAct.Require_Level) : 0;
-        if (document.getElementById('lockSwap')) document.getElementById('lockSwap').style.display = p.level >= swapReq ? 'none' : 'flex';
-        let swapRatio = (swapAct && p.skillCooldowns[swapAct.Action_Name] > 0) ? (p.skillCooldowns[swapAct.Action_Name] / (parseFloat(swapAct.Cooltime) || 1)) * 100 : 0;
-        if (document.getElementById('maskSwap')) document.getElementById('maskSwap').style.height = swapRatio + '%';
+        let swapReq = swapAct ? (parseFloat(swapAct.Require_Level) || 0) : 0;
+        let swapRatio = (swapAct && p.skillCooldowns[swapAct.Action_Name] > 0)
+            ? (p.skillCooldowns[swapAct.Action_Name] / (parseFloat(swapAct.Cooltime) || 1)) * 100
+            : 0;
+        setLockAndMask('lockSwap', 'maskSwap', p.level >= swapReq, swapRatio);
 
         let dashAct = gameState.actions.find(a => a.Action_Name === '대쉬');
-        let dashReq = dashAct ? parseFloat(dashAct.Require_Level) : 0;
-        if (document.getElementById('lockDash')) document.getElementById('lockDash').style.display = p.level >= dashReq ? 'none' : 'flex';
-        let dashRatio = Math.max(0, p.dashCooldownTimer / (p.maxDashCd || 1)) * 100;
-        if (document.getElementById('maskDash')) document.getElementById('maskDash').style.height = dashRatio + '%';
+        let dashReq = dashAct ? (parseFloat(dashAct.Require_Level) || 0) : 0;
+        let dashRatio = Math.max(0, (p.dashCooldownTimer || 0) / (p.maxDashCd || 1)) * 100;
+        setLockAndMask('lockDash', 'maskDash', p.level >= dashReq, dashRatio);
 
         let waveAct = gameState.actions.find(a => a.Action_Name && a.Action_Name.includes('웨이브'));
-        let waveReq = waveAct ? parseFloat(waveAct.Require_Level) : 5;
-        let lockWave = document.getElementById('lockWave');
-        if (lockWave) lockWave.style.display = p.level >= waveReq ? 'none' : 'flex';
-        let waveRatio = (waveAct && p.skillCooldowns[waveAct.Action_Name] > 0) ? (p.skillCooldowns[waveAct.Action_Name] / (parseFloat(waveAct.Cooltime) || 1)) * 100 : 0;
-        let maskWave = document.getElementById('maskWave');
-        if (maskWave) maskWave.style.height = waveRatio + '%';
+        let waveReq = waveAct ? (parseFloat(waveAct.Require_Level) || 5) : 5;
+        let waveRatio = (waveAct && p.skillCooldowns[waveAct.Action_Name] > 0)
+            ? (p.skillCooldowns[waveAct.Action_Name] / (parseFloat(waveAct.Cooltime) || 1)) * 100
+            : 0;
+        setLockAndMask('lockWave', 'maskWave', p.level >= waveReq, waveRatio);
 
         let cannonAct = gameState.actions.find(a => a.Action_Name && a.Action_Name.includes('캐논볼'));
-        let cannonReq = cannonAct ? parseFloat(cannonAct.Require_Level) : 10;
-        let lockCannon = document.getElementById('lockCannon');
-        if (lockCannon) lockCannon.style.display = p.level >= cannonReq ? 'none' : 'flex';
-        let cannonRatio = (cannonAct && p.skillCooldowns[cannonAct.Action_Name] > 0) ? (p.skillCooldowns[cannonAct.Action_Name] / (parseFloat(cannonAct.Cooltime) || 1)) * 100 : 0;
-        let maskCannon = document.getElementById('maskCannon');
-        if (maskCannon) maskCannon.style.height = cannonRatio + '%';
+        let cannonReq = cannonAct ? (parseFloat(cannonAct.Require_Level) || 10) : 10;
+        let cannonRatio = (cannonAct && p.skillCooldowns[cannonAct.Action_Name] > 0)
+            ? (p.skillCooldowns[cannonAct.Action_Name] / (parseFloat(cannonAct.Cooltime) || 1)) * 100
+            : 0;
+        setLockAndMask('lockCannon', 'maskCannon', p.level >= cannonReq, cannonRatio);
 
-        let debugPanel = document.getElementById('hudDebug');
-        let html = `<b style="color:#3498db;">[Player]</b> X:${Math.round(p.x)} Y:${Math.round(p.y)} Z:${Math.round(p.z)}<br>`;
-        html += `<b style="color:#2ecc71;">[Mode]</b> ${gameState.gameMode} | Test:${gameState.isTestMode ? 'ON' : 'OFF'}<br>`;
-        html += `<b style="color:#2ecc71;">[Spawners]</b> Active: ${gameState.spawners.length} | Entities: ${gameState.monsters.filter(m => m.active).length}<br>`;
+        let debugPanel = getEl('hudDebug');
+        if (debugPanel) {
+            let html = `<b style="color:#3498db;">[Player]</b> X:${Math.round(p.x)} Y:${Math.round(p.y)} Z:${Math.round(p.z)}<br>`;
+            html += `<b style="color:#2ecc71;">[Mode]</b> ${gameState.gameMode} | Test:${gameState.isTestMode ? 'ON' : 'OFF'} | Stance:${p.stance}<br>`;
+            html += `<b style="color:#2ecc71;">[Spawners]</b> Active: ${gameState.spawners.length} | Entities: ${gameState.monsters.filter(m => m.active).length}<br>`;
 
-        if (gameState.currentStage && gameState.gameMode === 'STAGE') {
-            html += `<b style="color:#f1c40f;">[Stage]</b> ${gameState.currentStage.Stage_ID} - ${gameState.currentStage.Stage_Name}<br>`;
-            html += `<b style="color:#9b59b6;">[Theme]</b> ${gameState.currentStage.Stage_Background_Type || 'DEFAULT'}<br>`;
-            html += `<b style="color:#95a5a6;">[Clear]</b> ${gameState.isStageCleared ? 'YES' : 'NO'}<br>`;
-            if (gameState.activeWarp) {
-                html += `<b style="color:#8e44ad;">[Warp]</b> X:${Math.round(gameState.activeWarp.x)} Y:${Math.round(gameState.activeWarp.y)} -> ${gameState.activeWarp.targetStageId}<br>`;
+            if (gameState.currentStage && gameState.gameMode === 'STAGE') {
+                html += `<b style="color:#f1c40f;">[Stage]</b> ${gameState.currentStage.Stage_ID} - ${gameState.currentStage.Stage_Name}<br>`;
+                html += `<b style="color:#9b59b6;">[Theme]</b> ${gameState.currentStage.Stage_Background_Type || 'DEFAULT'}<br>`;
+                html += `<b style="color:#95a5a6;">[Clear]</b> ${gameState.isStageCleared ? 'YES' : 'NO'}<br>`;
+                if (gameState.activeWarp) {
+                    html += `<b style="color:#8e44ad;">[Warp]</b> X:${Math.round(gameState.activeWarp.x)} Y:${Math.round(gameState.activeWarp.y)} -> ${gameState.activeWarp.targetStageId}<br>`;
+                }
+            }
+
+            if (gameState.targetUI.monster && gameState.targetUI.monster.active) {
+                const m = gameState.targetUI.monster;
+                const d = m.d;
+                let dist = getDistance2D(p.x, p.y, m.x, m.y) - (p.bodyX * p.scale / 2) - (d.bodyX * m.scale / 2);
+                const monsterGrade = String(d.grade || '').trim().toUpperCase();
+                const isBoss = monsterGrade.includes('BOSS') || String(m.id || '').startsWith('B');
+                const prefix = m.isChampion ? "[엘리트] " : (isBoss ? "[보스] " : "");
+                const tColor = isBoss ? '#f1c40f' : (m.isChampion ? '#e74c3c' : '#e67e22');
+
+                html += `<b style="color:${tColor};">[Target]</b> ${prefix}${d.name} | HP: ${Math.max(0, m.hp).toFixed(0)}/${m.maxHp} | State: ${m.state} | Dist: ${Math.round(dist)}<br>`;
+                if (m.state === 'P_Evade') html += `<span style="color:#e74c3c;">[Evading]</span><br>`;
+                if (m.isChampion) html += `<span style="color:#e74c3c;">[Champion]</span><br>`;
+                if (m.spawnSource) html += `<span style="color:#95a5a6;">[Source] ${m.spawnSource}${m.isStageBoss ? ' / BOSS' : ''}</span><br>`;
+            }
+
+            debugPanel.innerHTML = html;
+        }
+
+        const systemNoticeUI = getEl('systemNoticeUI');
+        if (systemNoticeUI) {
+            systemNoticeUI.innerHTML = '';
+
+            for (let i = 0; i < gameState.systemNotices.length; i++) {
+                const notice = gameState.systemNotices[i];
+                if (!notice) continue;
+
+                const item = document.createElement('div');
+                item.className = 'system-notice-item';
+
+                const colorKey = String(notice.color || '').toLowerCase();
+                if (colorKey.includes('8e44ad') || colorKey.includes('caa7ff') || colorKey.includes('purple')) {
+                    item.classList.add('notice-purple');
+                } else if (colorKey.includes('2ecc71') || colorKey.includes('8ff0b0') || colorKey.includes('green')) {
+                    item.classList.add('notice-green');
+                } else {
+                    item.classList.add('notice-yellow');
+                }
+
+                const alpha = Math.max(0, Math.min(1, (notice.timer || 0) / (notice.maxTimer || 1)));
+                item.style.opacity = alpha.toFixed(3);
+                item.style.transform = `translateY(${Math.max(0, (1 - alpha) * 8)}px) scale(${(0.96 + alpha * 0.04).toFixed(3)})`;
+                item.innerText = notice.text || '';
+
+                systemNoticeUI.appendChild(item);
             }
         }
-
-        if (gameState.targetUI.monster && gameState.targetUI.monster.active) {
-            const m = gameState.targetUI.monster;
-            const d = m.d;
-            let dist = getDistance2D(p.x, p.y, m.x, m.y) - (p.bodyX * p.scale / 2) - (d.bodyX * m.scale / 2);
-            let isBoss = d.grade === 'Boss';
-            let prefix = m.isChampion ? "[엘리트] " : (isBoss ? "[보스] " : "");
-            let tColor = isBoss ? '#f1c40f' : (m.isChampion ? '#e74c3c' : '#e67e22');
-            html += `<b style="color:${tColor};">[Target]</b> ${prefix}${d.name} | HP: ${Math.max(0, m.hp).toFixed(0)}/${m.maxHp} | State: ${m.state} | Dist: ${Math.round(dist)}<br>`;
-            if (m.state === 'P_Evade') html += `<span style="color:#e74c3c;">[Evading]</span><br>`;
-            if (m.isChampion) html += `<span style="color:#e74c3c;">[Champion]</span><br>`;
-            if (m.spawnSource) html += `<span style="color:#95a5a6;">[Source] ${m.spawnSource}${m.isStageBoss ? ' / STAGE_BOSS' : ''}</span><br>`;
-        }
-
-        if (debugPanel) debugPanel.innerHTML = html;
-    } catch (e) {}
+    } catch (e) {
+        console.error("HUD 업데이트 에러:", e);
+    }
 }

@@ -45,38 +45,124 @@ const MonsterDataAdapter = {
 const MonsterManager = {
     init: function(monsterData, patternData, skillData, gameState) {
         let colors = { 'M001':'#4CAF50', 'M002':'#8BC34A', 'M003':'#FF9800', 'M004':'#FFEB3B', 'M005':'#9C27B0', 'M006':'#00BCD4', 'M007':'#E91E63', 'B001':'#f1c40f', 'B002':'#3498db'}; 
-        (monsterData||[]).forEach(m => { 
-            if(!m.Monster_ID) return; gameState.MONSTER_KEYS.push(m.Monster_ID);
-            gameState.DB_MONSTER[m.Monster_ID] = {
-                id: m.Monster_ID, name: m.Monster_Name || 'Unknown', level: parseInt(m.Level) || 1, exp: parseInt(m.Provision_EXP) || 10, hp: parseFloat(m.HP)||1, maxHp: parseFloat(m.HP)||1, atk: parseFloat(m.ATK)||0, def: parseFloat(m.DEF)||0, speed: parseFloat(m.Move_Speed)||0, aggressive: m.Aggressive,
-                recog: parseFloat(m.Recog_Range)||0, unrecog: parseFloat(m.UnRecog_Range)||0, chase: parseFloat(m.Chase_Range)||0, evade: parseFloat(m.Evade_Range) || 0,
-                cx: m.Spawn_Center_X !== "" && m.Spawn_Center_X != null ? parseFloat(m.Spawn_Center_X) : "", rx: parseFloat(m.Spawn_Range_X)||0, cy: m.Spawn_Center_Y !== "" && m.Spawn_Center_Y != null ? parseFloat(m.Spawn_Center_Y) : gameState.WORLD_DEPTH/2, ry: parseFloat(m.Spawn_Range_Y)||50,
-                spawnLimit: parseInt(m.Monster_Spawn_Limit) || 1, spawnInterval: parseFloat(m.Normal_Spawn_Time) || 1.0, respawnTime: m.Respawn_Time !== "" && m.Respawn_Time != null ? parseFloat(m.Respawn_Time) : -1, maxRespawn: m.Max_ReSpawn_Count !== "" && m.Max_ReSpawn_Count != null ? parseInt(m.Max_ReSpawn_Count) : -1,  
-                spawnReqLv: parseInt(m.Spawn_Req_Level) || 1, championProb: parseFloat(m.Champion_Spawn_Prob) || 0, championAtkRate: parseFloat(m.Champion_ATK_Rate) || 1, championHpRate: parseFloat(m.Champion_HP_Rate) || 1, championScaleRate: parseFloat(m.Champion_Scale_Rate) || 1, championExpRate: parseFloat(m.Champion_EXP_Rate) || 1,
-                aiType: m.AI_Type || '', patrolSpd: parseFloat(m.Patrol_Move_Speed_Rate) || 1.0, boundSpd: parseFloat(m.Boundary_Move_Speed_Rate)||1, boundDist: parseFloat(m.Boundary_Move_Distance)||50, chaseSpd: parseFloat(m.Chase_Move_Speed_Rate)||1, evadeSpd: parseFloat(m.Evade_Move_Speed_Rate) || 1.2, 
-                atkType: MonsterDataAdapter.normalizeAtkType(m.ATK_Type || ''), atkRange: parseFloat(m.ATK_Range)||0, atkDmgRate: parseFloat(m.ATK_DMG_Rate)||1, atkCycle: parseFloat(m.ATK_Cycle)||0, defType: MonsterDataAdapter.normalizeDefType(m.ATK_Defence_Type || ''),
-                hitX: parseFloat(m.Hitbox_Size_X) || 50, hitY: parseFloat(m.Hitbox_Size_Y) || 30, hitZ: parseFloat(m.Hitbox_Size_Z) || 60, hitStart: parseFloat(m.Hitbox_Start_Time)||0, hitEnd: parseFloat(m.Hitbox_End_Time)||0.1, 
-                bodyX: parseFloat(m.Body_Size_X)||40, bodyY: parseFloat(m.Body_Size_Y)||30, bodyZ: parseFloat(m.Body_Size_Z)||80, scale: parseFloat(m.Model_Scale)||1, renderType: m.Model_Render_Type || null,
+            (monsterData||[]).forEach(m => { 
+            const monsterKey = String(m.Monster_ID || '').trim();
+            if (!monsterKey) return;
+
+            const monsterRecord = {
+                id: monsterKey,
+                name: m.Monster_Name || 'Unknown',
+                level: parseInt(m.Level) || 1,
+                exp: parseInt(m.Provision_EXP) || 10,
+                hp: parseFloat(m.HP) || 1,
+                maxHp: parseFloat(m.HP) || 1,
+                atk: parseFloat(m.ATK) || 0,
+                def: parseFloat(m.DEF) || 0,
+                speed: parseFloat(m.Move_Speed) || 0,
+                aggressive: m.Aggressive,
+
+                recog: parseFloat(m.Recog_Range) || 0,
+                unrecog: parseFloat(m.UnRecog_Range) || 0,
+                chase: parseFloat(m.Chase_Range) || 0,
+                evade: parseFloat(m.Evade_Range) || 0,
+
+                cx: m.Spawn_Center_X !== "" && m.Spawn_Center_X != null ? parseFloat(m.Spawn_Center_X) : "",
+                rx: parseFloat(m.Spawn_Range_X) || 0,
+                cy: m.Spawn_Center_Y !== "" && m.Spawn_Center_Y != null ? parseFloat(m.Spawn_Center_Y) : gameState.WORLD_DEPTH / 2,
+                ry: parseFloat(m.Spawn_Range_Y) || 50,
+
+                spawnLimit: parseInt(m.Monster_Spawn_Limit) || 1,
+                spawnInterval: parseFloat(m.Normal_Spawn_Time) || 1.0,
+                respawnTime: m.Respawn_Time !== "" && m.Respawn_Time != null ? parseFloat(m.Respawn_Time) : -1,
+                maxRespawn: m.Max_ReSpawn_Count !== "" && m.Max_ReSpawn_Count != null ? parseInt(m.Max_ReSpawn_Count) : -1,
+
+                spawnReqLv: parseInt(m.Spawn_Req_Level) || 1,
+                championProb: parseFloat(m.Champion_Spawn_Prob) || 0,
+                championAtkRate: parseFloat(m.Champion_ATK_Rate) || 1,
+                championHpRate: parseFloat(m.Champion_HP_Rate) || 1,
+                championScaleRate: parseFloat(m.Champion_Scale_Rate) || 1,
+                championExpRate: parseFloat(m.Champion_EXP_Rate) || 1,
+
+                aiType: m.AI_Type || '',
+                patrolSpd: parseFloat(m.Patrol_Move_Speed_Rate) || 1.0,
+                boundSpd: parseFloat(m.Boundary_Move_Speed_Rate) || 1,
+                boundDist: parseFloat(m.Boundary_Move_Distance) || 50,
+                chaseSpd: parseFloat(m.Chase_Move_Speed_Rate) || 1,
+                evadeSpd: parseFloat(m.Evade_Move_Speed_Rate) || 1.2,
+
+                atkType: MonsterDataAdapter.normalizeAtkType(m.ATK_Type || ''),
+                atkRange: parseFloat(m.ATK_Range) || 0,
+                atkDmgRate: parseFloat(m.ATK_DMG_Rate) || 1,
+                atkCycle: parseFloat(m.ATK_Cycle) || 0,
+                defType: MonsterDataAdapter.normalizeDefType(m.ATK_Defence_Type || ''),
+
+                hitX: parseFloat(m.Hitbox_Size_X) || 50,
+                hitY: parseFloat(m.Hitbox_Size_Y) || 30,
+                hitZ: parseFloat(m.Hitbox_Size_Z) || 60,
+                hitStart: parseFloat(m.Hitbox_Start_Time) || 0,
+                hitEnd: parseFloat(m.Hitbox_End_Time) || 0.1,
+
+                bodyX: parseFloat(m.Body_Size_X) || 40,
+                bodyY: parseFloat(m.Body_Size_Y) || 30,
+                bodyZ: parseFloat(m.Body_Size_Z) || 80,
+                scale: parseFloat(m.Model_Scale) || 1,
+                renderType: m.Model_Render_Type || null,
                 renderColor: m.Model_Render_Color || null,
                 weaponRenderType: m.Weapon_Render_Type || null,
                 weaponRenderColor: m.Weapon_Render_Color || null,
                 atkEffectRenderType: m.ATK_Effect_Render_Type || null,
-                atkProjectileRenderType: m.ATK_Projectile_Render_Type || null, knockback: parseFloat(m.Hit_Knockback_Distance)||0,
-                projName: m.ATK_Projectile_Name || '', projSpeed: parseFloat(m.ATK_Projectile_Speed)||0, projLife: parseFloat(m.ATK_Projectile_Duration)||0, projPenetrate: m.ATK_Projectile_Penetration, color: colors[m.Monster_ID] || '#ffffff', grade: m.Monster_Grade || '',
-                corpseTime: parseFloat(m.Corpse_Keep_Time) || 1.0, 
-                idleDur: (parseFloat(m.Idle_Anim_Duration)||1) / (parseFloat(m.Idle_Anim_Speed)||1), 
-                patrolDur: (parseFloat(m.Patrol_Anim_Duration)||1) / (parseFloat(m.Patrol_Anim_Speed)||1), 
+                atkProjectileRenderType: m.ATK_Projectile_Render_Type || null,
+                knockback: parseFloat(m.Hit_Knockback_Distance) || 0,
+
+                projName: m.ATK_Projectile_Name || '',
+                projSpeed: parseFloat(m.ATK_Projectile_Speed) || 0,
+                projLife: parseFloat(m.ATK_Projectile_Duration) || 0,
+                projPenetrate: m.ATK_Projectile_Penetration,
+                color: colors[monsterKey] || '#ffffff',
+                grade: m.Monster_Grade || '',
+
+                corpseTime: parseFloat(m.Corpse_Keep_Time) || 1.0,
+                idleDur: (parseFloat(m.Idle_Anim_Duration) || 1) / (parseFloat(m.Idle_Anim_Speed) || 1),
+                patrolDur: (parseFloat(m.Patrol_Anim_Duration) || 1) / (parseFloat(m.Patrol_Anim_Speed) || 1),
                 patrolStandby: parseFloat(m.Partrol_Standby_Time) || parseFloat(m.Patrol_Standby_Time) || 0,
-                boundDur: (parseFloat(m.Boundary_Anim_Duration)||1) / (parseFloat(m.Boundary_Anim_Speed)||1),
+                boundDur: (parseFloat(m.Boundary_Anim_Duration) || 1) / (parseFloat(m.Boundary_Anim_Speed) || 1),
                 boundStandby: parseFloat(m.Boundary_Standby_Time) || 0,
-                atkDur: (parseFloat(m.ATK_Anim_Duration)||1) / (parseFloat(m.ATK_Anim_Speed)||1), hitDur: (parseFloat(m.Hit_Anim_Duration)||0.2) / (parseFloat(m.Hit_Anim_Speed)||1), dieDur: (parseFloat(m.Die_Anim_Duration)||1) / (parseFloat(m.Die_Anim_Speed)||1),
-                evadeDur: (parseFloat(m.Evade_Anim_Duration)||1) / (parseFloat(m.Evade_Anim_Speed)||1)
+                atkDur: (parseFloat(m.ATK_Anim_Duration) || 1) / (parseFloat(m.ATK_Anim_Speed) || 1),
+                hitDur: (parseFloat(m.Hit_Anim_Duration) || 0.2) / (parseFloat(m.Hit_Anim_Speed) || 1),
+                dieDur: (parseFloat(m.Die_Anim_Duration) || 1) / (parseFloat(m.Die_Anim_Speed) || 1),
+                evadeDur: (parseFloat(m.Evade_Anim_Duration) || 1) / (parseFloat(m.Evade_Anim_Speed) || 1)
             };
+
+            const aliasSet = new Set(
+                [
+                    monsterKey,
+                    m.Dev_Name,
+                    m.Monster_Code,
+                    m.Monster_Key
+                ]
+                .map(v => String(v || '').trim())
+                .filter(Boolean)
+            );
+
+            gameState.MONSTER_KEYS.push(monsterKey);
+
+            aliasSet.forEach(alias => {
+                gameState.DB_MONSTER[alias] = monsterRecord;
+                
+                
+            });
         });
-        (patternData||[]).forEach(p => { if(!p.AI_Name) return; if(!gameState.DB_PATTERN[p.AI_Name]) gameState.DB_PATTERN[p.AI_Name] = {}; gameState.DB_PATTERN[p.AI_Name][p.Pattern_Name] = p; });
+
+        (patternData||[]).forEach(p => {
+            if (!p.AI_Name) return;
+            if (!gameState.DB_PATTERN[p.AI_Name]) gameState.DB_PATTERN[p.AI_Name] = {};
+            gameState.DB_PATTERN[p.AI_Name][p.Pattern_Name] = p;
+        });
+
         (skillData||[]).forEach(s => {
-            const skillKey = s.Skill_Code || s.Skill_Name;
-            if(!skillKey) return;
+            const skillKey = String(s.Skill_Code || '').trim();
+            if (!skillKey) return;
+
             const normalizedSkill = {
                 ...s,
                 Skill_Code: skillKey,
@@ -90,8 +176,22 @@ const MonsterManager = {
                 Warning_Effect_Place: MonsterDataAdapter.normalizeWarningPlace(s.Warning_Effect_Place),
                 Hit_Effect_Name: s.Hit_Effect_Name || s['#Hit_Effect_Name'] || ''
             };
-            gameState.DB_SKILL[skillKey] = normalizedSkill;
-            if (s.Skill_Name) gameState.DB_SKILL[s.Skill_Name] = normalizedSkill;
+
+            const aliasSet = new Set(
+                [
+                    skillKey,
+                    s.Dev_Name,
+                    s.Skill_ID,
+                    s.Skill_Name,
+                    s.Name
+                ]
+                .map(v => String(v || '').trim())
+                .filter(Boolean)
+            );
+
+            aliasSet.forEach(alias => {
+                gameState.DB_SKILL[alias] = normalizedSkill;
+            });
         });
     },
 
@@ -243,7 +343,14 @@ const MonsterManager = {
         let currentAlive = gameState.monsters.filter(m => m.active && m.id === id).length;
         if (currentAlive >= d.spawnLimit) return;
 
-        gameState.spawners = []; if (d.grade === 'Boss') { this.spawnInstant(id, gameState); return; }
+        const monsterGrade = String(d.grade || '').trim().toUpperCase();
+        const isBoss = monsterGrade.includes('BOSS') || String(id || '').startsWith('B');
+
+        gameState.spawners = [];
+        if (isBoss) {
+            this.spawnInstant(id, gameState);
+            return;
+        }
         
         gameState.spawners.push({ id: id, d: d, limit: d.spawnLimit, interval: d.spawnInterval, respawnTime: d.respawnTime, maxRespawn: d.maxRespawn, 
             spawnedCount: currentAlive,

@@ -1,6 +1,7 @@
 [
   {
-    "Character_ID": "C001",
+    "Character_ID": 101001,
+    "Dev_Name": "Player_Adventurer",
     "Character_Name": "모험가",
     "Level": 1,
     "Base_Next_EXP": 100,
@@ -13,7 +14,6 @@
     "DEF": 5,
     "Move_Speed": 250,
     "Jump_Power": 900,
-    "#Model_Name": "CharaModel_플레이어",
     "Model_Render_Type": "RENDER_HUMAN",
     "Model_Render_Color": "COLOR_DEFAULT_HUMAN",
     "Model_Scale": 1,
@@ -25,12 +25,10 @@
     "Melee_Weapon_Render_Color": "COLOR_METAL_SILVER",
     "Range_Weapon_Render_Type": "WEAPON_GUN",
     "Range_Weapon_Render_Color": "COLOR_GUN_BLACK",
-    "#Hit_Anim_Name": "Hit_플레이어",
     "Hit_Anim_Speed": 1,
     "Hit_Anim_Duration": 0.2,
     "Hit_Knockback_Distance": 5,
     "Hit_Invincible_Time": 0.4,
-    "#Die_Anim_Name": "Die_플레이어",
     "Die_Anim_Speed": 1,
     "Die_Anim_Duration": 1
   }

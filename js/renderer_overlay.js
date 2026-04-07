@@ -611,7 +611,8 @@ GameRenderer.drawTargetUI = function(ctx, canvas, targetUI) {
     ctx.save();
     ctx.translate(canvas.width / 2, 55);
 
-    let isBoss = d.grade === 'Boss';
+    const monsterGrade = String(d.grade || '').trim().toUpperCase();
+    const isBoss = monsterGrade.includes('BOSS') || String(tm.id || '').startsWith('B');
     let borderColor = isBoss ? '#f1c40f' : (tm.isChampion ? '#bdc3c7' : '#555');
     let borderWidth = isBoss ? 5 : (tm.isChampion ? 4 : 2);
 

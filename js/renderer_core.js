@@ -10,33 +10,54 @@ const GameRenderer = {
     currentTheme: 'DEFAULT',
 
     resizeCanvas: function() {
-        if (!this.canvas) return;
+    if (!this.canvas) return;
 
-        const gameSection = document.getElementById('gameSection');
-        if (!gameSection) return;
+    const gameSection = document.getElementById('gameSection');
+    if (!gameSection) return;
 
-        const baseWidth = parseFloat(this.canvas.getAttribute('width')) || this.canvas.width || 1600;
-        const baseHeight = parseFloat(this.canvas.getAttribute('height')) || this.canvas.height || 900;
+    const gameViewport = document.getElementById('gameViewport');
+    const hudSection = document.getElementById('hudSection');
 
-        const viewportWidth = Math.max(320, window.innerWidth - 24);
-        const viewportHeight = Math.max(240, window.innerHeight - 24);
+    const baseWidth = parseFloat(this.canvas.getAttribute('width')) || this.canvas.width || 1600;
+    const baseHeight = parseFloat(this.canvas.getAttribute('height')) || this.canvas.height || 900;
 
-        const scale = Math.min(
-            viewportWidth / baseWidth,
-            viewportHeight / baseHeight
-        );
+    const hudBaseHeight = hudSection
+        ? (parseFloat(hudSection.getAttribute('data-base-height')) || 160)
+        : 0;
 
-        const appliedScale = Math.max(0.2, Math.min(scale, 1));
-        const displayWidth = Math.floor(baseWidth * appliedScale);
-        const displayHeight = Math.floor(baseHeight * appliedScale);
+    const totalBaseHeight = baseHeight + hudBaseHeight;
 
-        gameSection.style.width = displayWidth + 'px';
-        gameSection.style.height = displayHeight + 'px';
-        gameSection.style.marginTop = '12px';
+    const viewportWidth = Math.max(320, window.innerWidth - 24);
+    const viewportHeight = Math.max(240, window.innerHeight - 24);
 
-        this.canvas.style.width = '100%';
-        this.canvas.style.height = '100%';
-        this.canvas.style.display = 'block';
+    const scale = Math.min(
+        viewportWidth / baseWidth,
+        viewportHeight / totalBaseHeight
+    );
+
+    const appliedScale = Math.max(0.2, Math.min(scale, 1));
+    const displayWidth = Math.floor(baseWidth * appliedScale);
+    const displayGameHeight = Math.floor(baseHeight * appliedScale);
+    const displayHudHeight = Math.floor(hudBaseHeight * appliedScale);
+    const displayTotalHeight = displayGameHeight + displayHudHeight;
+
+    gameSection.style.width = displayWidth + 'px';
+    gameSection.style.height = displayTotalHeight + 'px';
+    gameSection.style.marginTop = '12px';
+
+    if (gameViewport) {
+        gameViewport.style.width = displayWidth + 'px';
+        gameViewport.style.height = displayGameHeight + 'px';
+    }
+
+    if (hudSection) {
+        hudSection.style.width = displayWidth + 'px';
+        hudSection.style.height = displayHudHeight + 'px';
+    }
+
+    this.canvas.style.width = '100%';
+    this.canvas.style.height = '100%';
+    this.canvas.style.display = 'block';
     },
 
     init: function(canvasElement, worldWidth) {
