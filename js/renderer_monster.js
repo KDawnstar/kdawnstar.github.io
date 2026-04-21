@@ -2,8 +2,18 @@ GameRenderer.drawMonsterGraphics = function(ctx, m, w, h, drawScale, isUI = fals
     const renderer = this;
     const d = m.d;
     const face = m.faceDir || 1;
+    const stateKey =
+        (typeof MonsterAI !== 'undefined' && typeof gameState !== 'undefined')
+            ? MonsterAI.resolveRuntimeState(m.state, gameState, m)
+            : String(m.state || '').trim();
+
+    const stateTypeKey =
+        (typeof MonsterAI !== 'undefined' && typeof gameState !== 'undefined')
+            ? MonsterAI.getPatternTypeKey(m.state, gameState, m)
+            : String(m.state || '').trim().toUpperCase();
+
     const isKeraha = String(d.name || '').includes("케라하");
-    let hoverY = isKeraha && m.state !== 'P_Die' ? Math.sin(Date.now() / 200 + String(m.id || '').charCodeAt(0)) * 10 : 0;
+    let hoverY = isKeraha && stateTypeKey !== 'DIE' ? Math.sin(Date.now() / 200 + String(m.id || '').charCodeAt(0)) * 10 : 0;
     if (isUI) hoverY = 0;
 
     const bodyPalette = renderer.resolveMonsterPalette(m);
@@ -12,7 +22,7 @@ GameRenderer.drawMonsterGraphics = function(ctx, m, w, h, drawScale, isUI = fals
     const drawStableWeapon = () => {
         const weaponType = String(d.weaponRenderType || '').trim().toUpperCase();
         if (!weaponType) return;
-        if (m.state === 'P_Die' || m.state === 'P_Spawn') return;
+        if (stateTypeKey === 'DIE') return;
 
         const handX = face === 1 ? w / 2 - 6 : -w / 2 + 6;
         const handY = -h / 2 + 8;
@@ -30,15 +40,16 @@ GameRenderer.drawMonsterGraphics = function(ctx, m, w, h, drawScale, isUI = fals
         ctx.scale(weaponScale, weaponScale);
 
         let rot = 0;
-        if (m.state === 'P_Melee_ATK') rot = face === 1 ? 0.22 : -0.22;
-        else if (m.state === 'P_Range_ATK') rot = face === 1 ? -0.08 : 0.08;
-        else if (m.state === 'P_Hit') rot = face === 1 ? -0.05 : 0.05;
+        if (stateTypeKey === 'ATK_MELEE' || stateTypeKey === 'ATK') rot = face === 1 ? 0.22 : -0.22;
+        else if (stateTypeKey === 'ATK_PROJECTILE') rot = face === 1 ? -0.08 : 0.08;
+        else if (stateTypeKey === 'HIT') rot = face === 1 ? -0.05 : 0.05;
         ctx.rotate(rot);
 
-        const shaftWood = renderer.resolveWeaponPalette('COLOR_WOOD', '#8e5a2b');
-        const steel = renderer.resolveWeaponPalette(d.weaponRenderColor || 'COLOR_METAL_SILVER', '#95a5a6');
-        const weaponPalette = renderer.resolveWeaponPalette(d.weaponRenderColor, "#8e5a2b");
-
+        const shaftWood = renderer.resolveWeaponPaletteByType('WEAPON_WOOD_CLUB');
+        const steel = weaponType === 'WEAPON_SMALL_CURVED_SWORD'
+            ? renderer.resolveWeaponPaletteByType('WEAPON_SMALL_CURVED_SWORD')
+            : renderer.resolveWeaponPaletteByType('WEAPON_SMALL_SWORD');
+        const weaponPalette = renderer.resolveWeaponPaletteByType(weaponType);
         if (weaponType === 'WEAPON_STONE') {
             ctx.fillStyle = shaftWood.mid;
             ctx.fillRect(-2, -2, 4, 14);
@@ -127,10 +138,7 @@ GameRenderer.drawMonsterGraphics = function(ctx, m, w, h, drawScale, isUI = fals
             ctx.shadowBlur = 0;
         } else if (weaponType === 'WEAPON_LARGE_AXE') {
             const axeWood = renderer.resolveWeaponPalette('COLOR_WOOD', '#8e5a2b');
-            const axeMetal = renderer.resolveWeaponPalette(
-                d.weaponRenderColor === 'COLOR_AXE' ? 'COLOR_DARK_SILVER' : d.weaponRenderColor,
-                '#7f8c8d'
-            );
+            const axeMetal = renderer.resolveWeaponPaletteByType('WEAPON_LARGE_AXE');
 
             ctx.fillStyle = axeWood.mid;
             ctx.fillRect(-2.5, -20, 5, 34);
@@ -210,7 +218,7 @@ GameRenderer.drawMonsterGraphics = function(ctx, m, w, h, drawScale, isUI = fals
     ctx.translate(0, hoverY);
     ctx.scale(drawScale, drawScale);
 
-    if (m.state === 'P_Melee_ATK' && String(d.defType).toLowerCase() === 'superarmor') {
+    if ((stateTypeKey === 'ATK' || stateTypeKey === 'ATK_MELEE') && String(d.defType).toLowerCase() === 'superarmor') {
         ctx.shadowBlur = 15;
         ctx.shadowColor = "gold";
     }
@@ -221,15 +229,15 @@ GameRenderer.drawMonsterGraphics = function(ctx, m, w, h, drawScale, isUI = fals
         w: w,
         h: h,
         faceDir: face,
-        state: m.state,
+        state: stateTypeKey,
         isChampion: !!m.isChampion,
         isMonster: true,
-        eyeColor: m.state === 'P_Hit' && !isUI ? '#7a0000' : '#111111'
+        eyeColor: stateTypeKey === 'HIT' && !isUI ? '#7a0000' : '#111111'
     });
 
     ctx.shadowBlur = 0;
 
-    if (m.state !== 'P_Die' && m.state !== 'P_Spawn') {
+    if (stateTypeKey !== 'DIE' && stateTypeKey !== 'SPAWN') {
         if (m.isChampion && !isUI) {
             const t = Date.now() / 180 + (m.x || 0) * 0.01;
             const flameX = 0;
@@ -309,6 +317,8 @@ GameRenderer.drawMonsterGraphics = function(ctx, m, w, h, drawScale, isUI = fals
             // 본체/망토는 drawModelBody(RENDER_WITCH) 결과만 사용
         }
 
+    }
+        if (stateKey !== 'P_Die') {
         drawStableWeapon();
     }
 
@@ -320,7 +330,11 @@ GameRenderer.drawMonsterEntity = function(ctx, m) {
     const w = d.bodyX * m.scale;
     const dY = d.bodyY * m.scale;
     const h = d.bodyZ * m.scale;
-    let drawScale = m.state === 'P_Spawn' ? Math.min(1.0, m.timer / 1.0) : 1.0;
+    let drawScale =
+    (typeof MonsterAI !== 'undefined' && typeof gameState !== 'undefined' &&
+        MonsterAI.getPatternTypeKey(m.state, gameState, m) === 'SPAWN')
+        ? Math.min(1.0, m.timer / 0.18)
+        : 1.0;
     let drawY = this.GROUND_BASE_Y + m.y;
     let bodyY = drawY - m.z;
 

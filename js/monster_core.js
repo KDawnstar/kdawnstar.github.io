@@ -59,7 +59,7 @@ const MonsterManager = {
                 atk: parseFloat(m.ATK) || 0,
                 def: parseFloat(m.DEF) || 0,
                 speed: parseFloat(m.Move_Speed) || 0,
-                aggressive: m.Aggressive,
+                aggressive: String(m.Aggressive).toLowerCase() === 'true' || m.Aggressive === true,
 
                 recog: parseFloat(m.Recog_Range) || 0,
                 unrecog: parseFloat(m.UnRecog_Range) || 0,
@@ -108,8 +108,10 @@ const MonsterManager = {
                 scale: parseFloat(m.Model_Scale) || 1,
                 renderType: m.Model_Render_Type || null,
                 renderColor: m.Model_Render_Color || null,
+                renderColorR: m.Model_Color_R !== null && m.Model_Color_R !== undefined && m.Model_Color_R !== '' ? parseFloat(m.Model_Color_R) : null,
+                renderColorG: m.Model_Color_G !== null && m.Model_Color_G !== undefined && m.Model_Color_G !== '' ? parseFloat(m.Model_Color_G) : null,
+                renderColorB: m.Model_Color_B !== null && m.Model_Color_B !== undefined && m.Model_Color_B !== '' ? parseFloat(m.Model_Color_B) : null,
                 weaponRenderType: m.Weapon_Render_Type || null,
-                weaponRenderColor: m.Weapon_Render_Color || null,
                 atkEffectRenderType: m.ATK_Effect_Render_Type || null,
                 atkProjectileRenderType: m.ATK_Projectile_Render_Type || null,
                 knockback: parseFloat(m.Hit_Knockback_Distance) || 0,
@@ -122,15 +124,15 @@ const MonsterManager = {
                 grade: m.Monster_Grade || '',
 
                 corpseTime: parseFloat(m.Corpse_Keep_Time) || 1.0,
-                idleDur: (parseFloat(m.Idle_Anim_Duration) || 1) / (parseFloat(m.Idle_Anim_Speed) || 1),
-                patrolDur: (parseFloat(m.Patrol_Anim_Duration) || 1) / (parseFloat(m.Patrol_Anim_Speed) || 1),
+                idleDur: parseFloat(m.Idle_Anim_Duration) || 1,
+                patrolDur: parseFloat(m.Patrol_Anim_Duration) || 1,
                 patrolStandby: parseFloat(m.Partrol_Standby_Time) || parseFloat(m.Patrol_Standby_Time) || 0,
-                boundDur: (parseFloat(m.Boundary_Anim_Duration) || 1) / (parseFloat(m.Boundary_Anim_Speed) || 1),
+                boundDur: parseFloat(m.Boundary_Anim_Duration) || 1,
                 boundStandby: parseFloat(m.Boundary_Standby_Time) || 0,
-                atkDur: (parseFloat(m.ATK_Anim_Duration) || 1) / (parseFloat(m.ATK_Anim_Speed) || 1),
-                hitDur: (parseFloat(m.Hit_Anim_Duration) || 0.2) / (parseFloat(m.Hit_Anim_Speed) || 1),
-                dieDur: (parseFloat(m.Die_Anim_Duration) || 1) / (parseFloat(m.Die_Anim_Speed) || 1),
-                evadeDur: (parseFloat(m.Evade_Anim_Duration) || 1) / (parseFloat(m.Evade_Anim_Speed) || 1)
+                atkDur: parseFloat(m.ATK_Anim_Duration) || 1,
+                hitDur: parseFloat(m.Hit_Anim_Duration) || 0.2,
+                dieDur: parseFloat(m.Die_Anim_Duration) || 1,
+                evadeDur: parseFloat(m.Evade_Anim_Duration) || 1
             };
 
             const aliasSet = new Set(
@@ -153,10 +155,34 @@ const MonsterManager = {
             });
         });
 
-        (patternData||[]).forEach(p => {
-            if (!p.AI_Name) return;
-            if (!gameState.DB_PATTERN[p.AI_Name]) gameState.DB_PATTERN[p.AI_Name] = {};
-            gameState.DB_PATTERN[p.AI_Name][p.Pattern_Name] = p;
+        (patternData || []).forEach(p => {
+            const aiName = String(p.AI_Name || '').trim();
+            if (!aiName) return;
+
+            if (!gameState.DB_PATTERN[aiName]) {
+                gameState.DB_PATTERN[aiName] = {};
+            }
+
+            const bucket = gameState.DB_PATTERN[aiName];
+
+            const patternName = String(p.Pattern_Name || '').trim();
+            const patternType = String(p.Pattern_Type || '').trim();
+
+            // 1) 기존 호환: Pattern_Name 키로 저장
+            if (patternName) {
+                bucket[patternName] = p;
+            }
+
+            // 2) 새 구조 지원: 일반 패턴은 Pattern_Type 키로도 저장
+            //    단, 스킬 패턴(SKILL_*)은 여러 개가 겹칠 수 있으므로 타입 키로 저장하지 않음
+            if (patternType && patternType !== '*' && !patternType.startsWith('SKILL_')) {
+                bucket[patternType] = p;
+            }
+
+            // 3) 전역 패턴(*)은 둘 중 하나만 있어도 '*'로 접근 가능하게 보정
+            if (patternName === '*' || patternType === '*') {
+                bucket['*'] = p;
+            }
         });
 
         (skillData||[]).forEach(s => {
@@ -216,18 +242,8 @@ const MonsterManager = {
     return map[v] || fallbackType;
 },
 
-    resolveProjectileRenderType: function(projectileEnum, projectileName) {
-        const v = String(projectileEnum || '').trim();
-        if (v) return v;
-
-        const n = String(projectileName || '').trim();
-        if (n.includes('웨이브')) return 'PROJECTILE_SLASH_WAVE';
-        if (n.includes('캐논볼')) return 'PROJECTILE_ENERGY_BOMB';
-        if (n.includes('탄환')) return 'PROJECTILE_BULLET';
-        if (n.includes('화살')) return 'PROJECTILE_ARROW';
-        if (n.includes('돌멩이')) return 'PROJECTILE_STONE';
-        if (n.includes('얼음화살')) return 'PROJECTILE_ICE_BOLT';
-        return '';
+    resolveProjectileRenderType: function(projectileEnum) {
+        return String(projectileEnum || '').trim();
     },
 
     pushMonsterAtkEffect: function(m, atkX, atkY, atkZ, atkW, atkH, gameState) {
@@ -377,7 +393,44 @@ const MonsterManager = {
                     }
                 }
 
-                gameState.monsters.push({ id: this.id, d: this.d, active: true, spawner: this, isChampion: isChamp, scale: mScale, x: cx + (Math.random() * 2 - 1) * rx, y: cy + (Math.random() * 2 - 1) * ry, z: 300, vz: 0, isGrounded: false, hp: mMaxHp, maxHp: mMaxHp, state: 'P_Spawn', prevState: 'NONE', forcePrevState: null, timer: 0, deadTimer: 0, dirX: 0, dirY: 0, faceDir: 1, pacingDir: 1, pacingAngle: 0, nextHitTime: 0, kbVx: 0, kbVy: 0, hasFired: false, isDeadProcessed: false, skillCooldowns: initCd, patternCount: 0 });
+                gameState.monsters.push({
+                id: this.id,
+                d: this.d,
+                active: true,
+                spawner: this,
+                isChampion: isChamp,
+                scale: mScale,
+                x: cx + (Math.random() * 2 - 1) * rx,
+                y: cy + (Math.random() * 2 - 1) * ry,
+                z: 300,
+                vz: 0,
+                isGrounded: false,
+                hp: mMaxHp,
+                maxHp: mMaxHp,
+                state: 'SPAWN',
+                prevState: 'NONE',
+                forcePrevState: null,
+                timer: 0,
+                deadTimer: 0,
+                dirX: 0,
+                dirY: 0,
+                faceDir: 1,
+                pacingDir: 1,
+                pacingAngle: 0,
+                nextHitTime: 0,
+                kbVx: 0,
+                kbVy: 0,
+                hitByEnemyTimer: 0,
+                lastHitSourceX: null,
+                lastHitSourceY: null,
+                lastHitDirX: 0,
+                lastHitDirY: 0,
+                hasFired: false,
+                isDeadProcessed: false,
+                skillCooldowns: initCd,
+                patternCount: 0,
+                isProvoked: !!this.d.aggressive
+            });
             }
         });
     },
@@ -405,7 +458,44 @@ const MonsterManager = {
             }
         }
 
-        gameState.monsters.push({ id: id, d: d, active: true, spawner: null, isChampion: isChamp, scale: mScale, x: cx + (Math.random() * 2 - 1) * rx, y: cy + (Math.random() * 2 - 1) * ry, z: 300, vz: 0, isGrounded: false, hp: mMaxHp, maxHp: mMaxHp, state: 'P_Spawn', prevState: 'NONE', forcePrevState: null, timer: 0, deadTimer: 0, dirX: 0, dirY: 0, faceDir: 1, pacingDir: 1, pacingAngle: 0, nextHitTime: 0, kbVx: 0, kbVy: 0, hasFired: false, isDeadProcessed: false, skillCooldowns: initCd, patternCount: 0 });
+        gameState.monsters.push({
+            id: id,
+            d: d,
+            active: true,
+            spawner: null,
+            isChampion: isChamp,
+            scale: mScale,
+            x: cx + (Math.random() * 2 - 1) * rx,
+            y: cy + (Math.random() * 2 - 1) * ry,
+            z: 300,
+            vz: 0,
+            isGrounded: false,
+            hp: mMaxHp,
+            maxHp: mMaxHp,
+            state: 'SPAWN',
+            prevState: 'NONE',
+            forcePrevState: null,
+            timer: 0,
+            deadTimer: 0,
+            dirX: 0,
+            dirY: 0,
+            faceDir: 1,
+            pacingDir: 1,
+            pacingAngle: 0,
+            nextHitTime: 0,
+            kbVx: 0,
+            kbVy: 0,
+            hitByEnemyTimer: 0,
+            lastHitSourceX: null,
+            lastHitSourceY: null,
+            lastHitDirX: 0,
+            lastHitDirY: 0,
+            hasFired: false,
+            isDeadProcessed: false,
+            skillCooldowns: initCd,
+            patternCount: 0,
+            isProvoked: !!d.aggressive
+        });
     },
 
     takeDamage: function(m, baseDmg, gameState) {
@@ -421,13 +511,214 @@ const MonsterManager = {
             gameState.player.bubbleCooldown = 2.0; 
         }
         gameState.targetUI.monster = m; gameState.targetUI.timer = 3.0;
+        m.isProvoked = true;
 
         if (m.hp > 0) {
-            let isSuperArmor = (m.state === 'P_Melee_ATK' || m.state === 'P_Range_ATK' || gameState.DB_SKILL[m.state]) && String(m.d.defType).toLowerCase() === 'superarmor';
-            if (!isSuperArmor) { 
-                MonsterAI.changeState(m, 'P_Hit', gameState);
-                let angle = Math.atan2(m.y - gameState.player.y, m.x - gameState.player.x); let kb = m.d.knockback / m.d.hitDur; m.kbVx = Math.cos(angle) * kb; m.kbVy = Math.sin(angle) * kb;
+            m.hitByEnemyTimer = Math.max(
+                m.hitByEnemyTimer || 0,
+                Math.max(0.1, parseFloat(m.d.hitDur) || 0.2)
+            );
+
+            m.lastHitSourceX = gameState.player.x;
+            m.lastHitSourceY = gameState.player.y;
+            m.lastHitDirX = m.x - gameState.player.x;
+            m.lastHitDirY = m.y - gameState.player.y;
+
+            const applyHitState = () => {
+                MonsterAI.changeState(m, 'HIT', gameState);
+
+                const safeHitDur = Math.max(0.001, parseFloat(m.d.hitDur) || 0.2);
+                let angle = Math.atan2(m.y - gameState.player.y, m.x - gameState.player.x);
+                let kb = m.d.knockback / safeHitDur;
+                m.kbVx = Math.cos(angle) * kb;
+                m.kbVy = Math.sin(angle) * kb;
+            };
+
+            const hitPriorityRule = MonsterAI.getPriorityStateRule(m, 'HIT', gameState);
+
+            if (hitPriorityRule) {
+                if (MonsterAI.canEnterPriorityState(m, 'HIT', gameState)) {
+                    applyHitState();
+                }
+            } else {
+                const stateTypeKey = MonsterAI.getPatternTypeKey(m.state, gameState, m);
+                let isSuperArmor =
+                    (
+                        stateTypeKey === 'ATK' ||
+                        stateTypeKey === 'ATK_MELEE' ||
+                        stateTypeKey === 'ATK_PROJECTILE' ||
+                        !!gameState.DB_SKILL[m.state]
+                    ) &&
+                    String(m.d.defType).toLowerCase() === 'superarmor';
+
+                if (!isSuperArmor) {
+                    applyHitState();
+                }
             }
+        }
+    },
+
+    getStageRangeYScale: function(gameState) {
+        const width = Math.max(1, parseFloat(gameState.WORLD_WIDTH) || 1);
+        const depth = Math.max(1, parseFloat(gameState.WORLD_DEPTH) || 1);
+
+        const correctedScale = (depth / width) * 1.5;
+        return Math.max(0.35, Math.min(0.6, correctedScale));
+    },
+
+    calcWeightedRangeDistance: function(distX, distY, gameState) {
+        const xGap = Math.max(0, parseFloat(distX) || 0);
+        const yGap = Math.max(0, parseFloat(distY) || 0);
+        const yScale = this.getStageRangeYScale(gameState);
+
+        return Math.sqrt((xGap * xGap) + ((yGap * yScale) * (yGap * yScale)));
+    },
+
+    normalizePatternMoveDirection: function(value) {
+        const raw = String(value || '').trim().toUpperCase();
+        if (!raw) return 'NONE';
+
+        switch (raw) {
+            case 'MOVE_RANDOM':
+                return 'MOVE_RANDOM';
+
+            case 'CHASE_ENEMY':
+                return 'CHASE_ENEMY';
+
+            case 'OPPOSITE_HIT':
+                return 'OPPOSITE_HIT';
+
+            case 'KITING_X':
+            case 'KITTING_X':
+                return 'KITING_X';
+
+            case 'NONE':
+            default:
+                return 'NONE';
+        }
+    },
+
+    normalizePatternGaze: function(value) {
+        const raw = String(value || '').trim().toUpperCase();
+        if (!raw) return 'NONE';
+
+        switch (raw) {
+            case 'GAZE_MOVE_DIREC':
+                return 'GAZE_MOVE_DIREC';
+
+            case 'GAZE_LOOK_ENEMY':
+                return 'GAZE_LOOK_ENEMY';
+
+            case 'GAZE_HIT_DIREC':
+                return 'GAZE_HIT_DIREC';
+
+            case 'NONE':
+            default:
+                return 'NONE';
+        }
+    },
+
+    getPatternMoveDirectionValue: function(m, gameState) {
+        const patternRow = MonsterAI.getActivePatternRow(m, gameState);
+        return this.normalizePatternMoveDirection(patternRow ? patternRow.Move_Direction : 'NONE');
+    },
+
+    getPatternGazeValue: function(m, gameState) {
+        const patternRow = MonsterAI.getActivePatternRow(m, gameState);
+        return this.normalizePatternGaze(patternRow ? patternRow.Monster_Gaze : 'NONE');
+    },
+
+    resolvePatternMoveVector: function(m, moveDirection, dx, dy, gameState) {
+        const result = { dirX: 0, dirY: 0 };
+
+        switch (this.normalizePatternMoveDirection(moveDirection)) {
+            case 'MOVE_RANDOM': {
+                result.dirX = m.dirX || 0;
+                result.dirY = m.dirY || 0;
+                return result;
+            }
+
+            case 'CHASE_ENEMY': {
+                let moveX = 0;
+                let moveY = 0;
+
+                if (Math.abs(dy) > 20) moveY = Math.sign(dy);
+                if (Math.abs(dx) > m.d.atkRange * 0.5) moveX = Math.sign(dx);
+
+                const len = Math.sqrt(moveX * moveX + moveY * moveY);
+                if (len > 0) {
+                    result.dirX = moveX / len;
+                    result.dirY = moveY / len;
+                }
+
+                return result;
+            }
+
+            case 'OPPOSITE_HIT': {
+                let moveX = Math.sign(m.lastHitDirX || 0);
+                let moveY = Math.sign(m.lastHitDirY || 0);
+
+                const len = Math.sqrt(moveX * moveX + moveY * moveY);
+                if (len > 0) {
+                    result.dirX = moveX / len;
+                    result.dirY = moveY / len;
+                }
+
+                return result;
+            }
+
+            case 'KITING_X': {
+                let moveX = 0;
+                let moveY = 0;
+
+                if (Math.abs(dx) > 10) {
+                    moveX = -Math.sign(dx);
+                }
+
+                if (Math.abs(dy) > 20) {
+                    moveY = Math.sign(dy);
+                }
+
+                const len = Math.sqrt(moveX * moveX + moveY * moveY);
+                if (len > 0) {
+                    result.dirX = moveX / len;
+                    result.dirY = moveY / len;
+                }
+
+                return result;
+            }
+
+            case 'NONE':
+            default:
+                return result;
+        }
+    },
+
+    resolvePatternFaceDir: function(m, gazeValue, dx) {
+        switch (this.normalizePatternGaze(gazeValue)) {
+            case 'GAZE_MOVE_DIREC':
+                if (Math.abs(m.dirX) > 0.001) {
+                    return m.dirX > 0 ? 1 : -1;
+                }
+                return m.faceDir || 1;
+
+            case 'GAZE_LOOK_ENEMY':
+                if (Math.abs(dx) > 0.001) {
+                    return dx > 0 ? 1 : -1;
+                }
+                return m.faceDir || 1;
+
+            case 'GAZE_HIT_DIREC': {
+                const hitDx = (m.lastHitSourceX != null) ? (m.lastHitSourceX - m.x) : 0;
+                if (Math.abs(hitDx) > 0.001) {
+                    return hitDx > 0 ? 1 : -1;
+                }
+                return m.faceDir || 1;
+            }
+
+            case 'NONE':
+            default:
+                return m.faceDir || 1;
         }
     },
 
@@ -443,117 +734,251 @@ const MonsterManager = {
         for (let i = gameState.monsters.length - 1; i >= 0; i--) {
             let m = gameState.monsters[i]; if (!m.active) continue;
             const d = m.d; m.timer += deltaTime;
-            if (m.skillCooldowns) { for (let k in m.skillCooldowns) { if (m.skillCooldowns[k] > 0) m.skillCooldowns[k] -= deltaTime; } }
+            const getStateKey = () => MonsterAI.resolveRuntimeState(m.state, gameState, m);
+            const getPatternTypeKey = () => MonsterAI.getPatternTypeKey(m.state, gameState, m);
+
+            const isState = (...states) => {
+                const key = getPatternTypeKey();
+                return states.some(s => MonsterAI.getPatternTypeKey(s, gameState, m) === key);
+            };
+
+            const isSkillState = () => !!gameState.DB_SKILL[m.state];
+            const isAttackState = () => {
+                const key = getPatternTypeKey();
+                return key === 'ATK' || key === 'ATK_MELEE' || key === 'ATK_PROJECTILE';
+            };
+
+            if (m.skillCooldowns) {
+                for (let k in m.skillCooldowns) {
+                    if (m.skillCooldowns[k] > 0) m.skillCooldowns[k] -= deltaTime;
+                }
+            }
+
+            if (m.hitByEnemyTimer > 0) {
+                m.hitByEnemyTimer -= deltaTime;
+                if (m.hitByEnemyTimer < 0) m.hitByEnemyTimer = 0;
+            }
 
             m.vz -= gameState.GRAVITY * deltaTime; m.z += m.vz * deltaTime; if (m.z <= 0) { m.z = 0; m.vz = 0; m.isGrounded = true; }
 
-            let distX = Math.abs(gameState.player.x - m.x) - (gameState.player.bodyX*gameState.player.scale/2) - (d.bodyX*m.scale/2);
+            let distX = Math.abs(gameState.player.x - m.x) - (gameState.player.bodyX * gameState.player.scale / 2) - (d.bodyX * m.scale / 2);
             let distY = Math.abs(gameState.player.y - m.y);
-            let dist2D = (gameState.player.hp > 0) ? getDistance2D(gameState.player.x, gameState.player.y, m.x, m.y) - (gameState.player.bodyX*gameState.player.scale/2) - (d.bodyX*m.scale/2) : 999999;
+            let dist2D = (gameState.player.hp > 0)
+                ? getDistance2D(gameState.player.x, gameState.player.y, m.x, m.y) - (gameState.player.bodyX * gameState.player.scale / 2) - (d.bodyX * m.scale / 2)
+                : 999999;
+            let weightedDist2D = (gameState.player.hp > 0)
+                ? this.calcWeightedRangeDistance(distX, distY, gameState)
+                : 999999;
+
+            const isAggressive = !!d.aggressive;
+            const isPlayerDetectable = gameState.player.hp > 0 && gameState.player.state !== 'Freeze';
+            const canEngage = isPlayerDetectable && (isAggressive || !!m.isProvoked);
+
+            if (!isPlayerDetectable) {
+                m.isProvoked = false;
+            }
+
+            const aiDistX = canEngage ? distX : 999999;
+            const aiDistY = canEngage ? distY : 999999;
+            const aiDist2D = canEngage ? weightedDist2D : 999999;
+            // 비선공 몬스터는 전투가 완전히 풀리고 플레이어가 멀어지면 다시 비선공 대기 상태로 복귀
+            if (
+                !isAggressive &&
+                m.isProvoked &&
+                weightedDist2D > d.unrecog &&
+                !['CHASE', 'BOUNDARY', 'ATK', 'ATK_MELEE', 'ATK_PROJECTILE'].includes(
+                    MonsterAI.getPatternTypeKey(m.state, gameState, m)
+                ) &&
+                !gameState.DB_SKILL[m.state]
+            ) {
+                m.isProvoked = false;
+            }
 
             if (m.hp <= 0 && !m.isDeadProcessed) {
-                m.isDeadProcessed = true; m.state = 'P_Die'; m.timer = 0;
-                if (gameState.targetUI.monster === m) gameState.targetUI.timer = 1.5; 
-                let gainExp = m.isChampion ? d.exp * d.championExpRate : d.exp; gameState.player.exp += gainExp; 
-                gameState.floatingTexts.push({x: m.x, y: m.y, z: m.z + d.bodyZ*m.scale + 20, text: `+${gainExp} EXP`, color: m.isChampion ? "#e74c3c" : "#2ecc71", size: "24px", timer: 1.0}); 
-                PlayerManager.checkLevelUp(gameState);
+                const diePriorityRule = MonsterAI.getPriorityStateRule(m, 'DIE', gameState);
+                const canEnterDieState = diePriorityRule
+                    ? MonsterAI.canEnterPriorityState(m, 'DIE', gameState)
+                    : true;
+
+                if (canEnterDieState) {
+                    m.isDeadProcessed = true;
+                    MonsterAI.changeState(m, 'DIE', gameState);
+                    if (gameState.targetUI.monster === m) gameState.targetUI.timer = 1.5;
+                    let gainExp = m.isChampion ? d.exp * d.championExpRate : d.exp;
+                    gameState.player.exp += gainExp;
+                    gameState.floatingTexts.push({
+                        x: m.x,
+                        y: m.y,
+                        z: m.z + d.bodyZ * m.scale + 20,
+                        text: `+${gainExp} EXP`,
+                        color: m.isChampion ? "#e74c3c" : "#2ecc71",
+                        size: "24px",
+                        timer: 1.0
+                    });
+                    PlayerManager.checkLevelUp(gameState);
+                }
             }
 
             if (m.hp > 0) {
-                if (gameState.player.hp <= 0 && ['P_Chase', 'P_Melee_ATK', 'P_Range_ATK', 'P_Boundary'].includes(m.state)) { MonsterAI.changeState(m, 'P_Patrol', gameState); } 
-                else { 
-                    MonsterAI.checkFSM(m, distX, distY, dist2D, gameState);
+                MonsterAI.checkFSM(m, aiDistX, aiDistY, aiDist2D, gameState);
 
-                    if ((m.state === 'P_Melee_ATK' || m.state === 'P_Range_ATK') && m.timer >= m.d.atkDur) {
-                        const playerAlive = gameState.player.hp > 0;
-                        const outOfAttackRange = (distX > m.d.atkRange || distY > 30);
+                if (isAttackState() && m.timer >= m.d.atkDur) {
+                    const playerAlive = gameState.player.hp > 0;
+                    const outOfAttackRange = (distX > m.d.atkRange || distY > 30);
 
-                        if (playerAlive && outOfAttackRange) {
-                            m.forcePrevState = m.state;
-                            MonsterAI.changeState(m, 'P_Chase', gameState);
-                        } else {
-                            MonsterAI.changeState(m, 'P_Idle', gameState);
-                        }
+                    if (playerAlive && outOfAttackRange) {
+                        m.forcePrevState = m.state;
+                        MonsterAI.changeState(m, 'CHASE', gameState);
+                    } else {
+                        MonsterAI.changeState(m, 'IDLE', gameState);
                     }
-                    else if (gameState.DB_SKILL[m.state] && m.timer >= (parseFloat(gameState.DB_SKILL[m.state].Skill_Anim_Duration) || 1.0)) {
-                        MonsterAI.changeState(m, 'P_Idle', gameState);
-                    }
+                }
+                else if (isSkillState() && m.timer >= (parseFloat(gameState.DB_SKILL[m.state].Skill_Anim_Duration) || 1.0)) {
+                    MonsterAI.changeState(m, 'IDLE', gameState);
                 }
             }
 
             let dx = gameState.player.x - m.x; let dy = gameState.player.y - m.y; let angleToPlayer = Math.atan2(dy, dx);
 
-            if (gameState.player.hp > 0 && gameState.player.state !== 'Freeze') {
-                const inRecog = dist2D <= d.recog;
-                const isAttacking = m.state === 'P_Melee_ATK' || m.state === 'P_Range_ATK' || gameState.DB_SKILL[m.state];
-                
+                        if (gameState.player.state === 'Freeze') {
+                m.dirX = 0;
+                m.dirY = 0;
+            } else {
+                const targetDx = isPlayerDetectable ? dx : 0;
+                const targetDy = isPlayerDetectable ? dy : 0;
+                const targetAngleToPlayer = isPlayerDetectable ? Math.atan2(targetDy, targetDx) : 0;
+                const inRecog = canEngage && weightedDist2D <= d.recog;
+                const isAttacking = isAttackState() || isSkillState();
+
                 if (!isAttacking) {
-                    if (m.state === 'P_Chase') {
-                        let moveX = 0; let moveY = 0;
-                        if (Math.abs(dy) > 20) { moveY = Math.sign(dy); } if (Math.abs(dx) > d.atkRange * 0.5) { moveX = Math.sign(dx); } 
-                        let len = Math.sqrt(moveX*moveX + moveY*moveY); if (len > 0) { m.dirX = moveX/len; m.dirY = moveY/len; }
-                        m.faceDir = dx > 0 ? 1 : -1; 
-                    } else if (m.state === 'P_Evade') {
-                        m.dirX = -Math.cos(angleToPlayer); m.dirY = -Math.sin(angleToPlayer);
-                        m.faceDir = dx > 0 ? 1 : -1;
-                    } else if (m.state === 'P_Boundary') {
-                        m.faceDir = dx > 0 ? 1 : -1; 
+                    let moveDirection = this.getPatternMoveDirectionValue(m, gameState);
+                    let gazeValue = this.getPatternGazeValue(m, gameState);
+
+                    if (isState('CHASE')) {
+                        if (moveDirection === 'NONE') moveDirection = 'CHASE_ENEMY';
+                        if (gazeValue === 'NONE') gazeValue = 'GAZE_LOOK_ENEMY';
+
+                        const moveVec = this.resolvePatternMoveVector(m, moveDirection, targetDx, targetDy, gameState);
+                        m.dirX = moveVec.dirX;
+                        m.dirY = moveVec.dirY;
+                        m.faceDir = this.resolvePatternFaceDir(m, gazeValue, targetDx);
+                    } else if (isState('EVADE')) {
+                        if (gazeValue === 'NONE') gazeValue = 'GAZE_LOOK_ENEMY';
+
+                        const moveVec = this.resolvePatternMoveVector(m, moveDirection, targetDx, targetDy, gameState);
+                        m.dirX = moveVec.dirX;
+                        m.dirY = moveVec.dirY;
+                        m.faceDir = this.resolvePatternFaceDir(m, gazeValue, targetDx);
+                    } else if (isState('BOUNDARY')) {
+                        if (gazeValue === 'NONE') gazeValue = isPlayerDetectable ? 'GAZE_LOOK_ENEMY' : 'GAZE_MOVE_DIREC';
+
                         if (m.timer < d.boundDur) {
-                            let strafeAngle = angleToPlayer + m.pacingAngle * m.pacingDir;
-                            m.dirX = Math.cos(strafeAngle); m.dirY = Math.sin(strafeAngle);
+                            let strafeAngle = targetAngleToPlayer + m.pacingAngle * m.pacingDir;
+                            m.dirX = Math.cos(strafeAngle);
+                            m.dirY = Math.sin(strafeAngle);
                         } else {
-                            m.dirX = 0; m.dirY = 0; 
+                            m.dirX = 0;
+                            m.dirY = 0;
                         }
-                    } else if (m.state === 'P_Patrol') {
+
+                        m.faceDir = this.resolvePatternFaceDir(m, gazeValue, targetDx);
+                    } else if (isState('PATROL')) {
+                        if (moveDirection === 'NONE') moveDirection = 'MOVE_RANDOM';
+                        if (gazeValue === 'NONE') gazeValue = 'GAZE_MOVE_DIREC';
+
                         if (m.timer < d.patrolDur) {
-                            m.faceDir = m.dirX > 0 ? 1 : -1; 
+                            const moveVec = this.resolvePatternMoveVector(m, moveDirection, targetDx, targetDy, gameState);
+                            m.dirX = moveVec.dirX;
+                            m.dirY = moveVec.dirY;
+                            m.faceDir = this.resolvePatternFaceDir(m, gazeValue, targetDx);
                         } else {
-                            m.dirX = 0; m.dirY = 0; 
+                            m.dirX = 0;
+                            m.dirY = 0;
                         }
-                    } else if (m.state === 'P_Idle' && inRecog) {
-                        m.faceDir = dx > 0 ? 1 : -1; 
+                    } else if (isState('IDLE')) {
+                        if (moveDirection === 'NONE') {
+                            m.dirX = 0;
+                            m.dirY = 0;
+                        } else {
+                            const moveVec = this.resolvePatternMoveVector(m, moveDirection, targetDx, targetDy, gameState);
+                            m.dirX = moveVec.dirX;
+                            m.dirY = moveVec.dirY;
+                        }
+
+                        if (inRecog) {
+                            if (gazeValue === 'NONE') gazeValue = 'GAZE_LOOK_ENEMY';
+                            m.faceDir = this.resolvePatternFaceDir(m, gazeValue, targetDx);
+                        } else if (!isPlayerDetectable && gazeValue === 'GAZE_MOVE_DIREC') {
+                            m.faceDir = this.resolvePatternFaceDir(m, gazeValue, targetDx);
+                        }
+                    } else if (isState('HIT')) {
+                        if (gazeValue === 'GAZE_HIT_DIREC') {
+                            m.faceDir = this.resolvePatternFaceDir(m, gazeValue, targetDx);
+                        }
                     }
                 }
-            } else if (gameState.player.state === 'Freeze') { m.dirX = 0; m.dirY = 0; } 
-
-            if (m.state === 'P_Die') {
+            }
+            
+            if (isState('DIE')) {
                 m.deadTimer += deltaTime; 
                 if (m.deadTimer >= (d.dieDur + d.corpseTime)) { 
                     m.active = false; if (m.spawner) { m.spawner.deadCount++; if (m.spawner.respawnTime > 0) { m.spawner.respawning++; m.spawner.respawnTimers.push(m.spawner.respawnTime); } }
                 }
-            } else if (!gameState.DB_SKILL[m.state]) {
-                switch(m.state) {
-                    case 'P_Patrol':
+            } else if (!isSkillState()) {
+                switch (getPatternTypeKey()) {
+                    case 'PATROL':
                         m.x += m.dirX * d.speed * d.patrolSpd * deltaTime;
                         m.y += m.dirY * d.speed * d.patrolSpd * 0.7 * deltaTime;
                         break;
 
-                    case 'P_Boundary':
+                    case 'BOUNDARY':
                         m.x += m.dirX * d.speed * d.boundSpd * deltaTime;
                         m.y += m.dirY * d.speed * d.boundSpd * 0.7 * deltaTime;
                         break;
 
-                    case 'P_Chase':
+                    case 'CHASE':
                         m.x += m.dirX * d.speed * d.chaseSpd * deltaTime;
                         m.y += m.dirY * d.speed * d.chaseSpd * 0.7 * deltaTime;
                         break;
 
-                    case 'P_Evade':
+                    case 'EVADE':
                         m.x += m.dirX * d.speed * d.evadeSpd * deltaTime;
                         m.y += m.dirY * d.speed * d.evadeSpd * 0.7 * deltaTime;
                         break;
 
-                    case 'P_Range_ATK':
+                    case 'ATK_PROJECTILE':
                         if (m.timer >= d.hitStart && !m.hasFired) {
+                            const playerAlive = gameState.player.hp > 0;
+                            const px = gameState.player.x;
+                            const py = gameState.player.y;
+
+                            const currentDistX =
+                                Math.abs(px - m.x) -
+                                (gameState.player.bodyX * gameState.player.scale / 2) -
+                                (d.bodyX * m.scale / 2);
+
+                            const currentDistY = Math.abs(py - m.y);
+
+                            const allowedX = Math.max((parseFloat(d.atkRange) || 0) * 1.15, (parseFloat(d.atkRange) || 0) + 20);
+                            const allowedY = Math.max(50, ((parseFloat(d.hitY) || 30) * m.scale) + 20);
+
+                            if (!playerAlive || currentDistX > allowedX || currentDistY > allowedY) {
+                                m.forcePrevState = m.state;
+                                MonsterAI.changeState(m, 'CHASE', gameState);
+                                break;
+                            }
+
+                            m.faceDir = px >= m.x ? 1 : -1;
                             m.hasFired = true;
+
                             let atkDmg = m.isChampion ? d.atk * d.championAtkRate : d.atk;
-                            let projectileRenderType = this.resolveProjectileRenderType(d.atkProjectileRenderType, d.projName);
+                            let projectileRenderType = this.resolveProjectileRenderType(d.atkProjectileRenderType);
 
                             gameState.projectiles.push({
                                 isPlayer: false,
                                 x: m.x,
                                 y: m.y,
-                                z: m.z + (d.bodyZ*m.scale)/2,
+                                z: m.z + (d.bodyZ * m.scale) / 2,
                                 vx: m.faceDir * d.projSpeed,
                                 vy: 0,
                                 vz: 0,
@@ -564,7 +989,7 @@ const MonsterManager = {
                                 hitZ: d.hitZ * m.scale,
                                 penetrate: String(d.projPenetrate).toLowerCase() === 'true',
                                 hasHit: false,
-                                projName: d.projName,
+                                projName: '',
                                 renderType: projectileRenderType,
                                 hitTargets: new Set(),
                                 statusType: null,
@@ -575,7 +1000,8 @@ const MonsterManager = {
                         }
                         break;
 
-                    case 'P_Melee_ATK':
+                    case 'ATK':
+                    case 'ATK_MELEE':
                         if (m.timer >= m.nextHitTime && m.timer <= d.hitEnd) {
                             let atkW = d.hitX * m.scale; let atkD = d.hitY * m.scale; let atkH = d.hitZ * m.scale;
                             let atkX = m.x + (m.faceDir === 1 ? atkW/2 : -atkW/2); let atkY = m.y; let atkZ = m.z;
@@ -592,7 +1018,7 @@ const MonsterManager = {
                         }
                         break;
 
-                    case 'P_Hit':
+                    case 'HIT':
                         m.x += (m.kbVx||0) * deltaTime;
                         m.y += (m.kbVy||0) * deltaTime;
                         break; 

@@ -2,7 +2,6 @@ GameRenderer.drawProjectileEntity = function(ctx, p) {
     let drawY = this.GROUND_BASE_Y + p.y;
     let drawZ = drawY - p.z;
     const projectileRenderType = String(p.renderType || '').trim();
-    const projectileName = String(p.projName || '').trim();
 
     ctx.fillStyle = "rgba(0,0,0,0.4)";
     ctx.beginPath();
@@ -13,7 +12,7 @@ GameRenderer.drawProjectileEntity = function(ctx, p) {
     ctx.translate(p.x, drawZ);
     ctx.scale(p.vx > 0 ? 1 : -1, 1);
 
-    if (projectileRenderType === 'PROJECTILE_SLASH_WAVE' || projectileName.includes("웨이브")) {
+    if (projectileRenderType === 'PROJECTILE_SLASH_WAVE') {
         ctx.beginPath();
         ctx.arc(0, 0, p.hitX, -Math.PI / 2, Math.PI / 2);
         ctx.arc(-20, 0, p.hitX, Math.PI / 2, -Math.PI / 2, true);
@@ -23,7 +22,7 @@ GameRenderer.drawProjectileEntity = function(ctx, p) {
         grad.addColorStop(1, "rgba(255,255,255,0.8)");
         ctx.fillStyle = grad;
         ctx.fill();
-    } else if (projectileRenderType === 'PROJECTILE_ENERGY_BOMB' || projectileName.includes("캐논볼")) {
+    } else if (projectileRenderType === 'PROJECTILE_ENERGY_BOMB') {
         ctx.fillStyle = "rgba(231, 76, 60, 0.8)";
         ctx.beginPath();
         ctx.moveTo(0, 0);
@@ -41,7 +40,7 @@ GameRenderer.drawProjectileEntity = function(ctx, p) {
         ctx.beginPath();
         ctx.arc(p.hitX / 6, -p.hitX / 6, p.hitX / 6, 0, Math.PI * 2);
         ctx.fill();
-    } else if (projectileRenderType === 'PROJECTILE_ICE_BOLT' || projectileName.includes("얼음화살")) {
+    } else if (projectileRenderType === 'PROJECTILE_ICE_BOLT') {
         ctx.fillStyle = "#3498db";
         ctx.beginPath();
         ctx.moveTo(15, 0);
@@ -55,7 +54,7 @@ GameRenderer.drawProjectileEntity = function(ctx, p) {
         ctx.lineTo(-5, -4);
         ctx.lineTo(-5, 4);
         ctx.fill();
-    } else if (projectileRenderType === 'PROJECTILE_ARROW' || projectileName.includes("화살")) {
+    } else if (projectileRenderType === 'PROJECTILE_ARROW') {
         ctx.fillStyle = "#8b4513";
         ctx.fillRect(-15, -2, 30, 4);
         ctx.fillStyle = "#bdc3c7";
@@ -64,7 +63,7 @@ GameRenderer.drawProjectileEntity = function(ctx, p) {
         ctx.lineTo(25, 0);
         ctx.lineTo(15, 4);
         ctx.fill();
-    } else if (projectileRenderType === 'PROJECTILE_STONE' || projectileName.includes("돌멩이")) {
+    } else if (projectileRenderType === 'PROJECTILE_STONE') {
         ctx.rotate(p.life * 10);
         ctx.fillStyle = "#7f8c8d";
         ctx.beginPath();
@@ -75,7 +74,7 @@ GameRenderer.drawProjectileEntity = function(ctx, p) {
         ctx.lineTo(5, 10);
         ctx.lineTo(-8, 8);
         ctx.fill();
-    } else if (projectileRenderType === 'PROJECTILE_BULLET' || projectileName.includes("탄환")) {
+    } else if (projectileRenderType === 'PROJECTILE_BULLET') {
         ctx.rotate(p.vx > 0 ? 0 : Math.PI);
         ctx.fillStyle = "#f1c40f";
         ctx.shadowBlur = 10;
@@ -689,6 +688,15 @@ GameRenderer.drawDebugOverlay = function(ctx, gameState) {
     const { player, monsters, hitboxes, activeWarp } = gameState;
     const GROUND_BASE_Y = this.GROUND_BASE_Y;
 
+    const getRangeDebugYScale = () => {
+        const width = Math.max(1, parseFloat(gameState.WORLD_WIDTH) || 1);
+        const depth = Math.max(1, parseFloat(gameState.WORLD_DEPTH) || 1);
+        const correctedScale = (depth / width) * 1.5;
+        return Math.max(0.35, Math.min(0.6, correctedScale));
+    };
+
+    const rangeYScale = getRangeDebugYScale();
+
     if (player.active && player.hp > 0) {
         let drawY = GROUND_BASE_Y + player.y;
         let pw = player.bodyX * player.scale;
@@ -711,6 +719,100 @@ GameRenderer.drawDebugOverlay = function(ctx, gameState) {
             const h = d.bodyZ * m.scale;
             let drawY = GROUND_BASE_Y + m.y;
 
+            const drawWeightedRangeEllipse = (range, color, lineDash = []) => {
+                const safeRange = Math.max(0, parseFloat(range) || 0);
+                if (safeRange <= 0) return;
+
+                const radiusX = safeRange + w / 2;
+                const radiusY = (safeRange * rangeYScale) + dY / 2;
+
+                ctx.save();
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.setLineDash(lineDash);
+                ctx.beginPath();
+                ctx.ellipse(m.x, drawY, radiusX, radiusY, 0, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            };
+
+            const drawAttackStartEllipse = () => {
+                const safeRange = Math.max(0, parseFloat(d.atkRange) || 0);
+                if (safeRange <= 0) return;
+
+                const radiusX = safeRange + w / 2;
+                const radiusY = 30 + dY / 2;
+
+                ctx.save();
+                ctx.strokeStyle = "rgba(244, 67, 54, 1.0)";
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.ellipse(m.x, drawY, radiusX, radiusY, 0, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            };
+
+            const drawProjectileThreatLane = () => {
+                const isRangeMonster = String(d.atkType || '').toLowerCase() === 'range';
+                if (!isRangeMonster) return;
+
+                const projSpeed = Math.max(0, parseFloat(d.projSpeed) || 0);
+                const projLife = Math.max(0, parseFloat(d.projLife) || 0);
+                const projDistance = projSpeed * projLife;
+                if (projDistance <= 0) return;
+
+                const dir = m.faceDir >= 0 ? 1 : -1;
+                const hitW = Math.max(8, (parseFloat(d.hitX) || 20) * m.scale);
+                const hitD = Math.max(8, (parseFloat(d.hitY) || 12) * m.scale);
+
+                const startOffset = Math.max(w / 2, hitW * 0.35);
+                const startX = m.x + dir * startOffset;
+                const unclampedEndX = startX + dir * projDistance;
+                const endX = Math.max(0, Math.min(gameState.WORLD_WIDTH, unclampedEndX));
+
+                const laneX = Math.min(startX, endX);
+                const laneW = Math.abs(endX - startX);
+                const laneH = Math.max(12, hitD);
+
+                if (laneW <= 0) return;
+
+                ctx.save();
+
+                ctx.fillStyle = "rgba(255, 152, 0, 0.16)";
+                ctx.strokeStyle = "rgba(255, 152, 0, 0.95)";
+                ctx.lineWidth = 2;
+                ctx.setLineDash([10, 6]);
+
+                if (typeof ctx.roundRect === 'function') {
+                    ctx.beginPath();
+                    ctx.roundRect(laneX, drawY - laneH / 2, laneW, laneH, Math.min(10, laneH / 2));
+                    ctx.fill();
+                    ctx.stroke();
+                } else {
+                    ctx.fillRect(laneX, drawY - laneH / 2, laneW, laneH);
+                    ctx.strokeRect(laneX, drawY - laneH / 2, laneW, laneH);
+                }
+
+                ctx.setLineDash([]);
+                ctx.strokeStyle = "rgba(255, 210, 120, 0.95)";
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.moveTo(startX, drawY);
+                ctx.lineTo(endX, drawY);
+                ctx.stroke();
+
+                ctx.fillStyle = "rgba(255, 180, 80, 0.20)";
+                ctx.strokeStyle = "rgba(255, 180, 80, 0.95)";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.ellipse(endX, drawY, hitW / 2, laneH / 2, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.restore();
+            };
+
             ctx.strokeStyle = m.isChampion ? '#e74c3c' : renderer.resolveMonsterBodyColor(m);
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -718,27 +820,12 @@ GameRenderer.drawDebugOverlay = function(ctx, gameState) {
             ctx.stroke();
             ctx.strokeRect(m.x - w / 2, drawY - m.z - h, w, h);
 
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
-            ctx.beginPath();
-            ctx.ellipse(m.x, drawY, d.unrecog + w / 2, (d.unrecog + w / 2) * 0.5, 0, 0, Math.PI * 2);
-            ctx.stroke();
-
-            ctx.strokeStyle = "rgba(255, 235, 59, 0.8)";
-            ctx.beginPath();
-            ctx.ellipse(m.x, drawY, d.recog + w / 2, (d.recog + w / 2) * 0.5, 0, 0, Math.PI * 2);
-            ctx.stroke();
-
-            ctx.strokeStyle = "rgba(255, 152, 0, 1.0)";
-            ctx.beginPath();
-            ctx.ellipse(m.x, drawY, d.chase + w / 2, (d.chase + w / 2) * 0.5, 0, 0, Math.PI * 2);
-            ctx.stroke();
-
-            ctx.strokeStyle = "rgba(244, 67, 54, 1.0)";
-            ctx.setLineDash([5, 5]);
-            ctx.beginPath();
-            ctx.ellipse(m.x, drawY, d.atkRange + w / 2, (d.atkRange + w / 2) * 0.5, 0, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.setLineDash([]);
+            drawWeightedRangeEllipse(d.unrecog, "rgba(255, 255, 255, 0.5)");
+            drawWeightedRangeEllipse(d.recog, "rgba(255, 235, 59, 0.8)");
+            drawWeightedRangeEllipse(d.chase, "rgba(255, 152, 0, 1.0)");
+            drawWeightedRangeEllipse(d.evade, "rgba(0, 255, 255, 0.9)", [8, 6]);
+            drawAttackStartEllipse();
+            drawProjectileThreatLane();
         }
     }
 

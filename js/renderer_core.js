@@ -73,8 +73,60 @@ const GameRenderer = {
 
         this.rebuildStageBackground(null, worldWidth || 2000, 300);
     },
+    
+    clampColorChannel: function(value, fallback = 0) {
+    const n = Math.round(parseFloat(value));
+    if (isNaN(n)) return fallback;
+    return Math.max(0, Math.min(255, n));
+    },
 
-    resolvePlayerPalette: function(renderColor) {
+    rgbToHex: function(r, g, b) {
+    const toHex = (v) => this.clampColorChannel(v).toString(16).padStart(2, '0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    },
+
+    resolveRgbPalette: function(r, g, b, fallbackPalette = null) {
+    const isFilled = (v) => {
+        return v !== null &&
+            v !== undefined &&
+            String(v).trim() !== '' &&
+            !isNaN(parseFloat(v));
+    };
+
+    if (!isFilled(r) || !isFilled(g) || !isFilled(b)) {
+        return fallbackPalette;
+    }
+
+    const baseR = this.clampColorChannel(r);
+    const baseG = this.clampColorChannel(g);
+    const baseB = this.clampColorChannel(b);
+
+    const darkR = this.clampColorChannel(baseR * 0.52);
+    const darkG = this.clampColorChannel(baseG * 0.52);
+    const darkB = this.clampColorChannel(baseB * 0.52);
+
+    const lightR = this.clampColorChannel(baseR + (255 - baseR) * 0.60);
+    const lightG = this.clampColorChannel(baseG + (255 - baseG) * 0.60);
+    const lightB = this.clampColorChannel(baseB + (255 - baseB) * 0.60);
+
+    return {
+        dark: this.rgbToHex(darkR, darkG, darkB),
+        mid: this.rgbToHex(baseR, baseG, baseB),
+        light: this.rgbToHex(lightR, lightG, lightB)
+    };
+    },
+
+    resolvePlayerPalette: function(playerOrRenderColor, r = null, g = null, b = null) {
+    const isObjectInput = playerOrRenderColor && typeof playerOrRenderColor === 'object';
+
+    const renderColor = isObjectInput
+        ? playerOrRenderColor.renderColor
+        : playerOrRenderColor;
+
+    const rgbR = isObjectInput ? playerOrRenderColor.renderColorR : r;
+    const rgbG = isObjectInput ? playerOrRenderColor.renderColorG : g;
+    const rgbB = isObjectInput ? playerOrRenderColor.renderColorB : b;
+
     const key = String(renderColor || '').trim().toUpperCase();
 
     const map = {
@@ -105,7 +157,43 @@ const GameRenderer = {
         COLOR_BLACK: { dark: '#111315', mid: '#2d3436', light: '#7f8c8d' }
     };
 
-    return map[key] || map.COLOR_DEFAULT_HUMAN;
+    const fallbackPalette = map[key] || map.COLOR_DEFAULT_HUMAN;
+
+    return this.resolveRgbPalette(rgbR, rgbG, rgbB, fallbackPalette) || fallbackPalette;
+    },
+
+    resolveWeaponPaletteByType: function(weaponType, fallbackPalette = null) {
+    const type = String(weaponType || '').trim().toUpperCase();
+
+    const pick = (colorKey, fallback) => this.resolveWeaponPalette(colorKey, fallback);
+
+    const map = {
+        WEAPON_LARGE_SWORD: pick('COLOR_METAL_SILVER', '#95a5a6'),
+        WEAPON_SMALL_SWORD: pick('COLOR_DARK_SILVER', '#7b8a90'),
+        WEAPON_SMALL_CURVED_SWORD: pick('COLOR_CYAN', '#00d2ff'),
+
+        WEAPON_GUN: pick('COLOR_GUN_BLACK', '#2c3e50'),
+
+        WEAPON_WOOD_CLUB: pick('COLOR_WOOD', '#8e5a2b'),
+        WEAPON_SMALL_BOW: pick('COLOR_WOOD', '#8e5a2b'),
+        WEAPON_BOW: pick('COLOR_WOOD', '#8e5a2b'),
+
+        WEAPON_STONE: pick('COLOR_STONE', '#8b949e'),
+
+        WEAPON_LARGE_AXE: pick('COLOR_DARK_SILVER', '#7b8a90'),
+        WEAPON_MAGIC_STAFF: pick('COLOR_GOLD', '#f1c40f')
+    };
+
+    if (map[type]) return map[type];
+
+    if (fallbackPalette) return fallbackPalette;
+
+    return {
+        dark: '#5f6b73',
+        mid: '#95a5a6',
+        light: '#dde6e8',
+        accent: '#f5f5f5'
+    };
     },
 
     resolveWeaponPalette: function(renderColor, fallback = '#95a5a6') {
@@ -140,7 +228,7 @@ const GameRenderer = {
     return this.resolveWeaponPalette(renderColor, fallback).mid;
     },
 
-    resolveMonsterPalette: function(monster) {
+        resolveMonsterPalette: function(monster) {
     const d = monster.d || {};
     const key = String(d.renderColor || '').trim().toUpperCase();
     const renderType = String(d.renderType || '').trim().toUpperCase();
@@ -185,15 +273,20 @@ const GameRenderer = {
         COLOR_GOLD: { dark: '#9a6c08', mid: '#f1c40f', light: '#ffe082' }
     };
 
-    if (map[key]) return map[key];
+    const fallbackPalette =
+        map[key] ||
+        fallbackMapByType[renderType] || {
+            dark: fallback,
+            mid: fallback,
+            light: '#ffffff'
+        };
 
-    if (fallbackMapByType[renderType]) return fallbackMapByType[renderType];
-
-    return {
-        dark: fallback,
-        mid: fallback,
-        light: '#ffffff'
-    };
+    return this.resolveRgbPalette(
+        d.renderColorR,
+        d.renderColorG,
+        d.renderColorB,
+        fallbackPalette
+    ) || fallbackPalette;
     },
 
     resolveMonsterBodyColor: function(monster) {
@@ -207,8 +300,9 @@ const GameRenderer = {
         const h = Math.max(40, options.h || 100);
         const face = options.faceDir === -1 ? -1 : 1;
         const state = String(options.state || '').trim();
-        const isDead = state === 'P_Die' || state === 'Die';
-        const isHit = state === 'P_Hit' || state === 'Hit';
+        const stateKey = state.toUpperCase();
+        const isDead = stateKey === 'DIE' || stateKey === 'P_DIE';
+        const isHit = stateKey === 'HIT' || stateKey === 'P_HIT';
         const isChampion = !!options.isChampion;
         const isMonster = !!options.isMonster;
         const eyeColor = options.eyeColor || (isHit ? '#ffffff' : '#111111');

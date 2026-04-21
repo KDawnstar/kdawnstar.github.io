@@ -53,17 +53,24 @@ const PlayerAction = {
         return map[v] || fallbackType;
     },
 
-    resolveProjectileRenderType: function(projectileEnum, projectileName) {
-        const v = String(projectileEnum || '').trim();
-        if (v) return v;
+    resolveProjectileRenderType: function(projectileEnum) {
+        return String(projectileEnum || '').trim();
+    },
 
-        const n = String(projectileName || '').trim();
-        if (n.includes('웨이브')) return 'PROJECTILE_SLASH_WAVE';
-        if (n.includes('캐논볼')) return 'PROJECTILE_ENERGY_BOMB';
-        if (n.includes('탄환')) return 'PROJECTILE_BULLET';
-        if (n.includes('화살')) return 'PROJECTILE_ARROW';
-        if (n.includes('돌멩이')) return 'PROJECTILE_STONE';
-        return '';
+    getPlayerGunMuzzlePoint: function(player) {
+        const pw = (player.bodyX || 60) * (player.scale || 1);
+        const ph = (player.bodyZ || 120) * (player.scale || 1);
+        const face = player.faceDir === -1 ? -1 : 1;
+
+        const gunX = pw * 0.22 * face;
+        const gunW = Math.max(46, pw * 0.64);
+        const muzzleOffsetX = gunW * 0.82;
+
+        return {
+            x: player.x + gunX + (face * muzzleOffsetX),
+            y: player.y,
+            z: player.z + ph * 0.46
+        };
     },
 
     spawnActionEffect: function(act, player, gameState, options = {}) {
@@ -341,17 +348,17 @@ const PlayerAction = {
 
                                 let baseDmg = player.atk * (parseFloat(act.ATK_DMG_Rate) || 1.0);
 
-                                if (act.ATK_Projectile_Name) {
+                                if (act.ATK_Projectile_Render_Type) {
                                     const projectileRenderType = this.resolveProjectileRenderType(
-                                        act.ATK_Projectile_Render_Type,
-                                        act.ATK_Projectile_Name
+                                        act.ATK_Projectile_Render_Type
                                     );
+                                    const muzzlePoint = this.getPlayerGunMuzzlePoint(player);
 
                                     gameState.projectiles.push({
                                         isPlayer: true,
-                                        x: player.x + (player.faceDir * 20),
-                                        y: player.y,
-                                        z: player.z + (player.bodyZ * player.scale) / 2,
+                                        x: muzzlePoint.x,
+                                        y: muzzlePoint.y,
+                                        z: muzzlePoint.z,
                                         vx: player.faceDir * (parseFloat(act.ATK_Projectile_Speed) || 500),
                                         vy: 0,
                                         vz: 0,
@@ -362,7 +369,7 @@ const PlayerAction = {
                                         hitZ: parseFloat(act.ATK_Projectile_Hitbox_Size_Z) || 20,
                                         penetrate: String(act.ATK_Projectile_Penetration).toLowerCase() === 'true',
                                         hasHit: false,
-                                        projName: act.ATK_Projectile_Name,
+                                        projName: '',
                                         renderType: projectileRenderType,
                                         hitTargets: new Set(),
                                         statusType: null,
@@ -371,9 +378,9 @@ const PlayerAction = {
                                     });
 
                                     this.spawnActionEffect(act, player, gameState, {
-                                        x: player.x + (player.faceDir * 26),
-                                        y: player.y,
-                                        z: player.z + (player.bodyZ * player.scale) / 2
+                                        x: muzzlePoint.x,
+                                        y: muzzlePoint.y,
+                                        z: muzzlePoint.z
                                     });
                                 }
 
@@ -383,7 +390,7 @@ const PlayerAction = {
                                     let atkH = parseFloat(act.ATK_Hitbox_Size_Z) || 60;
                                     let atkX = player.x + (player.faceDir === 1 ? atkW / 2 : -atkW / 2);
                                     let atkY = player.y;
-                                    let atkZ = player.z;
+                                    let atkZ = player.z + Math.max(10, (player.bodyZ * player.scale) * 0.12);
 
                                     gameState.hitboxes.push({
                                         x: atkX,

@@ -1378,14 +1378,15 @@ function updateHUD() {
             if (gameState.targetUI.monster && gameState.targetUI.monster.active) {
                 const m = gameState.targetUI.monster;
                 const d = m.d;
+                const debugStateKey = MonsterAI.resolveRuntimeState(m.state, gameState, m);
                 let dist = getDistance2D(p.x, p.y, m.x, m.y) - (p.bodyX * p.scale / 2) - (d.bodyX * m.scale / 2);
                 const monsterGrade = String(d.grade || '').trim().toUpperCase();
                 const isBoss = monsterGrade.includes('BOSS') || String(m.id || '').startsWith('B');
                 const prefix = m.isChampion ? "[엘리트] " : (isBoss ? "[보스] " : "");
                 const tColor = isBoss ? '#f1c40f' : (m.isChampion ? '#e74c3c' : '#e67e22');
 
-                html += `<b style="color:${tColor};">[Target]</b> ${prefix}${d.name} | HP: ${Math.max(0, m.hp).toFixed(0)}/${m.maxHp} | State: ${m.state} | Dist: ${Math.round(dist)}<br>`;
-                if (m.state === 'P_Evade') html += `<span style="color:#e74c3c;">[Evading]</span><br>`;
+                html += `<b style="color:${tColor};">[Target]</b> ${prefix}${d.name} | HP: ${Math.max(0, m.hp).toFixed(0)}/${m.maxHp} | State: ${debugStateKey} | Dist: ${Math.round(dist)}<br>`;
+                if (debugStateKey === 'P_Evade') html += `<span style="color:#e74c3c;">[Evading]</span><br>`;
                 if (m.isChampion) html += `<span style="color:#e74c3c;">[Champion]</span><br>`;
                 if (m.spawnSource) html += `<span style="color:#95a5a6;">[Source] ${m.spawnSource}${m.isStageBoss ? ' / BOSS' : ''}</span><br>`;
             }

@@ -6,19 +6,25 @@ const MonsterAI = {
     normalizePrevPatternAlias: function(v) {
         v = String(v || '').trim();
         if (!v) return [];
+
         const alias = {
-            'HIT': ['P_Hit'],
-            'BOUNDARY': ['P_Boundary'],
-            'IDLE': ['P_Idle'],
-            'PATROL': ['P_Patrol'],
-            'CHASE': ['P_Chase'],
-            'SPAWN': ['P_Spawn'],
-            'DIE': ['P_Die'],
-            'EVADE': ['P_Evade'],
-            'PATTERN_ATK': ['P_ATK', 'P_Melee_ATK', 'P_Range_ATK'],
-            'ATK_MELEE': ['P_ATK', 'P_Melee_ATK'],
-            'ATK_PROJECTILE': ['P_ATK', 'P_Range_ATK']
+            'NONE': ['NONE'],
+
+            'HIT': ['HIT', 'P_Hit'],
+            'BOUNDARY': ['BOUNDARY', 'P_Boundary'],
+            'IDLE': ['IDLE', 'P_Idle'],
+            'PATROL': ['PATROL', 'P_Patrol'],
+            'CHASE': ['CHASE', 'P_Chase'],
+            'SPAWN': ['SPAWN', 'P_Spawn'],
+            'DIE': ['DIE', 'P_Die'],
+            'EVADE': ['EVADE', 'P_Evade'],
+
+            'ATK': ['ATK', 'P_ATK', 'P_Melee_ATK', 'P_Range_ATK', 'P_ATK_Melee', 'P_ATK_Projectile'],
+            'PATTERN_ATK': ['ATK', 'P_ATK', 'P_Melee_ATK', 'P_Range_ATK', 'P_ATK_Melee', 'P_ATK_Projectile'],
+            'ATK_MELEE': ['ATK', 'ATK_MELEE', 'P_ATK', 'P_Melee_ATK', 'P_ATK_Melee'],
+            'ATK_PROJECTILE': ['ATK', 'ATK_PROJECTILE', 'P_ATK', 'P_Range_ATK', 'P_ATK_Projectile']
         };
+
         return alias[v] || [v];
     },
 
@@ -31,19 +37,52 @@ const MonsterAI = {
         return false;
     },
 
+    resolveSkillIdFromTarget: function(rawValue, target, gameState) {
+        const candidates = [];
+
+        const pushCandidate = (v) => {
+            const s = String(v || '').trim();
+            if (!s) return;
+            s.split('|').map(x => x.trim()).filter(Boolean).forEach(x => candidates.push(x));
+        };
+
+        pushCandidate(rawValue);
+        pushCandidate(target);
+
+        for (const candidate of candidates) {
+            if (gameState.DB_SKILL && gameState.DB_SKILL[candidate]) {
+                return candidate;
+            }
+        }
+
+        return '';
+    },
+
     resolveRangeValue: function(rawValue, target, m, gameState) {
         let v = String(rawValue || '').trim();
+
         switch (v) {
-            case 'REF_ATK_RANGE': return m.d.atkRange || 0;
-            case 'REF_CHASE_RANGE': return m.d.chase || 0;
-            case 'REF_RECOG_RANGE': return m.d.recog || 0;
-            case 'REF_UNRECOG_RANGE': return m.d.unrecog || 0;
-            case 'REF_EVADE_RANGE': return m.d.evade || 0;
+            case 'REF_ATK_RANGE':
+                return m.d.atkRange || 0;
+
+            case 'REF_CHASE_RANGE':
+                return m.d.chase || 0;
+
+            case 'REF_RECOG_RANGE':
+                return m.d.recog || 0;
+
+            case 'REF_UNRECOG_RANGE':
+                return m.d.unrecog || 0;
+
+            case 'REF_EVADE_RANGE':
+                return m.d.evade || 0;
+
             case 'REF_SKILL_USE_RANGE': {
-                let skillId = target ? String(target).split('|')[0].trim() : '';
-                let skill = gameState.DB_SKILL[skillId];
+                const skillId = this.resolveSkillIdFromTarget('', target, gameState);
+                const skill = skillId ? gameState.DB_SKILL[skillId] : null;
                 return skill ? (parseFloat(skill.Skill_Use_Range) || 0) : 0;
             }
+
             default: {
                 let n = parseFloat(v);
                 return isNaN(n) ? 0 : n;
@@ -51,15 +90,215 @@ const MonsterAI = {
         }
     },
 
-    changeState: function(m, newState, gameState) {
-        if (newState === 'P_ATK') {
-            newState = String(m.d.atkType).toLowerCase() === 'range' ? 'P_Range_ATK' : 'P_Melee_ATK';
+        resolveRuntimeState: function(rawState, gameState, m) {
+        const state = String(rawState || '').trim();
+        if (!state) return '';
+
+        if (gameState.DB_SKILL && gameState.DB_SKILL[state]) {
+            return state;
         }
 
-        if (m.forcePrevState) { m.prevState = m.forcePrevState; m.forcePrevState = null; } else { m.prevState = m.state; }
+        const upper = state.toUpperCase();
+        const atkType = String(m && m.d && m.d.atkType || '').trim().toLowerCase();
 
-        if (m.state === newState) { m.patternCount++; } else { m.patternCount = 1; }
-        m.state = newState; m.timer = 0; m.hasFired = false;
+        switch (upper) {
+            case '*':
+                return '*';
+
+            case 'SPAWN':
+            case 'P_SPAWN':
+                return 'P_Spawn';
+
+            case 'IDLE':
+            case 'P_IDLE':
+                return 'P_Idle';
+
+            case 'PATROL':
+            case 'P_PATROL':
+                return 'P_Patrol';
+
+            case 'BOUNDARY':
+            case 'P_BOUNDARY':
+                return 'P_Boundary';
+
+            case 'CHASE':
+            case 'P_CHASE':
+                return 'P_Chase';
+
+            case 'HIT':
+            case 'P_HIT':
+                return 'P_Hit';
+
+            case 'DIE':
+            case 'P_DIE':
+                return 'P_Die';
+
+            case 'EVADE':
+            case 'P_EVADE':
+                return 'P_Evade';
+
+            case 'ATK':
+            case 'P_ATK':
+                return atkType === 'range' ? 'P_Range_ATK' : 'P_Melee_ATK';
+
+            case 'ATK_MELEE':
+            case 'P_ATK_MELEE':
+            case 'P_MELEE_ATK':
+                return 'P_Melee_ATK';
+
+            case 'ATK_PROJECTILE':
+            case 'P_ATK_PROJECTILE':
+            case 'P_RANGE_ATK':
+                return 'P_Range_ATK';
+
+            default:
+                return state;
+        }
+    },
+
+        getPatternTypeKey: function(state, gameState, m) {
+        const runtimeState = this.resolveRuntimeState(state, gameState, m);
+        const key = String(runtimeState || '').trim().toUpperCase();
+
+        if (!key) return '';
+
+        if (gameState.DB_SKILL && gameState.DB_SKILL[runtimeState]) {
+            return runtimeState;
+        }
+
+        switch (key) {
+            case 'P_SPAWN':
+            case 'SPAWN':
+                return 'SPAWN';
+
+            case 'P_IDLE':
+            case 'IDLE':
+                return 'IDLE';
+
+            case 'P_PATROL':
+            case 'PATROL':
+                return 'PATROL';
+
+            case 'P_BOUNDARY':
+            case 'BOUNDARY':
+                return 'BOUNDARY';
+
+            case 'P_CHASE':
+            case 'CHASE':
+                return 'CHASE';
+
+            case 'P_HIT':
+            case 'HIT':
+                return 'HIT';
+
+            case 'P_DIE':
+            case 'DIE':
+                return 'DIE';
+
+            case 'P_EVADE':
+            case 'EVADE':
+                return 'EVADE';
+
+            case 'P_MELEE_ATK':
+            case 'ATK_MELEE':
+                return 'ATK_MELEE';
+
+            case 'P_RANGE_ATK':
+            case 'ATK_PROJECTILE':
+                return 'ATK_PROJECTILE';
+
+            case 'ATK':
+            case 'P_ATK':
+                return 'ATK';
+
+            default:
+                return key;
+        }
+    },
+
+        getRuleKeysForState: function(state, gameState, m) {
+        const runtimeState = this.resolveRuntimeState(state, gameState, m);
+
+        if (!runtimeState) return [];
+
+        if (gameState.DB_SKILL && gameState.DB_SKILL[runtimeState]) {
+            return [runtimeState];
+        }
+
+        switch (runtimeState) {
+            case 'P_Spawn':
+                return ['SPAWN', 'P_Spawn'];
+
+            case 'P_Idle':
+                return ['IDLE', 'P_Idle'];
+
+            case 'P_Patrol':
+                return ['PATROL', 'P_Patrol'];
+
+            case 'P_Boundary':
+                return ['BOUNDARY', 'P_Boundary'];
+
+            case 'P_Chase':
+                return ['CHASE', 'P_Chase'];
+
+            case 'P_Hit':
+                return ['HIT', 'P_Hit'];
+
+            case 'P_Die':
+                return ['DIE', 'P_Die'];
+
+            case 'P_Evade':
+                return ['EVADE', 'P_Evade'];
+
+            case 'P_Melee_ATK':
+                return ['ATK', 'ATK_MELEE', 'P_ATK_Melee', 'P_ATK', 'ATK_MELEE'];
+
+            case 'P_Range_ATK':
+                return ['ATK', 'ATK_PROJECTILE', 'P_ATK_Projectile', 'P_ATK', 'ATK_PROJECTILE'];
+
+            default:
+                return [runtimeState];
+        }
+    },
+
+    getActivePatternRow: function(m, gameState) {
+        const aiTypes = String(m.d.aiType || '').split(',').map(s => s.trim()).filter(Boolean);
+        const runtimeState = this.resolveRuntimeState(m.state, gameState, m);
+        const ruleKeys = this.getRuleKeysForState(runtimeState, gameState, m);
+
+        for (let ai of aiTypes) {
+            const bucket = gameState.DB_PATTERN[ai];
+            if (!bucket) continue;
+
+            for (let key of ruleKeys) {
+                if (bucket[key]) {
+                    return bucket[key];
+                }
+            }
+        }
+
+        return null;
+    },
+
+    changeState: function(m, newState, gameState) {
+        newState = this.resolveRuntimeState(newState, gameState, m);
+
+        if (m.forcePrevState) {
+            m.prevState = m.forcePrevState;
+            m.forcePrevState = null;
+        } else {
+            m.prevState = m.state;
+        }
+
+        if (m.state === newState) {
+            m.patternCount++;
+        } else {
+            m.patternCount = 1;
+        }
+
+        m.state = newState;
+        m.timer = 0;
+        m.hasFired = false;
 
         if (newState === 'P_Patrol') {
             let angle = Math.random() * Math.PI * 2;
@@ -67,39 +306,234 @@ const MonsterAI = {
             m.dirY = Math.sin(angle);
             m.faceDir = m.dirX > 0 ? 1 : -1;
         }
+
         if (newState === 'P_Boundary') {
             m.pacingDir = Math.random() > 0.5 ? 1 : -1;
             m.pacingAngle = (Math.random() * (Math.PI / 4)) + (Math.PI / 4);
         }
-        if (newState === 'P_Melee_ATK') m.nextHitTime = m.d.hitStart;
 
-        if (gameState.DB_SKILL[newState]) {
+        if (newState === 'P_Melee_ATK') {
+            m.nextHitTime = m.d.hitStart;
+        }
+
+        if (gameState.DB_SKILL && gameState.DB_SKILL[newState]) {
             MonsterSkill.castSkill(m, newState, gameState);
         }
     },
 
-    getAnimDuration: function(m, gameState) {
-        if (m.state === 'P_Idle') return m.d.idleDur;
-        if (m.state === 'P_Patrol') return m.d.patrolDur + m.d.patrolStandby;
-        if (m.state === 'P_Boundary') return m.d.boundDur + m.d.boundStandby;
-        if (m.state === 'P_Evade') return m.d.evadeDur;
-        if (m.state === 'P_Range_ATK' || m.state === 'P_Melee_ATK' || m.state === 'P_ATK') return m.d.atkDur;
-        if (m.state === 'P_Hit') return m.d.hitDur;
-        if (m.state === 'P_Spawn') return 1.0;
-        if (gameState.DB_SKILL[m.state]) return parseFloat(gameState.DB_SKILL[m.state].Skill_Anim_Duration) || 1.0;
+        getAnimDuration: function(m, gameState) {
+        const runtimeState = this.resolveRuntimeState(m.state, gameState, m);
+        const stateKey = String(runtimeState || '').trim().toUpperCase();
+
+        if (stateKey === 'IDLE' || stateKey === 'P_IDLE') return m.d.idleDur;
+        if (stateKey === 'PATROL' || stateKey === 'P_PATROL') return m.d.patrolDur + m.d.patrolStandby;
+        if (stateKey === 'BOUNDARY' || stateKey === 'P_BOUNDARY') return m.d.boundDur + m.d.boundStandby;
+        if (stateKey === 'EVADE' || stateKey === 'P_EVADE') return m.d.evadeDur;
+        if (
+            stateKey === 'ATK' ||
+            stateKey === 'ATK_MELEE' ||
+            stateKey === 'ATK_PROJECTILE' ||
+            stateKey === 'P_MELEE_ATK' ||
+            stateKey === 'P_RANGE_ATK'
+        ) {
+            return m.d.atkDur;
+        }
+        if (stateKey === 'HIT' || stateKey === 'P_HIT') return m.d.hitDur;
+        if (stateKey === 'SPAWN' || stateKey === 'P_SPAWN') return 0.55;
+        if (stateKey === 'DIE' || stateKey === 'P_DIE') return m.d.dieDur;
+
+        if (gameState.DB_SKILL && gameState.DB_SKILL[runtimeState]) {
+            return parseFloat(gameState.DB_SKILL[runtimeState].Skill_Anim_Duration) || 1.0;
+        }
+
         return 1.0;
     },
 
+        evaluateSingleCondition: function(m, distX, distY, dist2D, condType, condValue, target, gameState) {
+        const type = String(condType || '').trim();
+        const value = condValue;
+
+        if (!type) return true;
+
+        switch (type) {
+            case 'HP_0_Under':
+                return (m.hp <= 0);
+
+            case 'Enemy_In_Evade_Range':
+                return (m.d.evade > 0 && dist2D <= m.d.evade);
+
+            case 'Enemy_Out_Evade_Range':
+                return (dist2D > m.d.evade);
+
+            case 'Enemy_In_ATK_Range':
+                return (distX <= m.d.atkRange && distY <= 30);
+
+            case 'Enemy_In_Chase_Range':
+                return (dist2D <= m.d.chase);
+
+            case 'Enemy_In_Recog_Range':
+                return (dist2D <= m.d.recog);
+
+            case 'Enemy_In_UnRecog_Range':
+                return (dist2D <= m.d.unrecog);
+
+            case 'Enemy_Out_Recog_Range':
+                return (dist2D > m.d.recog);
+
+            case 'Enemy_Out_UnRecog_Range':
+                return (dist2D > m.d.unrecog);
+
+            case 'Enemy_In_Skill_Use_Range': {
+                const skillId = this.resolveSkillIdFromTarget(value, target, gameState);
+                const skill = skillId ? gameState.DB_SKILL[skillId] : null;
+                return skill ? (dist2D <= (parseFloat(skill.Skill_Use_Range) || 0)) : false;
+            }
+
+            case 'Anim_Time_Out':
+            case 'ANIM_TIME_OUT':
+                return (m.timer >= this.getAnimDuration(m, gameState));
+
+            case 'HP_UNDER': {
+                const hpPercent = parseFloat(value);
+                if (isNaN(hpPercent)) return false;
+
+                const maxHp = Math.max(1, parseFloat(m.maxHp) || 1);
+                const currentHpRate = ((parseFloat(m.hp) || 0) / maxHp) * 100;
+                return currentHpRate <= hpPercent;
+            }
+
+            case 'HIT_BY_ENEMY':
+                return ((m.hitByEnemyTimer || 0) > 0) || (m.state === 'P_Hit');
+
+            case 'COND_ENEMY_IN_RANGE': {
+                const range = this.resolveRangeValue(value, target, m, gameState);
+                if (String(value || '').trim() === 'REF_ATK_RANGE') {
+                    return (distX <= range && distY <= 30);
+                }
+                return (dist2D <= range);
+            }
+
+            case 'COND_PREV_PATTERN':
+            case 'Previous_Pattern':
+                return this.prevPatternMatches(m.prevState, value);
+
+            case 'COND_SKILL_READY':
+            case 'Skill_No_Cooltime': {
+                const skillId = this.resolveSkillIdFromTarget(value, target, gameState);
+                if (!skillId) return false;
+                return !(m.skillCooldowns && m.skillCooldowns[skillId] > 0);
+            }
+
+            case 'Aggressive_True':
+                return (String(m.d.aggressive).toLowerCase() === 'true');
+
+            case 'HP_Under_70%':
+                return ((m.hp / Math.max(1, m.maxHp)) <= 0.7);
+
+            case 'HP_Under_50%':
+                return ((m.hp / Math.max(1, m.maxHp)) <= 0.5);
+
+            case 'HP_Under_30%':
+                return ((m.hp / Math.max(1, m.maxHp)) <= 0.3);
+
+            default:
+                return false;
+        }
+    },
+
+    evalCond: function(m, distX, distY, dist2D, type, value, exType, exVal, ex2Type, ex2Val, target, gameState) {
+        if (!this.evaluateSingleCondition(m, distX, distY, dist2D, type, value, target, gameState)) {
+            return false;
+        }
+
+        if (!this.evaluateSingleCondition(m, distX, distY, dist2D, exType, exVal, target, gameState)) {
+            return false;
+        }
+
+        if (!this.evaluateSingleCondition(m, distX, distY, dist2D, ex2Type, ex2Val, target, gameState)) {
+            return false;
+        }
+
+        return true;
+    },
+
+    parseRuleFlag: function(value) {
+        if (value === true || value === false) return value;
+
+        const v = String(value || '').trim().toLowerCase();
+        return v === 'true' || v === '1' || v === 'yes' || v === 'y';
+    },
+
+    getPriorityStateRule: function(m, state, gameState) {
+        const aiTypes = String(m.d.aiType || '').split(',').map(s => s.trim()).filter(Boolean);
+        const ruleKeys = this.getRuleKeysForState(state, gameState, m);
+
+        for (let ai of aiTypes) {
+            const bucket = gameState.DB_PATTERN[ai];
+            if (!bucket) continue;
+
+            for (let key of ruleKeys) {
+                const rule = bucket[key];
+                if (!rule) continue;
+                if (this.parseRuleFlag(rule.Pattern_Absolutely_Priority)) {
+                    return rule;
+                }
+            }
+        }
+
+        return null;
+    },
+
+    shouldIgnoreDefenceForPriorityState: function(m, state, gameState) {
+        const rule = this.getPriorityStateRule(m, state, gameState);
+        if (!rule) return false;
+
+        return this.parseRuleFlag(rule.Pattern_Ignore_Defence_State);
+    },
+
+    canEnterPriorityState: function(m, state, gameState) {
+        const rule = this.getPriorityStateRule(m, state, gameState);
+        if (!rule) return true;
+
+        if (this.parseRuleFlag(rule.Pattern_Ignore_Defence_State)) {
+            return true;
+        }
+
+        const stateTypeKey = this.getPatternTypeKey(m.state, gameState, m);
+        const isSuperArmor = (
+            stateTypeKey === 'ATK' ||
+            stateTypeKey === 'ATK_MELEE' ||
+            stateTypeKey === 'ATK_PROJECTILE' ||
+            !!gameState.DB_SKILL[m.state]
+        ) && String(m.d.defType || '').toLowerCase() === 'superarmor';
+
+        return !isSuperArmor;
+    },
+
     checkFSM: function(m, distX, distY, dist2D, gameState) {
-        if (m.state === 'P_Evade' && m.timer < 0.7) return false;
-        if (gameState.DB_SKILL[m.state] && m.timer < parseFloat(gameState.DB_SKILL[m.state].Skill_Anim_Duration)) return false;
+        const runtimeState = this.resolveRuntimeState(m.state, gameState, m);
+
+        if (runtimeState === 'P_Evade' && m.timer < 0.7) return false;
+        if (gameState.DB_SKILL && gameState.DB_SKILL[runtimeState] && m.timer < (parseFloat(gameState.DB_SKILL[runtimeState].Skill_Anim_Duration) || 0)) return false;
 
         let aiTypes = String(m.d.aiType).split(',').map(s => s.trim()).filter(Boolean);
         let rules = [];
-        aiTypes.forEach(ai => { if (gameState.DB_PATTERN[ai] && gameState.DB_PATTERN[ai]['*']) rules.push(gameState.DB_PATTERN[ai]['*']); });
+
         aiTypes.forEach(ai => {
-            if (gameState.DB_PATTERN[ai] && gameState.DB_PATTERN[ai][m.state]) rules.push(gameState.DB_PATTERN[ai][m.state]);
-            if ((m.state === 'P_Melee_ATK' || m.state === 'P_Range_ATK') && gameState.DB_PATTERN[ai] && gameState.DB_PATTERN[ai]['P_ATK']) rules.push(gameState.DB_PATTERN[ai]['P_ATK']);
+            if (gameState.DB_PATTERN[ai] && gameState.DB_PATTERN[ai]['*']) {
+                rules.push(gameState.DB_PATTERN[ai]['*']);
+            }
+        });
+
+        aiTypes.forEach(ai => {
+            if (!gameState.DB_PATTERN[ai]) return;
+
+            const ruleKeys = this.getRuleKeysForState(runtimeState, gameState, m);
+            for (let key of ruleKeys) {
+                if (gameState.DB_PATTERN[ai][key]) {
+                    rules.push(gameState.DB_PATTERN[ai][key]);
+                }
+            }
         });
 
         for (let rule of rules) {
@@ -120,38 +554,62 @@ const MonsterAI = {
                         if (patterns.length > 1) {
                             let totalWeight = 0;
                             let weightedList = [];
+
                             patterns.forEach(pat => {
-                                let actualPat = (pat === 'P_ATK') ? (String(m.d.atkType).toLowerCase() === 'range' ? 'P_Range_ATK' : 'P_Melee_ATK') : pat;
+                                let actualPat = this.resolveRuntimeState(pat, gameState, m);
                                 let weight = 1;
                                 let ruleData = null;
+
                                 for (let ai of aiTypes) {
-                                    if (gameState.DB_PATTERN[ai] && gameState.DB_PATTERN[ai][actualPat]) { ruleData = gameState.DB_PATTERN[ai][actualPat]; break; }
-                                    if (gameState.DB_PATTERN[ai] && gameState.DB_PATTERN[ai][pat]) { ruleData = gameState.DB_PATTERN[ai][pat]; break; }
+                                    if (!gameState.DB_PATTERN[ai]) continue;
+
+                                    const candidateKeys = this.getRuleKeysForState(actualPat, gameState, m);
+                                    for (let key of candidateKeys) {
+                                        if (gameState.DB_PATTERN[ai][key]) {
+                                            ruleData = gameState.DB_PATTERN[ai][key];
+                                            break;
+                                        }
+                                    }
+
+                                    if (ruleData) break;
                                 }
+
                                 if (ruleData) {
-                                    weight = parseFloat(ruleData.Random_Weight) || 1;
+                                    weight = parseFloat(ruleData.Random_Weight);
+                                    if (isNaN(weight) || weight <= 0) weight = 1;
+
                                     let rLimit = parseInt(ruleData.Repeat_Limit);
-                                    if (!isNaN(rLimit) && m.state === actualPat && m.patternCount >= rLimit) weight = 0;
+                                    if (!isNaN(rLimit) && runtimeState === actualPat && m.patternCount >= rLimit) {
+                                        weight = 0;
+                                    }
                                 }
+
                                 if (weight > 0) {
                                     totalWeight += weight;
                                     weightedList.push({ name: actualPat, weight: weight });
                                 }
                             });
 
-                            if (totalWeight <= 0) nextPat = 'P_Idle';
-                            else {
+                            if (totalWeight <= 0) {
+                                nextPat = 'IDLE';
+                            } else {
                                 let rand = Math.random() * totalWeight;
                                 for (let wp of weightedList) {
-                                    if (rand < wp.weight) { nextPat = wp.name; break; }
+                                    if (rand < wp.weight) {
+                                        nextPat = wp.name;
+                                        break;
+                                    }
                                     rand -= wp.weight;
                                 }
                             }
+                        } else {
+                            nextPat = this.resolveRuntimeState(nextPat, gameState, m);
                         }
 
-                        if (nextPat === 'P_ATK') nextPat = String(m.d.atkType).toLowerCase() === 'range' ? 'P_Range_ATK' : 'P_Melee_ATK';
+                        if (runtimeState === nextPat && type !== 'Anim_Time_Out' && type !== 'ANIM_TIME_OUT') {
+                            continue;
+                        }
 
-                        if (m.state === nextPat && type !== 'Anim_Time_Out' && type !== 'ANIM_TIME_OUT') continue;
                         this.changeState(m, nextPat, gameState);
                         return true;
                     }
@@ -160,68 +618,10 @@ const MonsterAI = {
         }
 
         if (m.timer >= this.getAnimDuration(m, gameState)) {
-            this.changeState(m, 'P_Idle', gameState);
+            this.changeState(m, 'IDLE', gameState);
             return true;
         }
 
         return false;
-    },
-
-    evalCond: function(m, distX, distY, dist2D, type, value, exType, exVal, ex2Type, ex2Val, target, gameState) {
-        let isTrue = true;
-        if (type) {
-            switch (type) {
-                case 'HP_0_Under': isTrue = (m.hp <= 0); break;
-                case 'Enemy_In_Evade_Range': isTrue = (m.d.evade > 0 && dist2D <= m.d.evade); break;
-                case 'Enemy_Out_Evade_Range': isTrue = (dist2D > m.d.evade); break;
-                case 'Enemy_In_ATK_Range': isTrue = (distX <= m.d.atkRange && distY <= 30); break;
-                case 'Enemy_In_Chase_Range': isTrue = (dist2D <= m.d.chase); break;
-                case 'Enemy_In_Recog_Range': isTrue = (dist2D <= m.d.recog); break;
-                case 'Enemy_In_UnRecog_Range': isTrue = (dist2D <= m.d.unrecog); break;
-                case 'Enemy_Out_Recog_Range': isTrue = (dist2D > m.d.recog); break;
-                case 'Enemy_Out_UnRecog_Range': isTrue = (dist2D > m.d.unrecog); break;
-                case 'Enemy_In_Skill_Use_Range': {
-                    let skillId = target ? target.split('|')[0].trim() : '';
-                    let skill = gameState.DB_SKILL[skillId];
-                    isTrue = skill ? (dist2D <= parseFloat(skill.Skill_Use_Range)) : false;
-                    break;
-                }
-                case 'Anim_Time_Out': isTrue = (m.timer >= this.getAnimDuration(m, gameState)); break;
-
-                case 'HP_UNDER': isTrue = (m.hp <= (parseFloat(value) || 0)); break;
-                case 'HIT_BY_ENEMY': isTrue = (m.state === 'P_Hit'); break;
-                case 'ANIM_TIME_OUT': isTrue = (m.timer >= this.getAnimDuration(m, gameState)); break;
-                case 'COND_ENEMY_IN_RANGE': {
-                    let range = this.resolveRangeValue(value, target, m, gameState);
-                    if (String(value || '').trim() === 'REF_ATK_RANGE') isTrue = (distX <= range && distY <= 30);
-                    else isTrue = (dist2D <= range);
-                    break;
-                }
-                case 'COND_PREV_PATTERN': isTrue = this.prevPatternMatches(m.prevState, value); break;
-                default: isTrue = false;
-            }
-        }
-
-        let checkEx = (extType, extVal) => {
-            if (!extType) return true;
-            if (extType === 'Aggressive_True') return (String(m.d.aggressive).toLowerCase() === 'true');
-            if (extType === 'Previous_Pattern') return this.prevPatternMatches(m.prevState, extVal);
-            if (extType === 'COND_PREV_PATTERN') return this.prevPatternMatches(m.prevState, extVal);
-            if (extType === 'Skill_No_Cooltime') return !(m.skillCooldowns && m.skillCooldowns[target ? target.split('|')[0].trim() : ''] > 0);
-            if (extType === 'COND_SKILL_READY') return !(m.skillCooldowns && m.skillCooldowns[target ? target.split('|')[0].trim() : ''] > 0);
-            if (extType === 'HP_Under_70%') return ((m.hp / m.maxHp) <= 0.7);
-            if (extType === 'HP_Under_50%') return ((m.hp / m.maxHp) <= 0.5);
-            if (extType === 'HP_Under_30%') return ((m.hp / m.maxHp) <= 0.3);
-            if (extType === 'HP_UNDER') {
-                let hpPercent = parseFloat(extVal);
-                if (isNaN(hpPercent)) return false;
-                return ((m.hp / m.maxHp) * 100 <= hpPercent);
-            }
-            return true;
-        };
-
-        if (isTrue) isTrue = checkEx(exType, exVal);
-        if (isTrue) isTrue = checkEx(ex2Type, ex2Val);
-        return isTrue;
     }
 };
