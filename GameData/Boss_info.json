@@ -6,7 +6,7 @@
     "Level": 5,
     "HP": 1000,
     "ATK": 50,
-    "DEF": 30,
+    "DEF": 5,
     "Move_Speed": 300,
     "Model_Render_Type": "RENDER_KASIYAS_P1",
     "Model_Color_R": 130,

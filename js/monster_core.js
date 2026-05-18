@@ -518,10 +518,6 @@ const MonsterManager = {
         gameState.floatingTexts.push({x: m.x, y: m.y, z: m.z + (m.d.bodyZ * m.scale) + 20, text: `${finalDmg.toFixed(0)}`, color: "#fff", size: "36px", timer: 1.0});
         gameState.effects.push({ type: 'hitSpark', renderType: 'EFT_HIT', x: m.x, y: m.y, z: m.z + m.d.bodyZ*m.scale/2, life: 0.15, maxLife: 0.15 });
 
-        if (m.d.level > gameState.player.level && gameState.player.bubbleCooldown <= 0) {
-            gameState.floatingTexts.push({x: gameState.player.x, y: gameState.player.y, z: gameState.player.z + gameState.player.bodyZ*gameState.player.scale + 40, text: "강하다...", color: "#000", size: "14px", timer: 1.0, isBubble: true});
-            gameState.player.bubbleCooldown = 2.0; 
-        }
         gameState.targetUI.monster = m; gameState.targetUI.timer = 3.0;
         m.isProvoked = true;
 

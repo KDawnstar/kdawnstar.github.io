@@ -8,10 +8,9 @@ function checkAABB3D(x1, y1, z1, w1, d1, h1, x2, y2, z2, w2, d2, h2) {
     return (Math.abs(x1 - x2) < (w1 + w2) / 2) && (Math.abs(y1 - y2) < (d1 + d2) / 2) && (z1 < z2 + h2 && z1 + h1 > z2);
 }
 function calcScaledDamage(attackerLvl, defenderLvl, baseDmg) {
-    let diff = (attackerLvl || 1) - (defenderLvl || 1);
-    let absDiff = Math.min(Math.abs(diff), gameState.player.lvlDiffLimit || 5);
-    let factor = 1 + absDiff * (gameState.player.lvlDiffRate || 0.2);
-    return (diff < 0) ? (baseDmg || 0) / factor : (baseDmg || 0) * factor;
+    // 카시야스 전용 보스전에서는 레벨 격차 데미지 보정을 사용하지 않는다.
+    // 기존 호출부 호환을 위해 함수명은 유지하고, 입력 데미지를 그대로 반환한다.
+    return parseFloat(baseDmg) || 0;
 }
 function getEngineKeyCode(excelKey) {
     if (!excelKey) return '';

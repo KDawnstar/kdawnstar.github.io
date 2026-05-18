@@ -10,7 +10,6 @@ const PlayerManager = {
             active: true, x: gameState.WORLD_WIDTH/2 || 1000, y: gameState.WORLD_DEPTH/2 || 150, z: 0, vz: 0, isGrounded: true, 
             name: pd.Character_Name || '용사', level: parseInt(pd.Level) || 1, exp: 0, baseNextExp: parseInt(pd.Base_Next_EXP) || 100, 
             lvlUpGainHp: parseFloat(pd.Level_Up_Gain_HP) || 20, lvlUpGainAtk: parseFloat(pd.Level_Up_Gain_ATK) || 2,
-            lvlDiffRate: parseFloat(pd.Level_Diff_DMG_Rate) || 0.2, lvlDiffLimit: parseInt(pd.Level_Diff_Limit_Level) || 5,
             hp: parseFloat(pd.HP)||500, maxHp: parseFloat(pd.HP)||500, atk: parseFloat(pd.ATK)||50, def: parseFloat(pd.DEF)||5, 
             speed: parseFloat(pd.Move_Speed)||300, jumpPower: parseFloat(pd.Jump_Power) || 600,
             bodyX: parseFloat(pd.Body_Size_X) || 50, bodyY: parseFloat(pd.Body_Size_Y) || 30, bodyZ: parseFloat(pd.Body_Size_Z) || 100, scale: parseFloat(pd.Model_Scale) || 1, renderType: pd.Model_Render_Type || null,
@@ -22,7 +21,7 @@ const PlayerManager = {
             rangeWeaponRenderType: pd.Range_Weapon_Render_Type || null,
             stance: 'Mode_Melee', faceDir: 1, state: 'Idle',
             hitDur: parseFloat(pd.Hit_Anim_Duration) || 0.2,
-            kbDist: parseFloat(pd.Hit_Knockback_Distance) || 5, invinTime: parseFloat(pd.Hit_Invincible_Time) || 0.5, kbVx: 0, kbVy: 0,
+            kbDist: parseFloat(pd.Hit_Knockback_Distance) || 5, invinTime: 0, kbVx: 0, kbVy: 0,
             invincibleTimer: 0, atkTimer: 0, stanceSwapTimer: 0, maxStanceSwap: 0, rapidAtkCount: 0, rapidAtkAllowTimer: 0, maxRapidAllow: 0, rapidAtkCooldownTimer: 0, maxRapidAtkCd: 0.5, 
             dashCooldownTimer: 0, maxDashCd: 1.0, dashTimer: 0, dashSpeedX: 0, dashSpeedY: 0, ghostTimer: 0, bubbleCooldown: 0,
             isRunning: false, runDirection: null, runSpeedRate: 1.5, movePrevKeys: { LEFT: false, RIGHT: false, UP: false, DOWN: false }, lastMoveTapDir: null, lastMoveTapTimer: 0,
@@ -43,7 +42,7 @@ const PlayerManager = {
 
     revive: function(gameState) {
         let p = gameState.player; if (p.hp > 0) return; 
-        p.hp = p.maxHp; p.state = 'Idle'; p.atkTimer = 0; p.invincibleTimer = 2.0; 
+        p.hp = p.maxHp; p.state = 'Idle'; p.atkTimer = 0; p.invincibleTimer = 0; 
         let go = document.getElementById('gameOverScreen'); if(go) go.style.display = 'none'; 
         gameState.floatingTexts.push({x: p.x, y: p.y, z: p.z + p.bodyZ, text: "✨ 부활!", color: "#f1c40f", size: "32px", timer: 1.0});
     },
@@ -65,7 +64,7 @@ const PlayerManager = {
     },
 
     takeDamage: function(gameState, finalDmg, srcX, srcY, sType, sDur, sProb, guardInfo = null) {
-        let p = gameState.player; if (p.invincibleTimer > 0 || p.state === 'Die') return;
+        let p = gameState.player; if (p.state === 'Die') return;
 
         if (this.isGuardableHit(p, srcX, guardInfo)) {
             p.guardSuccessTimer = 0.24;
@@ -118,7 +117,7 @@ const PlayerManager = {
             p.runDirection = null;
             p.guardTimer = 0;
             let angle = Math.atan2((p.y||0) - (srcY||0), (p.x||0) - (srcX||0)); let kb = p.kbDist / p.hitDur; p.kbVx = Math.cos(angle) * kb; p.kbVy = Math.sin(angle) * kb;
-            p.rapidAtkCount = 0; p.rapidAtkAllowTimer = 0; p.invincibleTimer = p.invinTime; 
+            p.rapidAtkCount = 0; p.rapidAtkAllowTimer = 0; p.invincibleTimer = 0; 
         }
         gameState.floatingTexts.push({x: p.x, y: p.y, z: p.z + p.bodyZ + 20, text: `${actualDmg.toFixed(0)}`, color: '#ff5252', size: "36px", timer: 1.0});
         gameState.effects.push({ type: 'hitSpark', x: p.x, y: p.y, z: p.z + p.bodyZ/2, life: 0.15, maxLife: 0.15 });
@@ -173,7 +172,7 @@ update: function(deltaTime, keys, gameState) {
         if (player.freezeTimer <= 0) {
             player.state = 'Idle';
             player.freezeTimer = 0;
-            player.invincibleTimer = Math.max(0, player.invinTime || 0);
+            player.invincibleTimer = 0;
             player.wasMashing = false;
             player.mashReduced = 0;
         }
