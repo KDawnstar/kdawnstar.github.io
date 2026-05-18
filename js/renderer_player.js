@@ -17,6 +17,8 @@ GameRenderer.drawPlayerEntity = function(ctx, player) {
     ctx.translate(player.x, bodyY);
 
     if (player.state === 'Dash') ctx.rotate(player.faceDir * 15 * Math.PI / 180);
+    else if (player.state === 'Run') ctx.rotate(player.faceDir * 5 * Math.PI / 180);
+    else if (player.state === 'Guard') ctx.rotate(-player.faceDir * 4 * Math.PI / 180);
     else if (player.state === 'Hit') ctx.rotate(-0.2 * player.faceDir);
 
     const playerPalette = renderer.resolvePlayerPalette(player);
@@ -288,6 +290,56 @@ GameRenderer.drawPlayerEntity = function(ctx, player) {
         }
     }
 
+
+    if (player.state === 'Guard' || player.guardTimer > 0 || player.guardSuccessTimer > 0) {
+        const guardRatio = player.maxGuardTimer > 0 ? Math.max(0, Math.min(1, player.guardTimer / player.maxGuardTimer)) : 0;
+        const pulse = player.guardSuccessTimer > 0 ? 1.15 : 1.0;
+        const shieldX = player.faceDir === 1 ? pw * 0.60 : -pw * 0.60;
+        const shieldY = -ph * 0.46;
+        const shieldW = Math.max(28, pw * 0.48) * pulse;
+        const shieldH = Math.max(58, ph * 0.62) * pulse;
+
+        ctx.save();
+        ctx.translate(shieldX, shieldY);
+        ctx.scale(player.faceDir === 1 ? 1 : -1, 1);
+        ctx.globalAlpha = player.guardSuccessTimer > 0 ? 0.95 : 0.72;
+
+        const grad = ctx.createLinearGradient(-shieldW * 0.35, -shieldH * 0.5, shieldW * 0.35, shieldH * 0.5);
+        grad.addColorStop(0, 'rgba(255,255,255,0.35)');
+        grad.addColorStop(0.45, 'rgba(90,190,255,0.30)');
+        grad.addColorStop(1, 'rgba(30,90,180,0.18)');
+        ctx.fillStyle = grad;
+        ctx.strokeStyle = player.guardSuccessTimer > 0 ? 'rgba(255,245,170,0.98)' : 'rgba(145,220,255,0.92)';
+        ctx.lineWidth = player.guardSuccessTimer > 0 ? 4 : 3;
+
+        ctx.beginPath();
+        ctx.moveTo(-shieldW * 0.10, -shieldH * 0.50);
+        ctx.quadraticCurveTo(shieldW * 0.42, -shieldH * 0.34, shieldW * 0.38, 0);
+        ctx.quadraticCurveTo(shieldW * 0.30, shieldH * 0.34, -shieldW * 0.10, shieldH * 0.50);
+        ctx.quadraticCurveTo(-shieldW * 0.28, shieldH * 0.14, -shieldW * 0.28, -shieldH * 0.14);
+        ctx.quadraticCurveTo(-shieldW * 0.24, -shieldH * 0.36, -shieldW * 0.10, -shieldH * 0.50);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-shieldW * 0.02, -shieldH * 0.38);
+        ctx.quadraticCurveTo(shieldW * 0.20, -shieldH * 0.18, shieldW * 0.18, shieldH * 0.32);
+        ctx.stroke();
+
+        if (guardRatio > 0) {
+            ctx.globalAlpha = 0.95;
+            ctx.fillStyle = 'rgba(255,255,255,0.72)';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('GUARD', shieldW * 0.02, -shieldH * 0.62);
+        }
+
+        ctx.restore();
+    }
+
     if (player.state === 'Freeze') {
         ctx.fillStyle = "rgba(173, 216, 230, 0.7)";
         ctx.fillRect(-pw / 2 - 10, -ph - 10, pw + 20, ph + 20);
@@ -330,11 +382,14 @@ GameRenderer.drawPlayerEntity = function(ctx, player) {
 
     ctx.restore();
 
-    if (player.stanceSwapTimer > 0 || player.rapidAtkCooldownTimer > 0 || player.rapidAtkAllowTimer > 0) {
+    if (player.stanceSwapTimer > 0 || player.rapidAtkCooldownTimer > 0 || player.rapidAtkAllowTimer > 0 || player.guardCooldownTimer > 0) {
         let cdRatio = 0;
         let cdColor = "#fff";
 
-        if (player.stanceSwapTimer > 0) {
+        if (player.guardCooldownTimer > 0) {
+            cdRatio = player.maxGuardCooldown > 0 ? player.guardCooldownTimer / player.maxGuardCooldown : 0;
+            cdColor = "#8fd3ff";
+        } else if (player.stanceSwapTimer > 0) {
             cdRatio = player.stanceSwapTimer / player.maxStanceSwap;
             cdColor = "#3498db";
         } else if (player.rapidAtkCooldownTimer > 0) {

@@ -333,7 +333,46 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
     alpha = Math.max(0, Math.min(1, alpha));
     ctx.globalAlpha = alpha;
 
-    if (eff.type === 'slash') {
+    if (eff.type === 'pathLineSlash') {
+        const slashW = Math.max(28, eff.w || 56);
+        const slashH = Math.max(18, eff.h || 32);
+        const renderAngle = (eff.pathAngle !== undefined && eff.pathAngle !== null)
+            ? eff.pathAngle
+            : ((eff.dir || 1) >= 0 ? 0 : Math.PI);
+
+        ctx.rotate(renderAngle);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        const core = eff.color || `rgba(245,248,255,${0.95 * alpha})`;
+        const accent = eff.accentColor || `rgba(120,190,255,${0.72 * alpha})`;
+
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = 'rgba(120,190,255,0.62)';
+
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = Math.max(2.2, slashH * 0.10);
+        ctx.beginPath();
+        ctx.moveTo(-slashW * 0.50, slashH * 0.20);
+        ctx.lineTo(slashW * 0.50, -slashH * 0.20);
+        ctx.stroke();
+
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = core;
+        ctx.lineWidth = Math.max(1.3, slashH * 0.045);
+        ctx.beginPath();
+        ctx.moveTo(-slashW * 0.46, slashH * 0.12);
+        ctx.lineTo(slashW * 0.46, -slashH * 0.12);
+        ctx.stroke();
+
+        ctx.strokeStyle = `rgba(255,255,255,${0.52 * alpha})`;
+        ctx.lineWidth = Math.max(1, slashH * 0.035);
+        ctx.beginPath();
+        ctx.moveTo(-slashW * 0.22, -slashH * 0.25);
+        ctx.lineTo(slashW * 0.22, slashH * 0.25);
+        ctx.stroke();
+
+    } else if (eff.type === 'slash') {
         const slashW = Math.max(24, eff.w || 80);
         const slashH = Math.max(16, eff.h || 40);
         const renderType = String(eff.renderType || '').trim();
@@ -459,7 +498,16 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         const warningType = String(eff.warningRenderType || eff.renderType || '').trim();
         const pulse = 0.7 + Math.sin(Date.now() / 90) * 0.3;
 
-        if (warningType === 'WARNING_MAGIC_CIRCLE') {
+        if (eff.pathAngle !== undefined && eff.pathAngle !== null) {
+            ctx.save();
+            ctx.rotate(eff.pathAngle);
+            ctx.fillStyle = `rgba(255, 70, 70, ${0.14 + pulse * 0.12})`;
+            ctx.fillRect(-w / 2, -d / 2, w, d);
+            ctx.strokeStyle = `rgba(255, 210, 160, ${0.78 * alpha})`;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(-w / 2, -d / 2, w, d);
+            ctx.restore();
+        } else if (warningType === 'WARNING_MAGIC_CIRCLE') {
             ctx.strokeStyle = `rgba(80,220,255,${0.85 * alpha})`;
             ctx.lineWidth = 3;
             ctx.beginPath();
@@ -830,6 +878,28 @@ GameRenderer.drawDebugOverlay = function(ctx, gameState) {
     }
 
     for (let hb of hitboxes) {
+        if (hb.type === 'path') {
+            const sx = hb.startX || 0;
+            const sy = GROUND_BASE_Y + (hb.startY || 0);
+            const ex = hb.endX || 0;
+            const ey = GROUND_BASE_Y + (hb.endY || 0);
+            const dx = ex - sx;
+            const dy = ey - sy;
+            const len = Math.sqrt(dx * dx + dy * dy) || 0;
+            const angle = Math.atan2(dy, dx);
+
+            ctx.save();
+            ctx.translate((sx + ex) / 2, (sy + ey) / 2);
+            ctx.rotate(angle);
+            ctx.fillStyle = "rgba(255, 0, 0, 0.22)";
+            ctx.fillRect(-len / 2, -hb.d / 2, len, hb.d);
+            ctx.strokeStyle = "red";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(-len / 2, -hb.d / 2, len, hb.d);
+            ctx.restore();
+            continue;
+        }
+
         let drawY = GROUND_BASE_Y + hb.y;
         ctx.fillStyle = "rgba(255, 0, 0, 0.3)";
         ctx.beginPath();

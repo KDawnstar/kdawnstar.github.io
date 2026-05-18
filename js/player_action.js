@@ -41,8 +41,10 @@ const PlayerAction = {
             EFT_HIT: 'hitSpark',
             EFT_BITE: 'bite',
             EFT_DASH: 'ghost',
+            EFT_RUN: 'ghost',
             EFT_JUMP: 'particle',
             EFT_MODE_CHANGE: 'particle',
+            EFT_GUARD: 'guard',
             EFT_GUN_FIRE: 'hitSpark',
             EFT_THUNDERBOLT: 'lightning',
             EFT_LIGHTNING_SLASH: 'slash',
@@ -150,6 +152,22 @@ const PlayerAction = {
             return;
         }
 
+        if (effectType === 'guard') {
+            gameState.effects.push({
+                type: 'guard',
+                renderType: effectEnum,
+                x: x,
+                y: y,
+                z: z + h * 0.45,
+                dir: dir,
+                w: Math.max(52, w * 0.9),
+                h: Math.max(72, h * 0.78),
+                life: 0.22,
+                maxLife: 0.22
+            });
+            return;
+        }
+
         if (effectType === 'particle') {
             const color =
                 effectEnum === 'EFT_MODE_CHANGE' ? 'rgba(241, 196, 15, 0.95)' :
@@ -170,10 +188,106 @@ const PlayerAction = {
         }
     },
 
-        handleInput: function(deltaTime, keys, gameState, player) {
-        let dashAct = gameState.actions.find(a => a.Action_Name === '대쉬');
-        let jumpAct = gameState.actions.find(a => a.Action_Name === '점프');
+        getMoveKeySnapshot: function(keys) {
+        return {
+            LEFT: !!(keys['KeyLeft'] || keys['ArrowLeft']),
+            RIGHT: !!(keys['KeyRight'] || keys['ArrowRight']),
+            UP: !!(keys['KeyUp'] || keys['ArrowUp']),
+            DOWN: !!(keys['KeyDown'] || keys['ArrowDown'])
+        };
+    },
+
+    getHeldDirectionForRun: function(keys, direction) {
+        const snap = this.getMoveKeySnapshot(keys);
+        return !!snap[direction];
+    },
+
+    updateDoubleTapRun: function(deltaTime, keys, player, runAct) {
+        if (!runAct) return;
+
+        const inputType = String(runAct.Input_Trigger_Type || '').trim().toUpperCase();
+        if (inputType !== 'DOUBLE_TAP') return;
+
+        const windowTime = Math.max(0.05, parseFloat(runAct.Input_Window) || 0.2);
+        if (!player.movePrevKeys) player.movePrevKeys = { LEFT: false, RIGHT: false, UP: false, DOWN: false };
+        if (player.lastMoveTapTimer == null) player.lastMoveTapTimer = 0;
+
+        player.lastMoveTapTimer = Math.max(0, (player.lastMoveTapTimer || 0) - deltaTime);
+
+        const snap = this.getMoveKeySnapshot(keys);
+        const dirs = ['LEFT', 'RIGHT', 'UP', 'DOWN'];
+
+        for (const dir of dirs) {
+            if (snap[dir] && !player.movePrevKeys[dir]) {
+                if (player.lastMoveTapDir === dir && player.lastMoveTapTimer > 0) {
+                    player.isRunning = true;
+                    player.runDirection = dir;
+                    player.runSpeedRate = parseFloat(runAct.Move_Speed_Rate) || 1.5;
+                }
+
+                player.lastMoveTapDir = dir;
+                player.lastMoveTapTimer = windowTime;
+            }
+        }
+
+        if (player.isRunning && !this.getHeldDirectionForRun(keys, player.runDirection)) {
+            player.isRunning = false;
+            player.runDirection = null;
+        }
+
+        player.movePrevKeys = snap;
+    },
+
+    handleInput: function(deltaTime, keys, gameState, player) {
+        let dashAct = gameState.actions.find(a => String(a.Action_Name || '').trim() === '대쉬');
+        let jumpAct = gameState.actions.find(a => String(a.Action_Name || '').trim() === '점프');
+        let runAct = gameState.actions.find(a => String(a.Action_Type || '').trim() === 'ACT_RUN');
+        let guardAct = gameState.actions.find(a => String(a.Action_Type || '').trim() === 'ACT_GUARD');
         let dashReqLv = dashAct ? parseFloat(dashAct.Require_Level) || 0 : 0;
+
+        this.updateDoubleTapRun(deltaTime, keys, player, runAct);
+
+        if (guardAct) {
+            const guardKey = getEngineKeyCode(guardAct.Input_Key);
+            const guardCd = parseFloat(guardAct.Cooltime) || 0;
+            const guardDur = Math.max(0.05, parseFloat(guardAct.Action_Anim_Duration) || 0.6);
+
+            if (
+                guardKey &&
+                keys[guardKey] &&
+                player.guardCooldownTimer <= 0 &&
+                player.state !== 'Guard' &&
+                player.state !== 'Dash' &&
+                player.state !== 'Hit' &&
+                player.state !== 'Atk' &&
+                player.state !== 'Freeze' &&
+                player.state !== 'Die' &&
+                player.isGrounded
+            ) {
+                player.state = 'Guard';
+                player.guardTimer = guardDur;
+                player.maxGuardTimer = guardDur;
+                player.guardCooldownTimer = guardCd;
+                player.maxGuardCooldown = guardCd;
+                player.guardDirection = guardAct.Guard_Direction || 'CASTER_FRONT';
+                player.guardDefenceType = guardAct.Guard_Defence_Type || 'SUPER_ARMOR';
+                player.isRunning = false;
+                player.runDirection = null;
+                player.kbVx = 0;
+                player.kbVy = 0;
+
+                this.spawnActionEffect(guardAct, player, gameState, {
+                    x: player.x,
+                    y: player.y,
+                    z: player.z,
+                    dir: player.faceDir,
+                    w: player.bodyX * player.scale,
+                    h: player.bodyZ * player.scale
+                });
+
+                keys[guardKey] = false;
+            }
+        }
 
         if (
             dashAct &&
@@ -181,11 +295,14 @@ const PlayerAction = {
             player.level >= dashReqLv &&
             player.dashCooldownTimer <= 0 &&
             player.state !== 'Dash' &&
+            player.state !== 'Guard' &&
             player.state !== 'Hit' &&
             player.state !== 'Atk' &&
             player.isGrounded
         ) {
             player.state = 'Dash';
+            player.isRunning = false;
+            player.runDirection = null;
             let spdRate = parseFloat(dashAct.Move_Speed_Rate) || 2.0;
             let dist = parseFloat(dashAct.Move_Distance) || 600;
 
@@ -229,36 +346,46 @@ const PlayerAction = {
 
             if (player.dashTimer <= 0) player.state = 'Idle';
         }
+        else if (player.state === 'Guard') {
+            // 타이밍 가드 중에는 이동/공격 입력을 받지 않는다.
+        }
         else if (player.state === 'Hit') {
             player.x += (player.kbVx || 0) * deltaTime;
             player.y += (player.kbVy || 0) * deltaTime;
         }
         else {
-            if (player.state === 'Idle' || player.state === 'Walk' || player.state === 'Atk') {
+            if (player.state === 'Idle' || player.state === 'Walk' || player.state === 'Run' || player.state === 'Atk') {
                 let moved = false;
+                const runRate = player.isRunning ? (player.runSpeedRate || (runAct ? parseFloat(runAct.Move_Speed_Rate) || 1.5 : 1.5)) : 1;
+                const moveSpeed = player.speed * runRate;
 
                 if (keys['KeyLeft'] || keys['ArrowLeft']) {
-                    player.x -= player.speed * deltaTime;
+                    player.x -= moveSpeed * deltaTime;
                     player.faceDir = -1;
                     moved = true;
                 }
                 else if (keys['KeyRight'] || keys['ArrowRight']) {
-                    player.x += player.speed * deltaTime;
+                    player.x += moveSpeed * deltaTime;
                     player.faceDir = 1;
                     moved = true;
                 }
 
                 if (keys['KeyUp'] || keys['ArrowUp']) {
-                    player.y -= player.speed * 0.7 * deltaTime;
+                    player.y -= moveSpeed * 0.7 * deltaTime;
                     moved = true;
                 }
                 else if (keys['KeyDown'] || keys['ArrowDown']) {
-                    player.y += player.speed * 0.7 * deltaTime;
+                    player.y += moveSpeed * 0.7 * deltaTime;
                     moved = true;
                 }
 
+                if (!moved) {
+                    player.isRunning = false;
+                    player.runDirection = null;
+                }
+
                 if (player.atkTimer <= 0) {
-                    player.state = moved ? 'Walk' : 'Idle';
+                    player.state = moved ? (player.isRunning ? 'Run' : 'Walk') : 'Idle';
                 }
 
                 if (
@@ -269,6 +396,8 @@ const PlayerAction = {
                 ) {
                     player.vz = player.jumpPower;
                     player.isGrounded = false;
+                    player.isRunning = false;
+                    player.runDirection = null;
 
                     if (jumpAct) {
                         this.spawnActionEffect(jumpAct, player, gameState, {
@@ -289,6 +418,9 @@ const PlayerAction = {
                     let isSkill = this.isSkillAction(act);
                     let isNormal = this.isNormalAction(act);
                     let cd = parseFloat(act.Cooltime) || 0;
+                    const actionTypeRaw = String(act.Action_Type || '').trim();
+
+                    if (actionTypeRaw === 'ACT_RUN' || actionTypeRaw === 'ACT_GUARD') continue;
 
                     let isOnCd = player.skillCooldowns[act.Action_Name] > 0;
 
@@ -302,6 +434,8 @@ const PlayerAction = {
                                 player.atkTimer <= 0
                             ) {
                                 player.stance = player.stance === 'Mode_Melee' ? 'Mode_Range' : 'Mode_Melee';
+                                player.isRunning = false;
+                                player.runDirection = null;
 
                                 let lockTime = parseFloat(act.Action_Anim_Duration) || 0.5;
                                 player.stanceSwapTimer = lockTime;
@@ -325,6 +459,8 @@ const PlayerAction = {
 
                             if (canUse) {
                                 player.state = 'Atk';
+                                player.isRunning = false;
+                                player.runDirection = null;
                                 let animDur = parseFloat(act.Action_Anim_Duration) || 0.2;
                                 player.atkTimer = animDur;
 
@@ -438,4 +574,5 @@ const PlayerAction = {
             player.y = Math.max(0, Math.min(gameState.WORLD_DEPTH, player.y));
         }
     }
+
 };

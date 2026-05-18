@@ -1,0 +1,25 @@
+[
+  {
+    "Attack_Object_ID": 251001,
+    "Dev_Name": "Object_Phase1_P2_Slash_Burst",
+    "Object_Name": "천귀살 잔류 검격",
+    "Object_Type": "ATTACK_AREA_DELAYED",
+    "Object_Render_Type": "OBJ_PATH_SLASH_BURST",
+    "Spawn_Place_Type": "PLACE_LAST_DASH_PATH",
+    "Warning_Render_Type": "WARNING_SLASH_PATH",
+    "Warning_Duration": 0.2,
+    "Effect_Render_Type": "EFT_MANY_SLASH_BURST",
+    "Hitbox_Type": "HITBOX_PATH_BOX",
+    "Hitbox_Length_Type": "REF_PATH_LENGTH",
+    "Hitbox_Path_Source": "LAST_DASH_PATH",
+    "Hitbox_Size_X": null,
+    "Hitbox_Size_Y": 130,
+    "Hitbox_Size_Z": 130,
+    "Hitbox_Duration": 0.4,
+    "Damage_Rate": 0.2,
+    "ATK_Hit_Count": 3,
+    "ATK_Cycle": 0.1,
+    "ATK_Can_Guard": false,
+    "Guard_Result_Type": "UNGUARDABLE"
+  }
+]

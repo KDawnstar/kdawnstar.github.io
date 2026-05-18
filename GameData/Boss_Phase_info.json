@@ -1,0 +1,53 @@
+[
+  {
+    "Phase_ID": 220001,
+    "Phase_Order": 1,
+    "Phase_Name": "카시야스 1페이즈",
+    "Phase_Monster_ID": 201001,
+    "Late_Phase_HP_Rate": 0.5,
+    "Opening_Pattern_ID": 0,
+    "Late_Opening_Pattern_ID": 231008,
+    "End_Condition_Type": "HP_UNDER",
+    "End_Condition_Value": 0,
+    "Next_Phase_ID": 220002,
+    "Default_Action_Type": "LOOK_AND_CHASE",
+    "Chase_Start_Distance": 300,
+    "Chase_Stop_Distance": 120,
+    "Default_Move_Speed_Rate": 1,
+    "No_Pattern_Wait_Time": 0.2
+  },
+  {
+    "Phase_ID": 220002,
+    "Phase_Order": 2,
+    "Phase_Name": "카시야스 2페이즈",
+    "Phase_Monster_ID": 201002,
+    "Late_Phase_HP_Rate": 0.5,
+    "Opening_Pattern_ID": 0,
+    "Late_Opening_Pattern_ID": 0,
+    "End_Condition_Type": "HP_UNDER",
+    "End_Condition_Value": 0,
+    "Next_Phase_ID": 220003,
+    "Default_Action_Type": "LOOK_AND_CHASE",
+    "Chase_Start_Distance": 300,
+    "Chase_Stop_Distance": 120,
+    "Default_Move_Speed_Rate": 1,
+    "No_Pattern_Wait_Time": 0.2
+  },
+  {
+    "Phase_ID": 220003,
+    "Phase_Order": 3,
+    "Phase_Name": "카시야스 3페이즈",
+    "Phase_Monster_ID": 201003,
+    "Late_Phase_HP_Rate": 0.5,
+    "Opening_Pattern_ID": 0,
+    "Late_Opening_Pattern_ID": 0,
+    "End_Condition_Type": "HP_UNDER",
+    "End_Condition_Value": 0,
+    "Next_Phase_ID": 0,
+    "Default_Action_Type": "LOOK_AND_CHASE",
+    "Chase_Start_Distance": 300,
+    "Chase_Stop_Distance": 120,
+    "Default_Move_Speed_Rate": 1,
+    "No_Pattern_Wait_Time": 0.2
+  }
+]

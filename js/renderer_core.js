@@ -738,6 +738,19 @@ const GameRenderer = {
 
         ctx.save();
         ctx.translate(-camera.x, 0);
+
+        // WARNING 계열 전조는 캐릭터/보스보다 먼저 그린다.
+        // 기존처럼 renderables에 함께 넣으면 긴 경로 전조가 캐릭터를 덮어서
+        // 캐릭터와 보스가 점멸하거나 거의 안 보이는 것처럼 느껴질 수 있다.
+        const delayedEffects = [];
+        for (let eff of effects) {
+            if (eff && eff.type === 'warning') {
+                renderer.drawEffectEntity(ctx, eff, player);
+            } else {
+                delayedEffects.push(eff);
+            }
+        }
+
         let renderables = [];
 
         for (let a of auras) {
@@ -766,16 +779,23 @@ const GameRenderer = {
             });
         }
 
-        if (player.active && player.hp > 0) {
-            let isVisible = player.invincibleTimer <= 0 || (Math.floor(player.invincibleTimer * 10) % 2 === 0);
-            if (isVisible) {
-                renderables.push({
-                    y: player.y,
-                    draw: function() {
+        if (player.active) {
+            renderables.push({
+                y: player.y,
+                draw: function() {
+                    // 피격 무적 중에도 완전히 사라지지 않게 반투명으로 표시한다.
+                    // 보스전에서는 연속 피격/가드불가 장판 때문에 깜빡임이 길어져
+                    // 캐릭터가 안 보이는 것처럼 느껴질 수 있다.
+                    const prevAlpha = ctx.globalAlpha;
+                    if (player.hp > 0 && player.invincibleTimer > 0) {
+                        ctx.globalAlpha = Math.min(prevAlpha, 0.62);
+                    }
+                    if (typeof renderer.drawPlayerEntity === 'function') {
                         renderer.drawPlayerEntity(ctx, player);
                     }
-                });
-            }
+                    ctx.globalAlpha = prevAlpha;
+                }
+            });
         }
 
         for (let m of monsters) {
@@ -783,7 +803,9 @@ const GameRenderer = {
                 renderables.push({
                     y: m.y,
                     draw: function() {
-                        renderer.drawMonsterEntity(ctx, m);
+                        if (typeof renderer.drawMonsterEntity === 'function') {
+                            renderer.drawMonsterEntity(ctx, m);
+                        }
                     }
                 });
             }
@@ -798,7 +820,7 @@ const GameRenderer = {
             });
         }
 
-        for (let eff of effects) {
+        for (let eff of delayedEffects) {
             renderables.push({
                 y: eff.y,
                 draw: function() {

@@ -25,9 +25,14 @@ const PlayerManager = {
             kbDist: parseFloat(pd.Hit_Knockback_Distance) || 5, invinTime: parseFloat(pd.Hit_Invincible_Time) || 0.5, kbVx: 0, kbVy: 0,
             invincibleTimer: 0, atkTimer: 0, stanceSwapTimer: 0, maxStanceSwap: 0, rapidAtkCount: 0, rapidAtkAllowTimer: 0, maxRapidAllow: 0, rapidAtkCooldownTimer: 0, maxRapidAtkCd: 0.5, 
             dashCooldownTimer: 0, maxDashCd: 1.0, dashTimer: 0, dashSpeedX: 0, dashSpeedY: 0, ghostTimer: 0, bubbleCooldown: 0,
+            isRunning: false, runDirection: null, runSpeedRate: 1.5, movePrevKeys: { LEFT: false, RIGHT: false, UP: false, DOWN: false }, lastMoveTapDir: null, lastMoveTapTimer: 0,
+            guardTimer: 0, maxGuardTimer: 0, guardCooldownTimer: 0, maxGuardCooldown: 0, guardSuccessTimer: 0, guardDirection: 'CASTER_FRONT', guardDefenceType: 'SUPER_ARMOR',
             skillCooldowns: {}, freezeTimer: 0, maxFreezeTimer: 0, mashReduced: 0
         };
-        gameState.actions = actionData || [];
+        gameState.actions = (actionData || []).map(a => ({
+            ...a,
+            Action_Name: typeof a.Action_Name === 'string' ? a.Action_Name.trim() : a.Action_Name
+        }));
         
         // 🎯 [복구] 대쉬 쿨타임 및 키 설정 원본 데이터 로드
         for(let a of gameState.actions) {
@@ -43,8 +48,54 @@ const PlayerManager = {
         gameState.floatingTexts.push({x: p.x, y: p.y, z: p.z + p.bodyZ, text: "✨ 부활!", color: "#f1c40f", size: "32px", timer: 1.0});
     },
 
-    takeDamage: function(gameState, finalDmg, srcX, srcY, sType, sDur, sProb) {
+    isGuardableHit: function(player, srcX, guardInfo) {
+        if (!player || player.guardTimer <= 0 || player.state !== 'Guard') return false;
+        if (!guardInfo) return false;
+
+        const canGuard = guardInfo.canGuard === true || String(guardInfo.canGuard).trim().toLowerCase() === 'true';
+        const result = String(guardInfo.guardResult || '').trim().toUpperCase();
+        if (!canGuard || result === 'UNGUARDABLE') return false;
+
+        const direction = String(player.guardDirection || 'CASTER_FRONT').trim().toUpperCase();
+        if (direction === 'ALL' || direction === 'ALL_DIRECTION') return true;
+
+        const dx = (parseFloat(srcX) || player.x) - player.x;
+        if (Math.abs(dx) < 8) return true;
+        return dx * (player.faceDir === -1 ? -1 : 1) >= 0;
+    },
+
+    takeDamage: function(gameState, finalDmg, srcX, srcY, sType, sDur, sProb, guardInfo = null) {
         let p = gameState.player; if (p.invincibleTimer > 0 || p.state === 'Die') return;
+
+        if (this.isGuardableHit(p, srcX, guardInfo)) {
+            p.guardSuccessTimer = 0.24;
+            p.kbVx = 0;
+            p.kbVy = 0;
+
+            gameState.floatingTexts.push({
+                x: p.x,
+                y: p.y,
+                z: p.z + p.bodyZ + 42,
+                text: 'GUARD',
+                color: '#8fd3ff',
+                size: '26px',
+                timer: 0.65,
+                isBubble: false
+            });
+            gameState.effects.push({
+                type: 'guard',
+                renderType: 'EFT_GUARD',
+                x: p.x,
+                y: p.y,
+                z: p.z + p.bodyZ * 0.55,
+                dir: p.faceDir,
+                w: p.bodyX * p.scale,
+                h: p.bodyZ * p.scale,
+                life: 0.18,
+                maxLife: 0.18
+            });
+            return;
+        }
         
         // 방어력 단순 뺄셈 공식 적용 (최소 피해량 1 보장)
         let actualDmg = Math.max(1, (finalDmg || 1) - p.def);
@@ -63,6 +114,9 @@ const PlayerManager = {
             gameState.floatingTexts.push({x: p.x, y: p.y, z: p.z + p.bodyZ + 40, text: "빙결", color: "#00ffff", size: "32px", timer: 1.0});
         } else if (p.state !== 'Freeze') {
             p.state = 'Hit'; p.atkTimer = p.hitDur; 
+            p.isRunning = false;
+            p.runDirection = null;
+            p.guardTimer = 0;
             let angle = Math.atan2((p.y||0) - (srcY||0), (p.x||0) - (srcX||0)); let kb = p.kbDist / p.hitDur; p.kbVx = Math.cos(angle) * kb; p.kbVy = Math.sin(angle) * kb;
             p.rapidAtkCount = 0; p.rapidAtkAllowTimer = 0; p.invincibleTimer = p.invinTime; 
         }
@@ -126,6 +180,17 @@ update: function(deltaTime, keys, gameState) {
     } else {
         if (player.invincibleTimer > 0) player.invincibleTimer -= deltaTime;
         if (player.dashCooldownTimer > 0) player.dashCooldownTimer -= deltaTime;
+        if (player.guardCooldownTimer > 0) player.guardCooldownTimer = Math.max(0, player.guardCooldownTimer - deltaTime);
+        if (player.guardSuccessTimer > 0) player.guardSuccessTimer = Math.max(0, player.guardSuccessTimer - deltaTime);
+        if (player.guardTimer > 0) {
+            player.guardTimer = Math.max(0, player.guardTimer - deltaTime);
+            if (player.state !== 'Hit' && player.state !== 'Freeze' && player.state !== 'Die') {
+                player.state = 'Guard';
+            }
+            if (player.guardTimer <= 0 && player.state === 'Guard') {
+                player.state = 'Idle';
+            }
+        }
         if (player.bubbleCooldown > 0) player.bubbleCooldown -= deltaTime;
         if (player.stanceSwapTimer > 0) player.stanceSwapTimer -= deltaTime;
         if (player.atkTimer > 0) {

@@ -15,7 +15,12 @@ function calcScaledDamage(attackerLvl, defenderLvl, baseDmg) {
 }
 function getEngineKeyCode(excelKey) {
     if (!excelKey) return '';
+
+    const raw = String(excelKey).trim();
+    const upper = raw.toUpperCase();
+
     const map = {
+        // 기존 형식
         'Key_X': 'KeyX',
         'Key_Z': 'KeyZ',
         'Key_C': 'KeyC',
@@ -23,12 +28,47 @@ function getEngineKeyCode(excelKey) {
         'Key_F': 'KeyF',
         'Key_A': 'KeyA',
         'Key_S': 'KeyS',
+        'Key_D': 'KeyD',
+
+        // 새 데이터 테이블 형식
+        'KEY_X': 'KeyX',
+        'KEY_Z': 'KeyZ',
+        'KEY_C': 'KeyC',
+        'KEY_V': 'KeyV',
+        'KEY_F': 'KeyF',
+        'KEY_A': 'KeyA',
+        'KEY_S': 'KeyS',
+        'KEY_D': 'KeyD',
+
+        // 방향키
         'Down_Arrow_Key': 'ArrowDown',
         'Up_Arrow_Key': 'ArrowUp',
         'Left_Arrow_Key': 'ArrowLeft',
-        'Right_Arrow_Key': 'ArrowRight'
+        'Right_Arrow_Key': 'ArrowRight',
+
+        'DOWN_ARROW_KEY': 'ArrowDown',
+        'UP_ARROW_KEY': 'ArrowUp',
+        'LEFT_ARROW_KEY': 'ArrowLeft',
+        'RIGHT_ARROW_KEY': 'ArrowRight',
+
+        // 혹시 직접 브라우저 키 코드로 들어온 경우
+        'KEYX': 'KeyX',
+        'KEYZ': 'KeyZ',
+        'KEYC': 'KeyC',
+        'KEYV': 'KeyV',
+        'KEYF': 'KeyF',
+        'KEYA': 'KeyA',
+        'KEYS': 'KeyS',
+        'KEYD': 'KeyD'
     };
-    return map[excelKey] || String(excelKey).replace(/_/g, '');
+
+    if (map[raw]) return map[raw];
+    if (map[upper]) return map[upper];
+
+    const letterKey = upper.match(/^KEY_?([A-Z])$/);
+    if (letterKey) return 'Key' + letterKey[1];
+
+    return raw.replace(/_/g, '');
 }
 function getContrastColor(hexColor) {
     if (!hexColor) return '#ffffff';
@@ -115,9 +155,12 @@ function normalizeActionRuntimeRow(row) {
 function normalizeMonsterRuntimeRow(row) {
     const newRow = { ...row };
 
+    // Boss_Phase_info의 Phase_Monster_ID가 숫자 Monster_ID를 참조하므로
+    // Boss_info는 Monster_ID를 우선 런타임 키로 사용한다.
+    // 기존 Stage_info처럼 Dev_Name으로 스폰하는 경우는 MonsterManager의 aliasSet으로 계속 호환된다.
     newRow.Monster_ID = pickRuntimeValue(
-        row.Dev_Name,
         row.Monster_ID,
+        row.Dev_Name,
         row.Monster_Code,
         row.Monster_Key
     );
@@ -220,8 +263,8 @@ function normalizeStageRuntimeRow(row) {
     const newRow = { ...row };
 
     newRow.Stage_ID = pickRuntimeValue(
-        row.Dev_Name,
         row.Stage_ID,
+        row.Dev_Name,
         row.Stage_Code
     );
 
@@ -268,12 +311,127 @@ function normalizeStageRuntimeRow(row) {
         row.Spawn_Monster_3_Count
     );
 
+    // 카시야스 전용 Stage_info 호환
+    newRow.Map_Size_X = pickRuntimeValue(row.Map_Size_X, row.Stage_Width);
+    newRow.Map_Size_Y = pickRuntimeValue(row.Map_Size_Y, row.Stage_Height);
+    newRow.Player_Start_Center_X = pickRuntimeValue(row.Player_Start_Center_X, row.Player_Spawn_X);
+    newRow.Player_Start_Center_Y = pickRuntimeValue(row.Player_Start_Center_Y, row.Player_Spawn_Y);
+    newRow.Boss_Spawn_Center_X = pickRuntimeValue(row.Boss_Spawn_Center_X, row.Boss_Spawn_X);
+    newRow.Boss_Spawn_Center_Y = pickRuntimeValue(row.Boss_Spawn_Center_Y, row.Boss_Spawn_Y);
+
     newRow.Stage_Background_Type = pickRuntimeValue(
         row.Stage_Background_Type,
+        row.Background_Render_Type,
         row.Background_Type
     );
 
+    newRow.Stage_Clear_Type = pickRuntimeValue(row.Stage_Clear_Type, 'KILL_BOSS');
+
     return newRow;
+}
+
+function normalizeBossPhaseRuntimeRow(row) {
+    const newRow = { ...row };
+    newRow.Phase_ID = pickRuntimeValue(row.Phase_ID, row.Dev_Name);
+    newRow.Phase_Monster_ID = pickRuntimeValue(row.Phase_Monster_ID, row.Monster_ID);
+    return newRow;
+}
+
+function normalizeBossPatternRuntimeRow(row) {
+    const newRow = { ...row };
+    newRow.Pattern_ID = pickRuntimeValue(row.Pattern_ID, row.Dev_Name);
+    newRow.Pattern_Set_ID = pickRuntimeValue(row.Pattern_Set_ID, row.Pattern_Set);
+    return newRow;
+}
+
+function normalizeBossPatternActionRuntimeRow(row) {
+    const newRow = { ...row };
+    newRow.Action_ID = pickRuntimeValue(row.Action_ID, row.Dev_Name);
+    newRow.Pattern_ID = pickRuntimeValue(row.Pattern_ID, row.Owner_Pattern_ID);
+    return newRow;
+}
+
+function normalizeBossPatternObjectRuntimeRow(row) {
+    const newRow = { ...row };
+    newRow.Attack_Object_ID = pickRuntimeValue(row.Attack_Object_ID, row.Object_ID, row.Dev_Name);
+    return newRow;
+}
+
+function buildBossRuntimeTables(phaseData, patternData, actionData, objectData) {
+    gameState.DB_BOSS_PHASE = {};
+    gameState.DB_BOSS_PATTERN = {};
+    gameState.DB_BOSS_PATTERN_BY_SET = {};
+    gameState.DB_BOSS_PATTERN_ACTION = {};
+    gameState.DB_BOSS_PATTERN_OBJECT = {};
+
+    (phaseData || []).forEach(phase => {
+        const phaseId = String(phase.Phase_ID || '').trim();
+        if (!phaseId) return;
+        gameState.DB_BOSS_PHASE[phaseId] = phase;
+    });
+
+    const actionsByPattern = {};
+    (actionData || []).forEach(action => {
+        const actionId = String(action.Action_ID || '').trim();
+        const patternId = String(action.Pattern_ID || '').trim();
+
+        if (actionId) gameState.DB_BOSS_PATTERN_ACTION[actionId] = action;
+        if (patternId) {
+            if (!actionsByPattern[patternId]) actionsByPattern[patternId] = [];
+            actionsByPattern[patternId].push(action);
+        }
+    });
+
+    for (const patternId in actionsByPattern) {
+        actionsByPattern[patternId].sort((a, b) => {
+            const ao = parseFloat(a.Action_Order) || 0;
+            const bo = parseFloat(b.Action_Order) || 0;
+            return ao - bo;
+        });
+    }
+
+    (objectData || []).forEach(obj => {
+        const objectId = String(obj.Attack_Object_ID || '').trim();
+        if (!objectId) return;
+        gameState.DB_BOSS_PATTERN_OBJECT[objectId] = obj;
+    });
+
+    (patternData || []).forEach(pattern => {
+        const patternId = String(pattern.Pattern_ID || '').trim();
+        const setId = String(pattern.Pattern_Set_ID || '').trim();
+        if (!patternId) return;
+
+        // 우선 Boss_Pattern_Action_info의 Pattern_ID + Action_Order 구조를 사용한다.
+        pattern.Runtime_Actions = actionsByPattern[patternId] ? [...actionsByPattern[patternId]] : [];
+
+        // 구버전 호환: Pattern_1st_Action_ID 계열만 있는 경우에도 실행 가능하게 유지한다.
+        if (pattern.Runtime_Actions.length <= 0) {
+            const suffixes = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
+            for (const suffix of suffixes) {
+                const actionId = String(pattern[`Pattern_${suffix}_Action_ID`] || '').trim();
+                if (!actionId || actionId === '0') continue;
+                const action = gameState.DB_BOSS_PATTERN_ACTION[actionId];
+                if (action) pattern.Runtime_Actions.push(action);
+            }
+        }
+
+        gameState.DB_BOSS_PATTERN[patternId] = pattern;
+
+        if (setId) {
+            if (!gameState.DB_BOSS_PATTERN_BY_SET[setId]) {
+                gameState.DB_BOSS_PATTERN_BY_SET[setId] = [];
+            }
+            gameState.DB_BOSS_PATTERN_BY_SET[setId].push(pattern);
+        }
+    });
+
+    for (const setId in gameState.DB_BOSS_PATTERN_BY_SET) {
+        gameState.DB_BOSS_PATTERN_BY_SET[setId].sort((a, b) => {
+            const pa = parseFloat(a.Pattern_Priority) || 0;
+            const pb = parseFloat(b.Pattern_Priority) || 0;
+            return pb - pa;
+        });
+    }
 }
 
 function normalizeRuntimeDataSet(data, type) {
@@ -285,6 +443,10 @@ function normalizeRuntimeDataSet(data, type) {
     if (type === 'pattern') return rows.map(normalizePatternRuntimeRow);
     if (type === 'skill') return rows.map(normalizeSkillRuntimeRow);
     if (type === 'stage') return rows.map(normalizeStageRuntimeRow);
+    if (type === 'bossPhase') return rows.map(normalizeBossPhaseRuntimeRow);
+    if (type === 'bossPattern') return rows.map(normalizeBossPatternRuntimeRow);
+    if (type === 'bossPatternAction') return rows.map(normalizeBossPatternActionRuntimeRow);
+    if (type === 'bossPatternObject') return rows.map(normalizeBossPatternObjectRuntimeRow);
 
     return rows;
 }
@@ -301,6 +463,7 @@ const gameState = {
     projectiles: [],
     effects: [],
     hitboxes: [],
+    bossAttackObjects: [],
     floatingTexts: [],
 
     targetUI: { monster: null, timer: 0 },
@@ -318,6 +481,11 @@ const gameState = {
     DB_PATTERN: {},
     DB_SKILL: {},
     DB_STAGE: [],
+    DB_BOSS_PHASE: {},
+    DB_BOSS_PATTERN: {},
+    DB_BOSS_PATTERN_BY_SET: {},
+    DB_BOSS_PATTERN_ACTION: {},
+    DB_BOSS_PATTERN_OBJECT: {},
     actions: [],
 
     isAutoSpawn: true,
@@ -328,7 +496,7 @@ const gameState = {
     isTestMode: false,
 
     // 새 게임 진행 모드
-    gameMode: 'STAGE', // 'STAGE' or 'FREE_SPAWN'
+    gameMode: 'BOSS', // 'BOSS', 'STAGE', 'FREE_SPAWN'
 
     // 스테이지 상태
     currentStageId: null,
@@ -399,11 +567,13 @@ function clearCurrentStageEntities() {
     gameState.projectiles = [];
     gameState.effects = [];
     gameState.hitboxes = [];
+    gameState.bossAttackObjects = [];
     gameState.targetUI.monster = null;
     gameState.targetUI.timer = 0;
 
     gameState.activeWarp = null;
     gameState.isStageCleared = false;
+    gameState.bossBattle = null;
 }
 
 function spawnStageMonsterAt(monsterId, x, y, isBoss = false) {
@@ -428,6 +598,71 @@ function spawnStageMonsterAt(monsterId, x, y, isBoss = false) {
     m.y = parseFloat(y) || m.y;
     m.spawnSource = 'STAGE';
     m.isStageBoss = !!isBoss;
+}
+
+function loadBossStage(stageId = null) {
+    const stage =
+        (stageId ? getStageById(stageId) : null) ||
+        (gameState.DB_STAGE || []).find(s => s && s.Stage_ID) ||
+        null;
+
+    if (!stage) {
+        console.error('보스전 스테이지를 찾을 수 없음');
+        return;
+    }
+
+    gameState.stageClearPending = false;
+    gameState.currentStageId = stage.Stage_ID;
+    gameState.currentStage = stage;
+
+    clearCurrentStageEntities();
+
+    gameState.WORLD_WIDTH = parseFloat(stage.Map_Size_X) || 1400;
+    gameState.WORLD_DEPTH = getStageDepth(stage);
+
+    if (gameState.player && gameState.player.active) {
+        gameState.player.x = parseFloat(stage.Player_Start_Center_X) || 300;
+        gameState.player.y = parseFloat(stage.Player_Start_Center_Y) || (gameState.WORLD_DEPTH / 2);
+        gameState.player.z = 0;
+        gameState.player.vz = 0;
+        gameState.player.isGrounded = true;
+        gameState.player.state = 'Idle';
+    }
+
+    const firstPhase = Object.values(gameState.DB_BOSS_PHASE || {})
+        .sort((a, b) => (parseFloat(a.Phase_Order) || 0) - (parseFloat(b.Phase_Order) || 0))[0];
+
+    if (!firstPhase) {
+        console.error('Boss_Phase_info에 1페이즈 데이터가 없습니다.');
+        return;
+    }
+
+    const bossId = String(firstPhase.Phase_Monster_ID || '').trim();
+    const bossX = parseFloat(stage.Boss_Spawn_Center_X) || 1000;
+    const bossY = parseFloat(stage.Boss_Spawn_Center_Y) || (gameState.WORLD_DEPTH / 2);
+
+    spawnStageMonsterAt(bossId, bossX, bossY, true);
+
+    const boss = gameState.monsters[gameState.monsters.length - 1];
+    if (boss) {
+        boss.z = 0;
+        boss.vz = 0;
+        boss.isGrounded = true;
+        boss.spawnSource = 'BOSS_STAGE';
+        boss.isStageBoss = true;
+        gameState.bossBattle = { boss: boss, phase: firstPhase };
+        gameState.targetUI.monster = boss;
+        gameState.targetUI.timer = 999999;
+    }
+
+    try {
+        if (typeof GameRenderer.rebuildStageBackground === 'function') {
+            GameRenderer.rebuildStageBackground(stage, gameState.WORLD_WIDTH, gameState.WORLD_DEPTH);
+        }
+    } catch (e) {}
+
+    buildUIButtons();
+    pushSystemNotice(`⚔️ ${stage.Stage_Name || '카시야스 결투장'}`, '#f1c40f', 1.8);
 }
 
 function createStageWarp(stage) {
@@ -592,6 +827,19 @@ function nextStage(stage) {
 }
 
 function updateStageFlow() {
+    if (gameState.gameMode === 'BOSS') {
+        if (gameState.stageClearPending) return;
+
+        const bossAlive = gameState.monsters.find(m => m.active && m.hp > 0 && m.isStageBoss);
+        if (!bossAlive && gameState.currentStage) {
+            gameState.stageClearPending = true;
+            gameState.isStageCleared = true;
+            pushSystemNotice('🏆 카시야스 1페이즈 격파!', '#2ecc71', 2.0);
+            buildUIButtons();
+        }
+        return;
+    }
+
     if (gameState.gameMode !== 'STAGE') return;
     if (!gameState.currentStage) return;
     if (gameState.stageClearPending) return;
@@ -621,6 +869,42 @@ function updateStageFlow() {
 function toggleGameMode() {
     gameState.gameMode = (gameState.gameMode === 'STAGE') ? 'FREE_SPAWN' : 'STAGE';
 
+    if (gameState.gameMode === 'BOSS') {
+        const boss = gameState.monsters.find(m => m.active && m.isStageBoss) || (gameState.bossBattle && gameState.bossBattle.boss);
+        const phase = boss && boss.boss ? boss.boss.phase : (gameState.bossBattle && gameState.bossBattle.phase);
+        const hpRate = boss ? Math.max(0, boss.hp / Math.max(1, boss.maxHp)) : 0;
+        const lateText = boss && boss.boss && boss.boss.isLatePhase ? '후반부 ON' : '후반부 OFF';
+        const patternName = boss && boss.boss && boss.boss.activePattern
+            ? boss.boss.activePattern.Pattern_Name
+            : '기본 추적';
+
+        const wrap = document.createElement('div');
+        wrap.style.background = 'rgba(8, 10, 14, 0.64)';
+        wrap.style.padding = '10px 12px';
+        wrap.style.borderRadius = '10px';
+        wrap.style.border = '1px solid rgba(255,255,255,0.10)';
+        wrap.style.color = '#fff';
+        wrap.style.pointerEvents = 'none';
+        wrap.style.backdropFilter = 'blur(3px)';
+        wrap.style.boxShadow = '0 6px 18px rgba(0,0,0,0.18)';
+
+        wrap.innerHTML = `
+            <div style="font-size:11px; color:#9fc7ff; font-weight:700; margin-bottom:6px; letter-spacing:0.3px;">
+                카시야스 전용 보스전
+            </div>
+            <div style="font-size:15px; color:#f1c40f; font-weight:800; margin-bottom:6px; line-height:1.3;">
+                ${phase ? phase.Phase_Name : '1페이즈 로딩 중...'}
+            </div>
+            <div style="font-size:11px; color:rgba(255,255,255,0.88); line-height:1.45;">
+                HP : ${(hpRate * 100).toFixed(1)}%<br>
+                상태 : ${lateText}<br>
+                행동 : ${patternName}
+            </div>
+        `;
+        controls.appendChild(wrap);
+        return;
+    }
+
     if (gameState.gameMode === 'STAGE') {
         if (!gameState.currentStageId && gameState.DB_STAGE.length > 0) {
             const firstStage =
@@ -648,59 +932,75 @@ function toggleGameMode() {
 
 async function loadGameDataAndInit() {
     try {
-        console.log("데이터 로딩 시작...");
+        console.log("카시야스 보스전 데이터 로딩 시작...");
 
-        const [playerRes, actionRes, monsterRes, patternRes, skillRes, stageRes] = await Promise.all([
+        const [
+            playerRes,
+            actionRes,
+            bossRes,
+            bossPhaseRes,
+            bossPatternRes,
+            bossPatternActionRes,
+            bossPatternObjectRes,
+            stageRes
+        ] = await Promise.all([
             fetch('./GameData/Player_info.json'),
             fetch('./GameData/Player_Action_info.json'),
-            fetch('./GameData/Monster_info.json'),
-            fetch('./GameData/Monster_Pattern_info.json'),
-            fetch('./GameData/Monster_Skill_info.json'),
+            fetch('./GameData/Boss_info.json'),
+            fetch('./GameData/Boss_Phase_info.json'),
+            fetch('./GameData/Boss_Pattern_info.json'),
+            fetch('./GameData/Boss_Pattern_Action_info.json'),
+            fetch('./GameData/Boss_Pattern_Object_info.json'),
             fetch('./GameData/Stage_info.json')
         ]);
 
         const playerData = await playerRes.json();
         const actionData = await actionRes.json();
-        const monsterData = await monsterRes.json();
-        const patternData = await patternRes.json();
-        const skillData = await skillRes.json();
+        const bossData = await bossRes.json();
+        const bossPhaseData = await bossPhaseRes.json();
+        const bossPatternData = await bossPatternRes.json();
+        const bossPatternActionData = await bossPatternActionRes.json();
+        const bossPatternObjectData = await bossPatternObjectRes.json();
         const stageData = await stageRes.json();
 
-        console.log("데이터 로딩 완료! 게임 엔진을 초기화합니다.");
+        console.log("데이터 로딩 완료! 카시야스 보스전 엔진을 초기화합니다.");
 
         const pData = normalizeRuntimeDataSet(playerData, 'player');
         const aData = normalizeRuntimeDataSet(actionData, 'action');
-        const mData = normalizeRuntimeDataSet(monsterData, 'monster');
-        const ptData = normalizeRuntimeDataSet(patternData, 'pattern');
-        const sData = normalizeRuntimeDataSet(skillData, 'skill');
+        const bData = normalizeRuntimeDataSet(bossData, 'monster');
+        const bpData = normalizeRuntimeDataSet(bossPhaseData, 'bossPhase');
+        const bptData = normalizeRuntimeDataSet(bossPatternData, 'bossPattern');
+        const bpaData = normalizeRuntimeDataSet(bossPatternActionData, 'bossPatternAction');
+        const bpoData = normalizeRuntimeDataSet(bossPatternObjectData, 'bossPatternObject');
         const stData = normalizeRuntimeDataSet(stageData, 'stage');
 
         PlayerManager.init(pData, aData, gameState);
-        MonsterManager.init(mData, ptData, sData, gameState);
+
+        // Boss_info를 기존 MonsterManager 엔티티 구조로 태운다.
+        // 기존 일반 몬스터/스킬/패턴 DB는 사용하지 않는다.
+        MonsterManager.init(bData, [], [], gameState);
+
         gameState.DB_STAGE = stData || [];
+        buildBossRuntimeTables(bpData, bptData, bpaData, bpoData);
 
-        if (gameState.DB_STAGE.length > 0) {
-            const firstStage =
-                gameState.DB_STAGE.find(stage => stage && stage.Stage_ID) ||
-                gameState.DB_STAGE[0];
+        const firstStage =
+            gameState.DB_STAGE.find(stage => stage && stage.Stage_ID) ||
+            gameState.DB_STAGE[0];
 
-            if (firstStage && firstStage.Stage_ID) {
-                gameState.currentStageId = firstStage.Stage_ID;
-            }
+        if (firstStage && firstStage.Stage_ID) {
+            gameState.currentStageId = firstStage.Stage_ID;
         }
 
         GameRenderer.init(document.getElementById('gameCanvas'), gameState.WORLD_WIDTH);
         buildUIButtons();
 
-        if (gameState.gameMode === 'STAGE' && gameState.currentStageId) {
-            loadStage(gameState.currentStageId);
-        }
+        loadBossStage(gameState.currentStageId);
 
         requestAnimationFrame(gameLoop);
 
     } catch (error) {
         console.error("데이터 로드 에러:", error);
-        alert("게임 데이터를 불러오는 데 실패했습니다. 폴더명과 파일명을 확인해주세요.");
+        alert("카시야스 보스전 데이터를 불러오는 데 실패했습니다. GameData 폴더의 JSON 파일명을 확인해주세요.");
     }
 }
 
@@ -734,8 +1034,8 @@ window.addEventListener('keydown', e => {
         buildUIButtons();
     }
 
-    // 새 게임 모드 전환
-    if (e.code === 'F6') {
+    // 보스전 전용 버전에서는 일반 스테이지/자유소환 전환을 막는다.
+    if (e.code === 'F6' && gameState.gameMode !== 'BOSS') {
         e.preventDefault();
         toggleGameMode();
     }
@@ -819,10 +1119,12 @@ function updateEnvironment(deltaTime) {
 
         if (!gameState.player.active) return;
 
-        if (gameState.targetUI.timer > 0) {
+        if (gameState.targetUI.monster && gameState.targetUI.monster.isStageBoss) {
+            gameState.targetUI.timer = 999999;
+        } else if (gameState.targetUI.timer > 0) {
             gameState.targetUI.timer -= deltaTime;
-        if (gameState.targetUI.timer < 0) gameState.targetUI.timer = 0;
-    }
+            if (gameState.targetUI.timer < 0) gameState.targetUI.timer = 0;
+        }
 
     for (let i = gameState.auras.length - 1; i >= 0; i--) {
         let a = gameState.auras[i];
@@ -1341,10 +1643,15 @@ function updateHUD() {
             : 0;
         setLockAndMask('lockSwap', 'maskSwap', p.level >= swapReq, swapRatio);
 
-        let dashAct = gameState.actions.find(a => a.Action_Name === '대쉬');
+        let dashAct = gameState.actions.find(a => String(a.Action_Name || '').trim() === '대쉬');
         let dashReq = dashAct ? (parseFloat(dashAct.Require_Level) || 0) : 0;
         let dashRatio = Math.max(0, (p.dashCooldownTimer || 0) / (p.maxDashCd || 1)) * 100;
         setLockAndMask('lockDash', 'maskDash', p.level >= dashReq, dashRatio);
+
+        let guardAct = gameState.actions.find(a => String(a.Action_Type || '').trim() === 'ACT_GUARD' || String(a.Action_Name || '').trim() === '가드');
+        let guardReq = guardAct ? (parseFloat(guardAct.Require_Level) || 0) : 0;
+        let guardRatio = Math.max(0, (p.guardCooldownTimer || 0) / (p.maxGuardCooldown || (parseFloat(guardAct && guardAct.Cooltime) || 1))) * 100;
+        setLockAndMask('lockGuard', 'maskGuard', p.level >= guardReq, guardRatio);
 
         let waveAct = gameState.actions.find(a => a.Action_Name && a.Action_Name.includes('웨이브'));
         let waveReq = waveAct ? (parseFloat(waveAct.Require_Level) || 5) : 5;
