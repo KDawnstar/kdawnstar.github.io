@@ -811,6 +811,19 @@ const GameRenderer = {
             }
         }
 
+        for (let obj of (gameState.bossAttackObjects || [])) {
+            if (obj && obj.active && obj.kind === 'actor') {
+                renderables.push({
+                    y: obj.y,
+                    draw: function() {
+                        if (typeof renderer.drawBossPatternObjectEntity === 'function') {
+                            renderer.drawBossPatternObjectEntity(ctx, obj);
+                        }
+                    }
+                });
+            }
+        }
+
         for (let p of projectiles) {
             renderables.push({
                 y: p.y,
@@ -843,5 +856,49 @@ const GameRenderer = {
 
         this.drawFloatingTexts(ctx, floatingTexts);
         this.drawTargetUI(ctx, canvas, targetUI);
+        this.drawScreenHitFeedback(ctx, canvas, gameState.screenHitFlash);
+    },
+
+    drawScreenHitFeedback: function(ctx, canvas, flash) {
+        if (!flash || !canvas) return;
+        const maxLife = Math.max(0.001, parseFloat(flash.maxLife) || 0.22);
+        const life = Math.max(0, parseFloat(flash.life) || 0);
+        const t = life / maxLife;
+        if (t <= 0) return;
+        const strength = Math.max(0.15, Math.min(1, parseFloat(flash.strength) || 0.65));
+        const alpha = Math.min(0.55, strength * t * 0.46);
+        const w = canvas.width;
+        const h = canvas.height;
+        const edge = Math.max(70, Math.min(w, h) * 0.18);
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        const gradL = ctx.createLinearGradient(0, 0, edge, 0);
+        gradL.addColorStop(0, `rgba(150,0,0,${alpha})`);
+        gradL.addColorStop(1, 'rgba(150,0,0,0)');
+        ctx.fillStyle = gradL;
+        ctx.fillRect(0, 0, edge, h);
+
+        const gradR = ctx.createLinearGradient(w, 0, w - edge, 0);
+        gradR.addColorStop(0, `rgba(150,0,0,${alpha})`);
+        gradR.addColorStop(1, 'rgba(150,0,0,0)');
+        ctx.fillStyle = gradR;
+        ctx.fillRect(w - edge, 0, edge, h);
+
+        const gradT = ctx.createLinearGradient(0, 0, 0, edge);
+        gradT.addColorStop(0, `rgba(190,0,0,${alpha * 0.85})`);
+        gradT.addColorStop(1, 'rgba(190,0,0,0)');
+        ctx.fillStyle = gradT;
+        ctx.fillRect(0, 0, w, edge);
+
+        const gradB = ctx.createLinearGradient(0, h, 0, h - edge);
+        gradB.addColorStop(0, `rgba(190,0,0,${alpha * 0.85})`);
+        gradB.addColorStop(1, 'rgba(190,0,0,0)');
+        ctx.fillStyle = gradB;
+        ctx.fillRect(0, h - edge, w, edge);
+
+        ctx.fillStyle = `rgba(255,40,35,${alpha * 0.08})`;
+        ctx.fillRect(0, 0, w, h);
+        ctx.restore();
     }
 };

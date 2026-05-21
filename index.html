@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>카시야스 보스전 테스트</title>
     <style>
-        body { margin: 0; background-color: #0a0a0a; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
+        body { margin: 0; background-color: #0a0a0a; color: white; font-family: 'Malgun Gothic', '맑은 고딕', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
         
 .system-notice-anchor {
     position: absolute;
@@ -49,6 +49,209 @@
 .system-notice-item.notice-green { color: #8ff0b0; }
 .system-notice-item.notice-yellow { color: #ffd86b; }
 
+
+#bossBattleLayout {
+    width: min(2520px, calc(100vw - 28px));
+    height: 1020px;
+    display: grid;
+    grid-template-columns: 310px 1600px 390px;
+    gap: 14px;
+    align-items: stretch;
+    margin-top: 20px;
+}
+
+.side-panel-column {
+    height: 1020px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+}
+
+.external-panel {
+    background: linear-gradient(180deg, rgba(21,27,38,0.96), rgba(7,10,16,0.96));
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 14px;
+    box-shadow: 0 16px 34px rgba(0,0,0,0.36), inset 0 0 10px rgba(255,255,255,0.025);
+    overflow: hidden;
+    backdrop-filter: blur(3px);
+    min-height: 0;
+}
+
+.external-panel.flex-fill {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.external-panel-header {
+    height: 42px;
+    flex: 0 0 42px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    box-sizing: border-box;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    background: linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.018));
+}
+
+.external-panel-title {
+    font-size: 13px;
+    font-weight: 900;
+    color: #f4d36a;
+    letter-spacing: 0.2px;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.45);
+}
+
+.external-panel-subtitle {
+    font-size: 10px;
+    font-weight: 800;
+    color: rgba(255,255,255,0.48);
+    letter-spacing: 0.4px;
+}
+
+.external-panel-body {
+    padding: 12px 14px;
+    box-sizing: border-box;
+    overflow: auto;
+    min-height: 0;
+}
+
+.control-guide-card {
+    margin-bottom: 12px;
+    padding: 10px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.045);
+    border: 1px solid rgba(255,255,255,0.065);
+}
+
+.control-guide-card:last-child { margin-bottom: 0; }
+
+.control-guide-title {
+    margin-bottom: 8px;
+    color: #7fc6ff;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.2px;
+}
+
+.control-row {
+    display: grid;
+    grid-template-columns: 76px 1fr;
+    gap: 8px;
+    align-items: center;
+    min-height: 28px;
+    color: rgba(255,255,255,0.82);
+    font-size: 11px;
+    line-height: 1.35;
+    border-top: 1px solid rgba(255,255,255,0.045);
+    padding-top: 6px;
+    margin-top: 6px;
+}
+
+.control-row:first-of-type {
+    border-top: 0;
+    padding-top: 0;
+    margin-top: 0;
+}
+
+.keycap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    height: 22px;
+    padding: 0 7px;
+    border-radius: 7px;
+    background: linear-gradient(180deg, rgba(255,214,90,0.24), rgba(118,83,12,0.38));
+    border: 1px solid rgba(241,196,15,0.46);
+    color: #ffe08a;
+    font-size: 11px;
+    font-weight: 900;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), 0 2px 6px rgba(0,0,0,0.25);
+    white-space: nowrap;
+}
+
+.keycap.debug { color:#ffb8b8; border-color:rgba(231,76,60,0.55); background:rgba(231,76,60,0.18); }
+.keycap.guard { color:#c7d7ff; border-color:rgba(147,197,253,0.50); background:rgba(59,130,246,0.18); }
+
+.boss-pattern-log-list {
+    flex: 1 1 auto;
+    padding: 10px 12px;
+    overflow: auto;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 11px;
+    line-height: 1.35;
+    color: #dbeafe;
+}
+
+.boss-pattern-log-item {
+    padding: 7px 8px;
+    margin-bottom: 7px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.045);
+    border: 1px solid rgba(255,255,255,0.065);
+}
+
+.boss-pattern-log-type {
+    display: inline-block;
+    min-width: 54px;
+    color: #f4d36a;
+    font-weight: 900;
+}
+
+.boss-pattern-log-time {
+    color: rgba(255,255,255,0.42);
+    float: right;
+    font-size: 10px;
+}
+
+.boss-pattern-log-detail {
+    margin-top: 3px;
+    color: rgba(255,255,255,0.62);
+    font-size: 10px;
+}
+
+#rightSidePanel .external-panel {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+#bossAIPanel.boss-ai-panel {
+    flex: 1 1 auto;
+    max-height: none;
+    width: 100%;
+    height: auto;
+    padding: 12px 14px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    overflow-y: auto;
+    font-size: 11px;
+}
+
+#bossBattleLayout #gameSection {
+    margin-top: 0;
+}
+
+#topLeftUI,
+#topRightUI {
+    display: none;
+}
+
+@media (max-width: 2380px) {
+    #bossBattleLayout {
+        width: calc(100vw - 20px);
+        grid-template-columns: 300px 1600px 360px;
+        gap: 10px;
+        overflow: visible;
+    }
+}
+
 #gameSection {
     display: flex;
     flex-direction: column;
@@ -68,6 +271,57 @@
     width: 100%;
     height: 100%;
     display: block;
+}
+
+
+.boss-cast-gauge {
+    position: absolute;
+    left: 50%;
+    top: -34px;
+    transform: translateX(-50%);
+    width: min(560px, 62%);
+    height: 26px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(16, 0, 0, 0.72);
+    border: 1px solid rgba(255, 92, 70, 0.72);
+    box-shadow: 0 0 18px rgba(0,0,0,0.42), inset 0 0 10px rgba(255,60,45,0.16);
+    z-index: 7;
+    pointer-events: none;
+}
+
+.boss-cast-gauge.hidden {
+    display: none;
+}
+
+.boss-cast-gauge-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, rgba(90,0,0,0.88), rgba(255,54,44,0.94), rgba(255,180,120,0.96));
+    box-shadow: 0 0 14px rgba(255,64,54,0.54);
+    transition: width 0.05s linear;
+}
+
+.boss-cast-gauge-text {
+    position: relative;
+    z-index: 2;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff4ed;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: -0.1px;
+    text-shadow: 0 1px 3px #000, 0 0 8px rgba(0,0,0,0.9);
+}
+
+.boss-cast-gauge.danger {
+    border-color: rgba(255, 210, 150, 0.95);
+    box-shadow: 0 0 22px rgba(255,60,45,0.50), inset 0 0 12px rgba(255,210,150,0.16);
 }
 
 #hudSection {
@@ -162,9 +416,94 @@
     display: flex;
     flex-direction: column;
     gap: 5px;
-    width: 192px;
+    width: 320px;
     z-index: 10;
     pointer-events: none;
+}
+
+.boss-ai-panel {
+    width: 100%;
+    max-height: 620px;
+    padding: 10px 12px;
+    box-sizing: border-box;
+    background: rgba(4, 6, 10, 0.76);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    color: #dbeafe;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 11px;
+    line-height: 1.35;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.28);
+    backdrop-filter: blur(3px);
+    overflow: hidden;
+}
+
+.boss-ai-title {
+    color: #f4d36a;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 13px;
+    font-weight: 800;
+    margin-bottom: 8px;
+}
+
+.boss-ai-subtitle {
+    margin-top: 9px;
+    margin-bottom: 5px;
+    color: #8dff93;
+    font-weight: 800;
+}
+
+.boss-ai-section {
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.boss-ai-key {
+    color: #93c5fd;
+    font-weight: 800;
+}
+
+.boss-ai-candidate,
+.boss-ai-action,
+.boss-ai-selected,
+.boss-ai-log,
+.boss-ai-empty {
+    padding: 5px 6px;
+    margin-bottom: 4px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.045);
+    border: 1px solid rgba(255,255,255,0.06);
+}
+
+.boss-ai-candidate.ready {
+    border-color: rgba(141,255,147,0.32);
+    color: #dcfce7;
+}
+
+.boss-ai-candidate.out {
+    color: rgba(255,255,255,0.62);
+}
+
+.boss-ai-selected {
+    border-color: rgba(244,211,106,0.42);
+    color: #ffe89c;
+}
+
+.boss-ai-action {
+    border-color: rgba(147,197,253,0.34);
+}
+
+.boss-ai-small {
+    margin-top: 2px;
+    color: rgba(255,255,255,0.62);
+    font-size: 10px;
+}
+
+.boss-ai-log-type {
+    display: inline-block;
+    min-width: 48px;
+    color: #f4d36a;
+    font-weight: 800;
 }
 
 .spawn-btn {
@@ -364,6 +703,78 @@
     font-size: 9px;
     color: #fff;
     letter-spacing: 0;
+}
+
+.hud-combat-status-wrap {
+    width: 100%;
+    max-width: 520px;
+    margin: 0 auto;
+}
+
+.hud-combat-status-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    align-items: center;
+}
+
+.hud-mini-meter {
+    min-width: 0;
+    height: 22px;
+    position: relative;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(0,0,0,0.56);
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: inset 0 2px 7px rgba(0,0,0,0.36), 0 0 10px rgba(0,0,0,0.14);
+}
+
+.hud-mini-meter-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 100%;
+    border-radius: 999px;
+    transition: width 0.08s linear, opacity 0.12s ease-out;
+    opacity: 0.88;
+}
+
+.hud-mini-meter.guard .hud-mini-meter-fill {
+    background: linear-gradient(90deg, rgba(70,150,255,0.82), rgba(130,230,255,0.92));
+}
+
+.hud-mini-meter.swap .hud-mini-meter-fill {
+    background: linear-gradient(90deg, rgba(165,105,255,0.78), rgba(230,190,255,0.90));
+}
+
+.hud-mini-meter.combo .hud-mini-meter-fill {
+    background: linear-gradient(90deg, rgba(220,54,54,0.82), rgba(255,165,95,0.92));
+}
+
+.hud-mini-meter-label {
+    position: relative;
+    z-index: 2;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 7px;
+    box-sizing: border-box;
+    font-size: 10px;
+    font-weight: 900;
+    color: #ffffff;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.90), 0 0 5px rgba(0,0,0,0.55);
+    letter-spacing: -0.1px;
+    white-space: nowrap;
+}
+
+.hud-mini-meter.ready .hud-mini-meter-fill {
+    opacity: 0.42;
+}
+
+.hud-mini-meter.empty .hud-mini-meter-fill {
+    opacity: 0.18;
 }
 
 .hud-mode-chip-row {
@@ -728,10 +1139,532 @@
 }
 .btn-revive:hover { transform: scale(1.03); }
 .btn-revive:active { transform: scale(0.98); }
+    
+
+/* v2.8 외부 패널 레이아웃 정리 */
+:root { --game-scale: 1; }
+
+body {
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    overflow: hidden;
+}
+
+#bossBattleLayout {
+    width: calc(100vw - 16px) !important;
+    height: calc(100vh - 16px) !important;
+    margin: 8px auto !important;
+    display: grid !important;
+    grid-template-columns: 280px minmax(0, 1fr) 360px !important;
+    gap: 10px !important;
+    align-items: stretch !important;
+    overflow: hidden !important;
+}
+
+#gameCenterPanel {
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    overflow: hidden;
+    background: #05070a;
+    border-radius: 12px;
+}
+
+#gameCenterPanel #gameSection {
+    flex: 0 0 auto;
+    margin-top: 0 !important;
+    transform: scale(var(--game-scale));
+    transform-origin: top center;
+}
+
+.side-panel-column {
+    height: 100% !important;
+    min-height: 0;
+    gap: 10px !important;
+}
+
+#leftSidePanel .external-panel {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+#leftSidePanel .external-panel-body,
+#leftSidePanel .boss-pattern-log-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+}
+
+.external-panel-header {
+    height: 36px !important;
+    flex-basis: 36px !important;
+    padding: 0 11px !important;
+}
+
+.external-panel-title { font-size: 12px !important; }
+.external-panel-subtitle { font-size: 9px !important; }
+
+#sideGuideContent {
+    padding: 9px 10px !important;
+}
+
+.control-guide-card {
+    margin-bottom: 8px !important;
+    padding: 8px !important;
+    border-radius: 10px !important;
+}
+
+.control-guide-title {
+    margin-bottom: 6px !important;
+    font-size: 11px !important;
+}
+
+.control-row {
+    grid-template-columns: 58px 1fr !important;
+    min-height: 22px !important;
+    gap: 6px !important;
+    padding-top: 4px !important;
+    margin-top: 4px !important;
+    font-size: 10px !important;
+    line-height: 1.25 !important;
+}
+
+.keycap {
+    min-width: 24px !important;
+    height: 19px !important;
+    padding: 0 5px !important;
+    border-radius: 6px !important;
+    font-size: 10px !important;
+}
+
+.boss-pattern-log-list {
+    padding: 9px 10px !important;
+    font-size: 10px !important;
+}
+
+.boss-pattern-log-item {
+    padding: 6px 7px !important;
+    margin-bottom: 6px !important;
+    border-radius: 7px !important;
+}
+
+.boss-pattern-log-type { min-width: 44px !important; }
+.boss-pattern-log-detail { font-size: 9px !important; }
+.boss-pattern-log-time { font-size: 9px !important; }
+
+#rightSidePanel .right-boss-ai-panel {
+    flex: 0 0 calc(62% - 5px);
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+#rightSidePanel .right-debug-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+#bossAIPanel.boss-ai-panel {
+    flex: 1 1 auto !important;
+    min-height: 0;
+    overflow-y: auto !important;
+    padding: 10px 12px !important;
+    font-size: 10px !important;
+}
+
+#rightSidePanel .hud-debug-wrap {
+    flex: 1 1 auto;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+#rightSidePanel .hud-debug-header {
+    display: none !important;
+}
+
+#rightSidePanel #hudDebug {
+    display: block !important;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 10px 12px !important;
+    font-size: 10px !important;
+    line-height: 1.45 !important;
+}
+
+#bottomHUD {
+    grid-template-columns: minmax(0, 1fr) 430px !important;
+    column-gap: 22px !important;
+}
+
+@media (max-width: 1500px) {
+    #bossBattleLayout {
+        grid-template-columns: 245px minmax(0, 1fr) 320px !important;
+        gap: 8px !important;
+    }
+    .external-panel-title { font-size: 11px !important; }
+    #bossAIPanel.boss-ai-panel,
+    #rightSidePanel #hudDebug,
+    .boss-pattern-log-list { font-size: 9px !important; }
+}
+
+
+/* v2.9 중앙 전투 화면 확대 + 패널 가독성 개선 */
+:root {
+    --panel-font: 'Malgun Gothic', '맑은 고딕', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body,
+button,
+.external-panel,
+.boss-ai-panel,
+#hudDebug,
+.boss-pattern-log-list,
+.control-guide-card {
+    font-family: var(--panel-font) !important;
+}
+
+#bossBattleLayout {
+    grid-template-columns: 260px minmax(0, 1fr) 340px !important;
+    gap: 8px !important;
+}
+
+#gameCenterPanel {
+    align-items: flex-start !important;
+    justify-content: center !important;
+}
+
+#gameCenterPanel #gameSection,
+#gameSection,
+#hudSection,
+#gameViewport {
+    width: 1400px !important;
+}
+
+#gameCenterPanel #gameSection {
+    height: 1020px !important;
+}
+
+#gameViewport {
+    height: 800px !important;
+}
+
+
+.boss-cast-gauge {
+    position: absolute;
+    left: 50%;
+    top: -34px;
+    transform: translateX(-50%);
+    width: min(560px, 62%);
+    height: 26px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(16, 0, 0, 0.72);
+    border: 1px solid rgba(255, 92, 70, 0.72);
+    box-shadow: 0 0 18px rgba(0,0,0,0.42), inset 0 0 10px rgba(255,60,45,0.16);
+    z-index: 7;
+    pointer-events: none;
+}
+
+.boss-cast-gauge.hidden {
+    display: none;
+}
+
+.boss-cast-gauge-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, rgba(90,0,0,0.88), rgba(255,54,44,0.94), rgba(255,180,120,0.96));
+    box-shadow: 0 0 14px rgba(255,64,54,0.54);
+    transition: width 0.05s linear;
+}
+
+.boss-cast-gauge-text {
+    position: relative;
+    z-index: 2;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff4ed;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: -0.1px;
+    text-shadow: 0 1px 3px #000, 0 0 8px rgba(0,0,0,0.9);
+}
+
+.boss-cast-gauge.danger {
+    border-color: rgba(255, 210, 150, 0.95);
+    box-shadow: 0 0 22px rgba(255,60,45,0.50), inset 0 0 12px rgba(255,210,150,0.16);
+}
+
+#hudSection {
+    height: 220px !important;
+}
+
+#gameCanvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.external-panel-header {
+    height: 38px !important;
+    flex-basis: 38px !important;
+    padding: 0 12px !important;
+}
+
+.external-panel-title {
+    font-size: 13px !important;
+    letter-spacing: -0.1px !important;
+}
+
+.external-panel-subtitle {
+    font-size: 9px !important;
+}
+
+#sideGuideContent {
+    padding: 8px 10px !important;
+}
+
+.control-guide-card {
+    margin-bottom: 8px !important;
+    padding: 8px 9px !important;
+}
+
+.control-guide-title {
+    font-size: 11px !important;
+    margin-bottom: 6px !important;
+}
+
+.control-row {
+    grid-template-columns: 56px 1fr !important;
+    min-height: 23px !important;
+    gap: 7px !important;
+    padding-top: 4px !important;
+    margin-top: 4px !important;
+    font-size: 11px !important;
+    line-height: 1.25 !important;
+}
+
+.keycap {
+    min-width: 25px !important;
+    height: 20px !important;
+    padding: 0 6px !important;
+    border-radius: 6px !important;
+    font-size: 11px !important;
+    line-height: 20px !important;
+}
+
+.boss-pattern-log-list {
+    padding: 9px 10px !important;
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+}
+
+.boss-pattern-log-item {
+    padding: 7px 8px !important;
+    margin-bottom: 7px !important;
+}
+
+.boss-pattern-log-type {
+    min-width: 42px !important;
+    font-size: 10px !important;
+}
+
+.boss-pattern-log-detail,
+.boss-pattern-log-time {
+    font-size: 10px !important;
+}
+
+#bossAIPanel.boss-ai-panel {
+    font-size: 11px !important;
+    line-height: 1.42 !important;
+    padding: 11px 12px !important;
+}
+
+.boss-ai-title {
+    font-family: var(--panel-font) !important;
+    font-size: 13px !important;
+}
+
+.boss-ai-subtitle {
+    font-size: 11px !important;
+}
+
+.boss-ai-small {
+    font-size: 10px !important;
+    line-height: 1.35 !important;
+}
+
+.boss-ai-candidate,
+.boss-ai-action,
+.boss-ai-selected,
+.boss-ai-log,
+.boss-ai-empty {
+    padding: 6px 7px !important;
+    margin-bottom: 5px !important;
+}
+
+#rightSidePanel #hudDebug {
+    font-family: var(--panel-font) !important;
+    font-size: 11px !important;
+    line-height: 1.48 !important;
+    padding: 11px 12px !important;
+}
+
+#bottomHUD {
+    grid-template-columns: minmax(0, 1fr) 410px !important;
+    column-gap: 16px !important;
+    padding: 16px 18px !important;
+}
+
+#hudCenter {
+    height: 160px !important;
+}
+
+.hud-skill-wrap {
+    width: 410px !important;
+}
+
+.skill-slot {
+    width: 68px !important;
+    height: 68px !important;
+}
+
+@media (max-width: 1500px) {
+    #bossBattleLayout {
+        grid-template-columns: 238px minmax(0, 1fr) 305px !important;
+        gap: 7px !important;
+    }
+    #bossAIPanel.boss-ai-panel,
+    #rightSidePanel #hudDebug,
+    .boss-pattern-log-list {
+        font-size: 10.5px !important;
+    }
+    .control-row {
+        font-size: 10.5px !important;
+        grid-template-columns: 52px 1fr !important;
+    }
+}
+
+
+
+/* v5.1 Boss log export controls */
+.external-panel-header.with-log-actions {
+    gap: 8px;
+}
+.external-panel-title-stack {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.1;
+}
+.boss-log-action-buttons {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    flex: 0 0 auto;
+}
+.boss-log-action-btn {
+    height: 23px;
+    padding: 0 7px;
+    border-radius: 7px;
+    border: 1px solid rgba(255, 216, 107, 0.32);
+    background: rgba(10, 14, 22, 0.72);
+    color: rgba(255, 236, 170, 0.92);
+    font-family: var(--panel-font, 'Malgun Gothic', '맑은 고딕', 'Segoe UI', sans-serif);
+    font-size: 10px;
+    font-weight: 900;
+    cursor: pointer;
+    box-shadow: inset 0 0 8px rgba(255,255,255,0.025);
+}
+.boss-log-action-btn:hover {
+    background: rgba(244, 211, 106, 0.16);
+    border-color: rgba(255, 216, 107, 0.62);
+    color: #fff2b8;
+}
+.boss-log-action-btn.clear {
+    border-color: rgba(255, 120, 120, 0.25);
+    color: rgba(255, 170, 170, 0.86);
+}
+.boss-log-action-btn.clear:hover {
+    border-color: rgba(255, 120, 120, 0.58);
+    background: rgba(180, 35, 35, 0.18);
+}
+@media (max-width: 2380px) {
+    .boss-log-action-btn {
+        height: 21px;
+        padding: 0 5px;
+        font-size: 9px;
+    }
+    .boss-log-action-buttons { gap: 4px; }
+}
+
     </style>
 </head>
 <body>
 
+
+    <div id="bossBattleLayout">
+        <aside id="leftSidePanel" class="side-panel-column">
+            <section class="external-panel">
+                <div class="external-panel-header">
+                    <div class="external-panel-title">조작 가이드</div>
+                    <div class="external-panel-subtitle">KASIYAS BATTLE</div>
+                </div>
+                <div id="sideGuideContent" class="external-panel-body">
+                    <div class="control-guide-card">
+                        <div class="control-guide-title">기본 이동</div>
+                        <div class="control-row"><span class="keycap">방향키</span><span>8방향 이동</span></div>
+                        <div class="control-row"><span class="keycap">더블 탭</span><span>같은 방향키를 빠르게 두 번 입력 후 유지하면 달리기</span></div>
+                        <div class="control-row"><span class="keycap">C</span><span>점프</span></div>
+                        <div class="control-row"><span class="keycap">Z</span><span>대쉬</span></div>
+                    </div>
+                    <div class="control-guide-card">
+                        <div class="control-guide-title">전투 조작</div>
+                        <div class="control-row"><span class="keycap">X</span><span>기본 공격</span></div>
+                        <div class="control-row"><span class="keycap">F</span><span>근거리 / 원거리 모드 전환</span></div>
+                        <div class="control-row"><span class="keycap guard">D</span><span>타이밍 가드</span></div>
+                        <div class="control-row"><span class="keycap">A</span><span>웨이브</span></div>
+                        <div class="control-row"><span class="keycap">S</span><span>캐논볼</span></div>
+                    </div>
+                    <div class="control-guide-card">
+                        <div class="control-guide-title">디버그</div>
+                        <div class="control-row"><span class="keycap debug">V</span><span>3D 히트박스 표시</span></div>
+                        <div class="control-row"><span class="keycap debug">T</span><span>테스트 모드 전환</span></div>
+                        <div class="control-row"><span class="keycap debug">R</span><span>사망 시 부활</span></div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="external-panel flex-fill">
+                <div class="external-panel-header">
+                    <div class="external-panel-title">보스 패턴 사용 로그</div>
+                    <div class="external-panel-subtitle">RECENT EVENTS</div>
+                </div>
+                <div id="bossPatternLogPanel" class="boss-pattern-log-list">
+                    보스 패턴 로그 대기 중...
+                </div>
+            </section>
+        </aside>
+
+        <main id="gameCenterPanel">
     <div id="gameSection">
     <div id="gameViewport">
         <canvas id="gameCanvas" width="1400" height="800"></canvas>
@@ -766,23 +1699,12 @@
     </div>
 
     <div id="hudSection" data-base-height="220">
+        <div id="bossCastGauge" class="boss-cast-gauge hidden">
+            <div id="bossCastGaugeFill" class="boss-cast-gauge-fill"></div>
+            <div id="bossCastGaugeText" class="boss-cast-gauge-text">강화 내려베기</div>
+        </div>
         <div id="bottomHUD">
-            <div class="hud-debug-wrap" id="hudDebugWrap">
-            <div class="hud-debug-header">
-             <div class="hud-debug-title">디버그 패널</div>
-             <button
-                 type="button"
-                class="hud-debug-toggle"
-                onclick="
-                const wrap = document.getElementById('hudDebugWrap');
-                const collapsed = wrap.classList.toggle('collapsed');
-                this.innerText = collapsed ? '[+] 열기' : '[-] 접기';
-            "
-             >[-] 접기</button>
-            </div>
-             <div id="hudDebug">디버그 로그 대기 중...</div>
-            </div>
-            <div id="hudCenter">
+                        <div id="hudCenter">
             <div class="hud-orb-panel">
                 <div class="hud-orb-label">생명력</div>
                 <div class="hud-orb hp">
@@ -802,10 +1724,20 @@
                     <div class="hud-mode-chip range">원거리 모드</div>
                 </div>
 
-                <div class="hud-center-exp-wrap">
-                    <div class="hud-bar-container hud-exp-container hud-center-exp-bar">
-                        <div class="hud-exp-fill" id="hudExpFill"></div>
-                        <div class="hud-bar-text" id="hudExpText">0 / 100 (0.0%)</div>
+                <div class="hud-combat-status-wrap">
+                    <div class="hud-combat-status-row">
+                        <div class="hud-mini-meter guard ready" id="combatMeterGuard">
+                            <div class="hud-mini-meter-fill" id="combatMeterGuardFill"></div>
+                            <div class="hud-mini-meter-label" id="combatMeterGuardText">🛡 가드 준비</div>
+                        </div>
+                        <div class="hud-mini-meter swap ready" id="combatMeterSwap">
+                            <div class="hud-mini-meter-fill" id="combatMeterSwapFill"></div>
+                            <div class="hud-mini-meter-label" id="combatMeterSwapText">🔄 전환 준비</div>
+                        </div>
+                        <div class="hud-mini-meter combo ready" id="combatMeterCombo">
+                            <div class="hud-mini-meter-fill" id="combatMeterComboFill"></div>
+                            <div class="hud-mini-meter-label" id="combatMeterComboText">⚔ 연격 준비</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -860,6 +1792,50 @@
         </div>
     </div>
 </div>
+        </main>
+
+        <aside id="rightSidePanel" class="side-panel-column">
+            <section class="external-panel right-boss-ai-panel">
+                <div class="external-panel-header with-log-actions">
+                    <div class="external-panel-title-stack">
+                        <div class="external-panel-title">보스 패턴 선택 과정</div>
+                        <div class="external-panel-subtitle">PATTERN DECISION</div>
+                    </div>
+                    <div class="boss-log-action-buttons" aria-label="보스 로그 저장">
+                        <button type="button" class="boss-log-action-btn" onclick="exportBossDebugLog('txt')">TXT</button>
+                        <button type="button" class="boss-log-action-btn" onclick="exportBossDebugLog('json')">JSON</button>
+                        <button type="button" class="boss-log-action-btn clear" onclick="clearBossDebugLog()">초기화</button>
+                    </div>
+                </div>
+                <div id="bossAIPanel" class="boss-ai-panel">
+                    보스 AI 로그 대기 중...
+                </div>
+            </section>
+
+            <section class="external-panel right-debug-panel">
+                <div class="external-panel-header">
+                    <div class="external-panel-title">전투 디버그</div>
+                    <div class="external-panel-subtitle">RUNTIME</div>
+                </div>
+<div class="hud-debug-wrap" id="hudDebugWrap">
+            <div class="hud-debug-header">
+             <div class="hud-debug-title">디버그 패널</div>
+             <button
+                 type="button"
+                class="hud-debug-toggle"
+                onclick="
+                const wrap = document.getElementById('hudDebugWrap');
+                const collapsed = wrap.classList.toggle('collapsed');
+                this.innerText = collapsed ? '[+] 열기' : '[-] 접기';
+            "
+             >[-] 접기</button>
+            </div>
+             <div id="hudDebug">디버그 로그 대기 중...</div>
+            </div>
+
+            </section>
+        </aside>
+    </div>
 
     <script src="js/renderer_core.js"></script>
     <script src="js/renderer_stage.js"></script>

@@ -333,7 +333,227 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
     alpha = Math.max(0, Math.min(1, alpha));
     ctx.globalAlpha = alpha;
 
-    if (eff.type === 'pathLineSlash') {
+    if (eff.type === 'rushIssen') {
+        const slashW = Math.max(120, eff.w || 360);
+        const slashH = Math.max(14, eff.h || 36);
+        const renderAngle = (eff.pathAngle !== undefined && eff.pathAngle !== null)
+            ? eff.pathAngle
+            : ((eff.dir || 1) >= 0 ? 0 : Math.PI);
+
+        ctx.rotate(renderAngle);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        const core = eff.color || `rgba(255,48,44,${0.98 * alpha})`;
+        const accent = eff.accentColor || `rgba(50,0,0,${0.92 * alpha})`;
+        const outline = `rgba(18,0,0,${0.92 * alpha})`;
+        const hot = `rgba(255,120,92,${0.90 * alpha})`;
+
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = 'rgba(210,0,0,0.72)';
+
+        const outlineGrad = ctx.createLinearGradient(-slashW / 2, 0, slashW / 2, 0);
+        outlineGrad.addColorStop(0, 'rgba(0,0,0,0)');
+        outlineGrad.addColorStop(0.12, `rgba(15,0,0,${0.72 * alpha})`);
+        outlineGrad.addColorStop(0.50, outline);
+        outlineGrad.addColorStop(0.88, `rgba(15,0,0,${0.72 * alpha})`);
+        outlineGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = outlineGrad;
+        ctx.beginPath();
+        ctx.moveTo(-slashW * 0.53, -slashH * 0.30);
+        ctx.lineTo(slashW * 0.49, -slashH * 0.68);
+        ctx.quadraticCurveTo(slashW * 0.58, 0, slashW * 0.49, slashH * 0.68);
+        ctx.lineTo(-slashW * 0.53, slashH * 0.30);
+        ctx.quadraticCurveTo(-slashW * 0.63, 0, -slashW * 0.53, -slashH * 0.30);
+        ctx.closePath();
+        ctx.fill();
+
+        const grad = ctx.createLinearGradient(-slashW / 2, 0, slashW / 2, 0);
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(0.16, `rgba(35,0,0,${0.58 * alpha})`);
+        grad.addColorStop(0.50, core);
+        grad.addColorStop(0.78, `rgba(130,0,0,${0.66 * alpha})`);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(-slashW * 0.50, -slashH * 0.18);
+        ctx.lineTo(slashW * 0.46, -slashH * 0.52);
+        ctx.quadraticCurveTo(slashW * 0.52, 0, slashW * 0.46, slashH * 0.52);
+        ctx.lineTo(-slashW * 0.50, slashH * 0.18);
+        ctx.quadraticCurveTo(-slashW * 0.56, 0, -slashW * 0.50, -slashH * 0.18);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = Math.max(4.2, slashH * 0.18);
+        ctx.beginPath();
+        ctx.moveTo(-slashW * 0.50, slashH * 0.20);
+        ctx.lineTo(slashW * 0.50, -slashH * 0.20);
+        ctx.stroke();
+
+        ctx.strokeStyle = hot;
+        ctx.lineWidth = Math.max(2.0, slashH * 0.075);
+        ctx.beginPath();
+        ctx.moveTo(-slashW * 0.46, -slashH * 0.06);
+        ctx.lineTo(slashW * 0.46, -slashH * 0.28);
+        ctx.stroke();
+
+        ctx.strokeStyle = `rgba(255,30,30,${0.52 * alpha})`;
+        ctx.lineWidth = Math.max(1.2, slashH * 0.05);
+        for (let i = 0; i < 3; i++) {
+            const y = (i - 1) * slashH * 0.44;
+            ctx.beginPath();
+            ctx.moveTo(-slashW * 0.42 + i * slashW * 0.05, y);
+            ctx.lineTo(-slashW * 0.15 + i * slashW * 0.04, y - slashH * 0.16);
+            ctx.stroke();
+        }
+
+
+    } else if (eff.type === 'pathResidualSlashField') {
+        const pathW = Math.max(80, eff.w || 420);
+        const pathD = Math.max(24, eff.d || 120);
+        const fieldH = Math.max(30, eff.h || 120);
+        const renderAngle = (eff.pathAngle !== undefined && eff.pathAngle !== null) ? eff.pathAngle : 0;
+        const elapsed = Math.max(0, (eff.maxLife || 0) - (eff.life || 0));
+        const warningDur = Math.max(0.05, eff.warningDuration || 0);
+        const delayDur = Math.max(0, eff.delayDuration || 0);
+        const hitDur = Math.max(0.05, eff.hitDuration || 0.2);
+        const chargeStart = warningDur;
+        const activeStart = warningDur + delayDur;
+        const isActive = elapsed >= activeStart;
+        const isCharge = !isActive && elapsed >= chargeStart;
+        const chargeT = delayDur > 0 ? Math.max(0, Math.min(1, (elapsed - chargeStart) / delayDur)) : (isActive ? 1 : 0);
+        const activeT = hitDur > 0 ? Math.max(0, Math.min(1, (elapsed - activeStart) / hitDur)) : 0;
+        const pulse = 0.5 + Math.sin(Date.now() / 70) * 0.5;
+        const seed = eff.seed || 71;
+        const count = Math.max(10, Math.min(28, Math.round(pathW / 58)));
+
+        // 잔류 검격은 돌진 시작과 동시에 경로 전체를 미리 깔지 않는다.
+        // warning 구간에는 카시야스가 실제로 돌진하며 지나간 위치까지만 칼날 조각을 누적 표시한다.
+        // delay/active 구간에 들어가면 이미 생성된 전체 궤적이 유지되고, 이후 붉게 변하며 활성화된다.
+        const visibleProgress = isCharge || isActive
+            ? 1
+            : Math.max(0, Math.min(1, warningDur > 0 ? elapsed / warningDur : 1));
+        const leadingFadeWidth = 0.14;
+
+        ctx.globalAlpha = Math.max(0, Math.min(1, (0.62 + alpha * 0.38)));
+        ctx.rotate(renderAngle);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        const dormantEdge = 'rgba(10,28,46,0.78)';
+        const dormantCore = 'rgba(210,244,255,0.88)';
+        const dormantHot = 'rgba(105,205,255,0.72)';
+        const chargeEdge = `rgba(${Math.round(42 + chargeT * 18)},0,0,${0.70 + chargeT * 0.16})`;
+        const chargeCore = `rgba(${Math.round(170 + chargeT * 55)},${Math.round(40 - chargeT * 22)},${Math.round(46 - chargeT * 28)},${0.64 + chargeT * 0.22})`;
+        const chargeHot = `rgba(255,${Math.round(112 - chargeT * 64)},${Math.round(92 - chargeT * 58)},${0.48 + chargeT * 0.30})`;
+        const activeEdge = 'rgba(8,0,0,0.98)';
+        const activeCore = `rgba(255,24,22,${0.90 + pulse * 0.08})`;
+        const activeHot = `rgba(255,104,78,${0.72 + pulse * 0.18})`;
+
+        const edgeColor = isActive ? activeEdge : (isCharge ? chargeEdge : dormantEdge);
+        const coreColor = isActive ? activeCore : (isCharge ? chargeCore : dormantCore);
+        const hotColor = isActive ? activeHot : (isCharge ? chargeHot : dormantHot);
+        const glowColor = isActive
+            ? 'rgba(230,0,0,0.78)'
+            : (isCharge ? 'rgba(190,0,0,0.42)' : 'rgba(90,190,255,0.32)');
+
+        ctx.shadowBlur = isActive ? 20 : (isCharge ? 11 : 8);
+        ctx.shadowColor = glowColor;
+
+        // 천귀살 잔류 검격은 돌진 중에는 흰색/푸른색의 칼날 조각으로 남고,
+        // 딜레이가 끝나며 같은 조각이 붉게 물든 뒤 그 자체가 활성화된다.
+        // 별도의 큰 폭발선을 추가하지 않아, 생성 단계가 실제 피해 판정처럼 보이지 않도록 한다.
+        for (let i = 0; i < count; i++) {
+            const t = (i + 0.35) / count;
+            if (t > visibleProgress + 0.012) continue;
+
+            const noise = Math.sin((i + 1) * 12.9898 + seed * 0.017) * 43758.5453;
+            const n = noise - Math.floor(noise);
+            const noise2 = Math.sin((i + 5) * 78.233 + seed * 0.031) * 17341.9281;
+            const n2 = noise2 - Math.floor(noise2);
+            const side = (n * 2 - 1) * pathD * 0.38;
+            const localX = -pathW / 2 + pathW * t;
+            const localY = side;
+            const trailAge = isCharge || isActive
+                ? 1
+                : Math.max(0, Math.min(1, (visibleProgress - t + leadingFadeWidth) / leadingFadeWidth));
+            const bladeW = Math.max(42, pathD * (0.54 + (i % 4) * 0.075));
+            const bladeH = Math.max(12, fieldH * (0.070 + (i % 3) * 0.012));
+            const bladeRot = ((i % 2 === 0) ? -0.36 : 0.36) + (n2 - 0.5) * 0.38;
+            const scalePulse = isActive ? (1.04 + pulse * 0.10) : (isCharge ? 1 + chargeT * 0.10 : 1);
+
+            ctx.save();
+            ctx.translate(localX, localY);
+            ctx.rotate(bladeRot);
+            ctx.scale(scalePulse, scalePulse);
+
+            const bladeAlpha = isActive ? (0.92 + pulse * 0.08) : (isCharge ? 0.62 + chargeT * 0.28 : 0.40 + trailAge * 0.24);
+            ctx.globalAlpha = Math.max(0, Math.min(1, bladeAlpha * alpha * (isCharge || isActive ? 1 : Math.max(0.28, trailAge))));
+
+            // 외곽: 길쭉한 나뭇잎/칼날 파편 실루엣
+            ctx.fillStyle = edgeColor;
+            ctx.beginPath();
+            ctx.moveTo(-bladeW * 0.52, 0);
+            ctx.quadraticCurveTo(-bladeW * 0.18, -bladeH * 0.72, bladeW * 0.54, -bladeH * 0.18);
+            ctx.quadraticCurveTo(bladeW * 0.64, 0, bladeW * 0.54, bladeH * 0.18);
+            ctx.quadraticCurveTo(-bladeW * 0.18, bladeH * 0.72, -bladeW * 0.52, 0);
+            ctx.closePath();
+            ctx.fill();
+
+            // 내부: 생성 단계는 흰/푸른 코어, 활성 단계는 붉은 코어
+            const grad = ctx.createLinearGradient(-bladeW * 0.46, 0, bladeW * 0.48, 0);
+            grad.addColorStop(0, 'rgba(255,255,255,0)');
+            grad.addColorStop(0.16, hotColor);
+            grad.addColorStop(0.52, coreColor);
+            grad.addColorStop(0.86, hotColor);
+            grad.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.moveTo(-bladeW * 0.45, 0);
+            ctx.quadraticCurveTo(-bladeW * 0.12, -bladeH * 0.42, bladeW * 0.45, -bladeH * 0.10);
+            ctx.quadraticCurveTo(bladeW * 0.52, 0, bladeW * 0.45, bladeH * 0.10);
+            ctx.quadraticCurveTo(-bladeW * 0.12, bladeH * 0.42, -bladeW * 0.45, 0);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.strokeStyle = isActive ? 'rgba(30,0,0,0.92)' : (isCharge ? 'rgba(60,0,0,0.68)' : 'rgba(5,26,44,0.52)');
+            ctx.lineWidth = Math.max(0.9, bladeH * 0.11);
+            ctx.beginPath();
+            ctx.moveTo(-bladeW * 0.42, bladeH * 0.04);
+            ctx.quadraticCurveTo(0, -bladeH * 0.12, bladeW * 0.42, -bladeH * 0.04);
+            ctx.stroke();
+
+            if (isActive) {
+                ctx.globalAlpha = Math.max(0, Math.min(1, (0.35 + pulse * 0.20) * alpha));
+                ctx.strokeStyle = 'rgba(255,42,32,0.82)';
+                ctx.lineWidth = Math.max(1.1, bladeH * 0.12);
+                ctx.beginPath();
+                ctx.moveTo(-bladeW * 0.36, -bladeH * 0.12);
+                ctx.lineTo(bladeW * 0.34, bladeH * 0.08);
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        // 활성화 순간에는 전체 경로가 짧게 붉게 흔들리는 정도만 더한다.
+        // 큰 폭발선을 따로 뽑지 않아, 잔류 검격 조각 자체가 터지는 느낌을 유지한다.
+        if (isActive) {
+            ctx.globalAlpha = Math.max(0, Math.min(1, (0.10 + (1 - activeT) * 0.16 + pulse * 0.05) * alpha));
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = 'rgba(230,0,0,0.48)';
+            ctx.strokeStyle = 'rgba(255,36,30,0.38)';
+            ctx.lineWidth = Math.max(1.6, pathD * 0.014);
+            ctx.beginPath();
+            ctx.moveTo(-pathW * 0.46, -pathD * 0.06);
+            ctx.quadraticCurveTo(0, pathD * 0.035, pathW * 0.46, -pathD * 0.06);
+            ctx.stroke();
+        }
+
+    } else if (eff.type === 'pathLineSlash') {
         const slashW = Math.max(28, eff.w || 56);
         const slashH = Math.max(18, eff.h || 32);
         const renderAngle = (eff.pathAngle !== undefined && eff.pathAngle !== null)
@@ -344,28 +564,35 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
-        const core = eff.color || `rgba(245,248,255,${0.95 * alpha})`;
-        const accent = eff.accentColor || `rgba(120,190,255,${0.72 * alpha})`;
+        const core = eff.color || `rgba(255,56,52,${0.95 * alpha})`;
+        const accent = eff.accentColor || `rgba(24,0,0,${0.90 * alpha})`;
 
-        ctx.shadowBlur = 8;
-        ctx.shadowColor = 'rgba(120,190,255,0.62)';
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = 'rgba(190,0,0,0.66)';
 
         ctx.strokeStyle = accent;
-        ctx.lineWidth = Math.max(2.2, slashH * 0.10);
+        ctx.lineWidth = Math.max(4.0, slashH * 0.16);
+        ctx.beginPath();
+        ctx.moveTo(-slashW * 0.52, slashH * 0.22);
+        ctx.lineTo(slashW * 0.52, -slashH * 0.22);
+        ctx.stroke();
+
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = `rgba(120,0,0,${0.78 * alpha})`;
+        ctx.lineWidth = Math.max(2.3, slashH * 0.09);
         ctx.beginPath();
         ctx.moveTo(-slashW * 0.50, slashH * 0.20);
         ctx.lineTo(slashW * 0.50, -slashH * 0.20);
         ctx.stroke();
 
-        ctx.shadowBlur = 0;
         ctx.strokeStyle = core;
-        ctx.lineWidth = Math.max(1.3, slashH * 0.045);
+        ctx.lineWidth = Math.max(1.4, slashH * 0.05);
         ctx.beginPath();
         ctx.moveTo(-slashW * 0.46, slashH * 0.12);
         ctx.lineTo(slashW * 0.46, -slashH * 0.12);
         ctx.stroke();
 
-        ctx.strokeStyle = `rgba(255,255,255,${0.52 * alpha})`;
+        ctx.strokeStyle = `rgba(255,120,110,${0.56 * alpha})`;
         ctx.lineWidth = Math.max(1, slashH * 0.035);
         ctx.beginPath();
         ctx.moveTo(-slashW * 0.22, -slashH * 0.25);
@@ -376,10 +603,112 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         const slashW = Math.max(24, eff.w || 80);
         const slashH = Math.max(16, eff.h || 40);
         const renderType = String(eff.renderType || '').trim();
+        const renderTypeUpper = String(renderType || '').toUpperCase();
         const isThunderboltSlash = renderType === 'EFT_THUNDERBOLT_SLASH';
         const isLightningSlash = renderType === 'EFT_LIGHTNING_SLASH';
+        const isKasiyasStab = renderTypeUpper === 'EFT_STABBING' || renderTypeUpper === 'EFT_KASIYAS_STABBING' || renderTypeUpper === 'EFT_KASIYAS_RUSH_ISSEN' || renderTypeUpper === 'EFT_KASIYAS_SLASH_02';
+        const isKasiyasDown = renderTypeUpper === 'EFT_SLASH_DOWN' || renderTypeUpper === 'EFT_KASIYAS_SLASH_DOWN' || renderTypeUpper === 'EFT_KASIYAS_CHARGE_SLASH_DOWN' || renderTypeUpper === 'EFT_KASIYAS_SLASH_01' || renderTypeUpper === 'EFT_KASIYAS_SLASH_04';
+        const isKasiyasUp = renderTypeUpper === 'EFT_SLASH_UP' || renderTypeUpper === 'EFT_KASIYAS_SLASH_UP' || renderTypeUpper === 'EFT_KASIYAS_SLASH_03';
+        const isKasiyasHorizontal = renderTypeUpper === 'EFT_KASIYAS_HORIZONTAL_SLASH' || renderTypeUpper === 'EFT_HORIZONTAL_SLASH';
 
         ctx.scale(eff.dir || 1, 1);
+
+        if (isKasiyasHorizontal) {
+            const wideW = Math.max(160, slashW * 1.15);
+            const wideH = Math.max(42, slashH * 0.62);
+            ctx.shadowBlur = 18;
+            ctx.shadowColor = 'rgba(210,0,0,0.70)';
+
+            ctx.fillStyle = `rgba(10,0,0,${0.88 * alpha})`;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, wideW * 0.52, wideH * 0.72, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            const gradH = ctx.createLinearGradient(-wideW * 0.50, 0, wideW * 0.50, 0);
+            gradH.addColorStop(0, 'rgba(0,0,0,0)');
+            gradH.addColorStop(0.20, `rgba(90,0,0,${0.64 * alpha})`);
+            gradH.addColorStop(0.50, eff.color || `rgba(255,58,48,${0.98 * alpha})`);
+            gradH.addColorStop(0.82, `rgba(110,0,0,${0.70 * alpha})`);
+            gradH.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = gradH;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, wideW * 0.50, wideH * 0.48, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = `rgba(28,0,0,${0.94 * alpha})`;
+            ctx.lineWidth = Math.max(3, wideH * 0.08);
+            ctx.beginPath();
+            ctx.ellipse(0, 0, wideW * 0.50, wideH * 0.50, 0, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.strokeStyle = `rgba(255,130,100,${0.72 * alpha})`;
+            ctx.lineWidth = Math.max(1.3, wideH * 0.035);
+            ctx.beginPath();
+            ctx.moveTo(-wideW * 0.42, -wideH * 0.05);
+            ctx.quadraticCurveTo(0, -wideH * 0.25, wideW * 0.42, -wideH * 0.05);
+            ctx.stroke();
+            ctx.restore();
+            return;
+        }
+
+        if (isKasiyasStab) {
+            const stabW = Math.max(80, slashW * 1.05);
+            const stabH = Math.max(8, slashH * 0.18);
+            ctx.shadowBlur = 14;
+            ctx.shadowColor = 'rgba(210,0,0,0.74)';
+
+            ctx.fillStyle = `rgba(16,0,0,${0.92 * alpha})`;
+            ctx.beginPath();
+            ctx.moveTo(-stabW * 0.52, -stabH * 0.72);
+            ctx.lineTo(stabW * 0.34, -stabH * 1.25);
+            ctx.lineTo(stabW * 0.58, 0);
+            ctx.lineTo(stabW * 0.34, stabH * 1.25);
+            ctx.lineTo(-stabW * 0.52, stabH * 0.72);
+            ctx.closePath();
+            ctx.fill();
+
+            const grad = ctx.createLinearGradient(-stabW * 0.46, 0, stabW * 0.52, 0);
+            grad.addColorStop(0, 'rgba(0,0,0,0)');
+            grad.addColorStop(0.34, eff.accentColor || `rgba(70,0,0,${0.78 * alpha})`);
+            grad.addColorStop(0.58, eff.color || `rgba(255,54,48,${0.98 * alpha})`);
+            grad.addColorStop(0.84, `rgba(130,0,0,${0.58 * alpha})`);
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad;
+
+            ctx.beginPath();
+            ctx.moveTo(-stabW * 0.48, -stabH * 0.45);
+            ctx.lineTo(stabW * 0.34, -stabH * 0.95);
+            ctx.lineTo(stabW * 0.52, 0);
+            ctx.lineTo(stabW * 0.34, stabH * 0.95);
+            ctx.lineTo(-stabW * 0.48, stabH * 0.45);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = `rgba(36,0,0,${0.92 * alpha})`;
+            ctx.lineWidth = Math.max(3.0, stabH * 0.40);
+            ctx.beginPath();
+            ctx.moveTo(-stabW * 0.38, 0);
+            ctx.lineTo(stabW * 0.50, 0);
+            ctx.stroke();
+
+            ctx.strokeStyle = `rgba(255,112,94,${0.92 * alpha})`;
+            ctx.lineWidth = Math.max(1.5, stabH * 0.16);
+            ctx.beginPath();
+            ctx.moveTo(-stabW * 0.36, 0);
+            ctx.lineTo(stabW * 0.48, 0);
+            ctx.stroke();
+
+            ctx.restore();
+            return;
+        }
+
+        if (isKasiyasDown) {
+            ctx.rotate(0.52);
+        } else if (isKasiyasUp) {
+            ctx.rotate(-0.58);
+        }
 
         let grad = ctx.createLinearGradient(-slashW / 2, 0, slashW / 2, 0);
         if (isThunderboltSlash) {
@@ -392,10 +721,24 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
             grad.addColorStop(0, "rgba(255,255,255,0)");
             grad.addColorStop(0.45, `rgba(255,245,180,${0.9 * alpha})`);
             grad.addColorStop(1, eff.color || "rgba(255,235,150,0.9)");
+        } else if (isKasiyasDown || isKasiyasUp) {
+            grad.addColorStop(0, "rgba(0,0,0,0)");
+            grad.addColorStop(0.18, `rgba(24,0,0,${0.70 * alpha})`);
+            grad.addColorStop(0.50, eff.color || `rgba(255,54,48,${0.95 * alpha})`);
+            grad.addColorStop(0.82, `rgba(120,0,0,${0.72 * alpha})`);
+            grad.addColorStop(1, "rgba(0,0,0,0)");
         } else {
             grad.addColorStop(0, "rgba(255,255,255,0)");
             grad.addColorStop(0.50, `rgba(200,255,255,${0.8 * alpha})`);
             grad.addColorStop(1, eff.color || "rgba(255,255,255,0.9)");
+        }
+
+        if (isKasiyasDown || isKasiyasUp) {
+            ctx.fillStyle = `rgba(14,0,0,${0.88 * alpha})`;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, slashW * 0.55, slashH * 0.62, 0, -Math.PI / 2, Math.PI / 2);
+            ctx.ellipse(-slashW / 4, 0, slashW * 0.55, slashH * 0.62, 0, Math.PI / 2, -Math.PI / 2, true);
+            ctx.fill();
         }
 
         ctx.fillStyle = grad;
@@ -403,6 +746,22 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         ctx.ellipse(0, 0, slashW / 2, slashH / 2, 0, -Math.PI / 2, Math.PI / 2);
         ctx.ellipse(-slashW / 4, 0, slashW / 2, slashH / 2, 0, Math.PI / 2, -Math.PI / 2, true);
         ctx.fill();
+
+        if (isKasiyasDown || isKasiyasUp) {
+            ctx.strokeStyle = `rgba(28,0,0,${0.94 * alpha})`;
+            ctx.lineWidth = Math.max(3.2, slashH * 0.075);
+            ctx.beginPath();
+            ctx.ellipse(0, 0, slashW * 0.51, slashH * 0.51, 0, -Math.PI / 2, Math.PI / 2);
+            ctx.ellipse(-slashW / 4, 0, slashW * 0.51, slashH * 0.51, 0, Math.PI / 2, -Math.PI / 2, true);
+            ctx.stroke();
+
+            ctx.strokeStyle = `rgba(255,115,98,${0.72 * alpha})`;
+            ctx.lineWidth = Math.max(1.3, slashH * 0.035);
+            ctx.beginPath();
+            ctx.moveTo(-slashW * 0.36, -slashH * 0.08);
+            ctx.quadraticCurveTo(0, -slashH * 0.34, slashW * 0.38, -slashH * 0.04);
+            ctx.stroke();
+        }
 
         if (isThunderboltSlash) {
             ctx.strokeStyle = `rgba(255,255,255,${0.75 * alpha})`;
@@ -424,13 +783,149 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         }
     } else if (eff.type === 'bite') {
         renderer.drawBiteEffect(ctx, eff, alpha);
+    } else if (eff.type === 'shoulderCharge') {
+        const w = Math.max(120, eff.w || 220);
+        const h = Math.max(44, eff.d || 70);
+        const dir = eff.dir || 1;
+        ctx.save();
+        ctx.scale(dir, 1);
+
+        const grad = ctx.createLinearGradient(-w * 0.48, 0, w * 0.50, 0);
+        grad.addColorStop(0, `rgba(0,0,0,0)`);
+        grad.addColorStop(0.24, `rgba(30,0,0,${0.22 * alpha})`);
+        grad.addColorStop(0.62, `rgba(255,74,54,${0.28 * alpha})`);
+        grad.addColorStop(1, `rgba(0,0,0,0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, w * 0.50, h * 0.54, -0.08, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = `rgba(18,0,0,${0.90 * alpha})`;
+        ctx.lineWidth = 8;
+        ctx.lineCap = 'round';
+        for (let i = 0; i < 3; i++) {
+            const yy = (i - 1) * h * 0.22;
+            ctx.beginPath();
+            ctx.moveTo(-w * 0.42, yy + h * 0.16);
+            ctx.quadraticCurveTo(-w * 0.08, yy - h * 0.10, w * 0.37, yy - h * 0.05);
+            ctx.stroke();
+        }
+
+        ctx.strokeStyle = `rgba(255,82,58,${0.78 * alpha})`;
+        ctx.lineWidth = 3.2;
+        for (let i = 0; i < 3; i++) {
+            const yy = (i - 1) * h * 0.22;
+            ctx.beginPath();
+            ctx.moveTo(-w * 0.40, yy + h * 0.13);
+            ctx.quadraticCurveTo(-w * 0.07, yy - h * 0.08, w * 0.34, yy - h * 0.04);
+            ctx.stroke();
+        }
+
+        ctx.fillStyle = `rgba(255,104,72,${0.34 * alpha})`;
+        ctx.beginPath();
+        ctx.moveTo(w * 0.26, -h * 0.35);
+        ctx.lineTo(w * 0.52, 0);
+        ctx.lineTo(w * 0.25, h * 0.36);
+        ctx.quadraticCurveTo(w * 0.32, 0, w * 0.26, -h * 0.35);
+        ctx.fill();
+        ctx.restore();
+    } else if (eff.type === 'guard') {
+        const w = Math.max(56, eff.w || 80);
+        const h = Math.max(78, eff.h || 120);
+        const dir = eff.dir || 1;
+        const kind = String(eff.renderType || 'EFT_GUARD').trim();
+        const isReduce = kind === 'EFT_GUARD_REDUCE';
+        ctx.save();
+        ctx.scale(dir, 1);
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = isReduce ? 'rgba(255,132,64,0.72)' : 'rgba(130,210,255,0.72)';
+
+        ctx.fillStyle = isReduce ? `rgba(255,88,48,${0.10 * alpha})` : `rgba(82,190,255,${0.12 * alpha})`;
+        ctx.beginPath();
+        ctx.moveTo(w * 0.12, -h * 0.52);
+        ctx.quadraticCurveTo(w * 0.64, -h * 0.28, w * 0.58, 0);
+        ctx.quadraticCurveTo(w * 0.58, h * 0.34, w * 0.10, h * 0.52);
+        ctx.quadraticCurveTo(w * 0.20, h * 0.12, w * 0.10, -h * 0.52);
+        ctx.fill();
+
+        ctx.strokeStyle = isReduce ? `rgba(72,16,0,${0.90 * alpha})` : `rgba(10,44,70,${0.88 * alpha})`;
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(w * 0.06, -h * 0.50);
+        ctx.quadraticCurveTo(w * 0.64, -h * 0.24, w * 0.56, 0);
+        ctx.quadraticCurveTo(w * 0.64, h * 0.24, w * 0.06, h * 0.50);
+        ctx.stroke();
+
+        ctx.strokeStyle = isReduce ? `rgba(255,224,122,${0.95 * alpha})` : `rgba(190,238,255,${0.96 * alpha})`;
+        ctx.lineWidth = 2.6;
+        ctx.beginPath();
+        ctx.moveTo(w * 0.10, -h * 0.42);
+        ctx.quadraticCurveTo(w * 0.50, -h * 0.20, w * 0.48, 0);
+        ctx.quadraticCurveTo(w * 0.50, h * 0.20, w * 0.10, h * 0.42);
+        ctx.stroke();
+
+        ctx.strokeStyle = isReduce ? `rgba(255,92,60,${0.74 * alpha})` : `rgba(255,255,255,${0.72 * alpha})`;
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 5; i++) {
+            const yy = (i - 2) * h * 0.13;
+            ctx.beginPath();
+            ctx.moveTo(w * 0.48, yy);
+            ctx.lineTo(w * (0.66 + i * 0.015), yy - h * 0.05);
+            ctx.stroke();
+        }
+        ctx.restore();
     } else if (eff.type === 'hitSpark') {
         const renderType = String(eff.renderType || '').trim();
         const burstScale = eff.burstScale || 1;
         const core = eff.color || (renderType === 'EFT_STRIKE' ? "rgba(245,245,245,0.96)" : "rgba(241,196,15,0.95)");
         const accent = eff.accentColor || (renderType === 'EFT_STRIKE' ? "rgba(210,220,230,0.92)" : "rgba(255,255,255,0.95)");
 
-        if (renderType === 'EFT_STRIKE') {
+        if (renderType === 'EFT_CAN_PARRY' || renderType === 'EFT_SUCCESS_PARRY') {
+            const success = renderType === 'EFT_SUCCESS_PARRY';
+            const pulse = 0.84 + Math.sin(Date.now() / 95) * 0.16;
+            const r = (success ? 40 : 46) * burstScale * (success ? 1 : pulse);
+            const localAlpha = alpha * (success ? 0.98 : 0.68);
+            ctx.save();
+            ctx.rotate((eff.dir || 1) * (success ? 0.08 : -0.05));
+            ctx.shadowBlur = success ? 26 : 22;
+            ctx.shadowColor = success ? 'rgba(255,245,96,0.92)' : 'rgba(255,226,74,0.78)';
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            // 패링 가능 표시는 모델 위에 겹쳐도 읽히도록 큰 X자 실루엣으로 표시한다.
+            ctx.strokeStyle = success ? `rgba(50,24,0,${0.96 * alpha})` : `rgba(54,34,0,${0.74 * localAlpha})`;
+            ctx.lineWidth = success ? 10 : 8;
+            ctx.beginPath();
+            ctx.moveTo(-r, -r);
+            ctx.lineTo(r, r);
+            ctx.moveTo(-r, r);
+            ctx.lineTo(r, -r);
+            ctx.stroke();
+
+            ctx.strokeStyle = success ? `rgba(255,252,142,${0.98 * alpha})` : `rgba(255,232,82,${0.86 * localAlpha})`;
+            ctx.lineWidth = success ? 5 : 4;
+            ctx.beginPath();
+            ctx.moveTo(-r * 0.78, -r * 0.78);
+            ctx.lineTo(r * 0.78, r * 0.78);
+            ctx.moveTo(-r * 0.78, r * 0.78);
+            ctx.lineTo(r * 0.78, -r * 0.78);
+            ctx.stroke();
+
+            ctx.strokeStyle = success ? `rgba(255,255,255,${0.86 * alpha})` : `rgba(255,255,210,${0.40 * localAlpha})`;
+            ctx.lineWidth = success ? 2.4 : 1.8;
+            ctx.beginPath();
+            ctx.moveTo(-r * 0.50, -r * 0.50);
+            ctx.lineTo(r * 0.50, r * 0.50);
+            ctx.moveTo(-r * 0.50, r * 0.50);
+            ctx.lineTo(r * 0.50, -r * 0.50);
+            ctx.stroke();
+
+            ctx.fillStyle = success ? `rgba(255,255,210,${0.92 * alpha})` : `rgba(255,226,84,${0.34 * localAlpha})`;
+            ctx.beginPath();
+            ctx.arc(0, 0, r * (success ? 0.18 : 0.12), 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        } else if (renderType === 'EFT_STRIKE') {
             const r = 24 * burstScale;
             ctx.rotate((eff.dir || 1) * 0.12);
 
@@ -456,8 +951,83 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
             ctx.beginPath();
             ctx.arc(0, 0, r * 0.20, 0, Math.PI * 2);
             ctx.fill();
-        } else if (renderType === 'EFT_PUNCH') {
-            renderer.drawPunchEffect(ctx, eff, alpha);
+        } else if (renderType === 'EFT_PUNCH' || renderType === 'EFT_KASIYAS_FIST_BUMPING' || renderType === 'EFT_KASIYAS_SHOULDER_ATK') {
+            if (renderType === 'EFT_KASIYAS_FIST_BUMPING') {
+                const w = Math.max(90, eff.w || 150) * Math.max(0.70, burstScale * 0.42);
+                const h = Math.max(55, eff.h || 90) * Math.max(0.70, burstScale * 0.40);
+                ctx.save();
+                ctx.scale(eff.dir || 1, 1);
+                ctx.shadowBlur = 16;
+                ctx.shadowColor = 'rgba(210,0,0,0.62)';
+                ctx.fillStyle = `rgba(255,70,48,${0.18 * alpha})`;
+                ctx.beginPath();
+                ctx.ellipse(w * 0.08, 0, w * 0.42, h * 0.36, -0.08, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = `rgba(24,0,0,${0.90 * alpha})`;
+                ctx.lineWidth = 7;
+                ctx.beginPath();
+                ctx.ellipse(w * 0.10, 0, w * 0.40, h * 0.34, -0.08, -0.15, Math.PI * 1.55);
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = `rgba(255,86,58,${0.90 * alpha})`;
+                ctx.lineWidth = 3.2;
+                ctx.beginPath();
+                ctx.ellipse(w * 0.10, 0, w * 0.36, h * 0.30, -0.08, -0.08, Math.PI * 1.48);
+                ctx.stroke();
+                ctx.strokeStyle = `rgba(255,210,160,${0.58 * alpha})`;
+                ctx.lineWidth = 1.6;
+                for (let i = 0; i < 4; i++) {
+                    const yy = (i - 1.5) * h * 0.18;
+                    ctx.beginPath();
+                    ctx.moveTo(-w * 0.22, yy);
+                    ctx.lineTo(w * 0.42, yy - h * 0.08);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            } else if (renderType === 'EFT_KASIYAS_SHOULDER_ATK') {
+                const w = Math.max(110, eff.w || 190);
+                const h = Math.max(48, eff.h || eff.d || 75);
+                ctx.save();
+                ctx.scale(eff.dir || 1, 1);
+                const grad = ctx.createLinearGradient(-w * 0.50, 0, w * 0.52, 0);
+                grad.addColorStop(0, `rgba(0,0,0,0)`);
+                grad.addColorStop(0.28, `rgba(55,0,0,${0.22 * alpha})`);
+                grad.addColorStop(0.67, `rgba(255,86,58,${0.34 * alpha})`);
+                grad.addColorStop(1, `rgba(0,0,0,0)`);
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, w * 0.50, h * 0.48, -0.05, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.lineCap = 'round';
+                ctx.strokeStyle = `rgba(20,0,0,${0.90 * alpha})`;
+                ctx.lineWidth = 7;
+                for (let i = 0; i < 4; i++) {
+                    const yy = (i - 1.5) * h * 0.20;
+                    ctx.beginPath();
+                    ctx.moveTo(-w * 0.42, yy + h * 0.14);
+                    ctx.quadraticCurveTo(-w * 0.04, yy - h * 0.12, w * 0.42, yy - h * 0.04);
+                    ctx.stroke();
+                }
+                ctx.strokeStyle = `rgba(255,96,62,${0.84 * alpha})`;
+                ctx.lineWidth = 2.8;
+                for (let i = 0; i < 4; i++) {
+                    const yy = (i - 1.5) * h * 0.20;
+                    ctx.beginPath();
+                    ctx.moveTo(-w * 0.40, yy + h * 0.11);
+                    ctx.quadraticCurveTo(-w * 0.04, yy - h * 0.10, w * 0.38, yy - h * 0.03);
+                    ctx.stroke();
+                }
+                ctx.fillStyle = `rgba(255,225,180,${0.30 * alpha})`;
+                ctx.beginPath();
+                ctx.moveTo(w * 0.30, -h * 0.35);
+                ctx.lineTo(w * 0.53, 0);
+                ctx.lineTo(w * 0.30, h * 0.35);
+                ctx.quadraticCurveTo(w * 0.38, 0, w * 0.30, -h * 0.35);
+                ctx.fill();
+                ctx.restore();
+            } else {
+                renderer.drawPunchEffect(ctx, eff, alpha);
+            }
         } else {
             const r = 18 * burstScale;
 
@@ -480,6 +1050,167 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
             ctx.arc(0, 0, r * 0.22, 0, Math.PI * 2);
             ctx.fill();
         }
+    } else if (eff.type === 'lowCircleSlash') {
+        const w = Math.max(120, eff.w || 480);
+        const d = Math.max(60, eff.d || 240);
+        const core = eff.color || `rgba(255,56,48,${0.96 * alpha})`;
+        const accent = eff.accentColor || `rgba(24,0,0,${0.86 * alpha})`;
+
+        ctx.save();
+        ctx.scale(eff.dir || 1, 1);
+        ctx.shadowBlur = 16;
+        ctx.shadowColor = 'rgba(190,0,0,0.70)';
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, w * 0.50, d * 0.40, -0.05, Math.PI * 0.08, Math.PI * 1.78);
+        ctx.stroke();
+
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = `rgba(135,0,0,${0.86 * alpha})`;
+        ctx.lineWidth = 4.2;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, w * 0.47, d * 0.36, -0.05, Math.PI * 0.10, Math.PI * 1.72);
+        ctx.stroke();
+
+        ctx.strokeStyle = core;
+        ctx.lineWidth = 2.2;
+        for (let i = 0; i < 3; i++) {
+            const yy = (i - 1) * d * 0.08;
+            ctx.beginPath();
+            ctx.moveTo(-w * 0.44, yy);
+            ctx.quadraticCurveTo(0, yy - d * 0.20, w * 0.40, yy + d * 0.02);
+            ctx.stroke();
+        }
+        ctx.restore();
+    } else if (eff.type === 'cloneSummon') {
+        const w = Math.max(70, eff.w || 130);
+        const h = Math.max(50, eff.h || 90);
+        const pulse = 1 - alpha;
+        ctx.save();
+        ctx.scale(eff.dir || 1, 1);
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = 'rgba(210,0,0,0.70)';
+        ctx.strokeStyle = `rgba(26,0,0,${0.90 * alpha})`;
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, w * (0.28 + pulse * 0.25), h * (0.18 + pulse * 0.18), -0.12, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = `rgba(255,74,62,${0.78 * alpha})`;
+        ctx.lineWidth = 2.4;
+        for (let i = 0; i < 5; i++) {
+            const a = -Math.PI * 0.8 + i * Math.PI * 0.4;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(a) * w * 0.12, Math.sin(a) * h * 0.08);
+            ctx.lineTo(Math.cos(a) * w * (0.35 + pulse * 0.18), Math.sin(a) * h * (0.24 + pulse * 0.16));
+            ctx.stroke();
+        }
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = `rgba(255,90,70,${0.20 * alpha})`;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, w * 0.20, h * 0.15, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    } else if (eff.type === 'castAfterimageBurst') {
+        const w = Math.max(60, eff.w || 120);
+        const h = Math.max(40, eff.h || 80);
+        ctx.save();
+        ctx.scale(eff.dir || 1, 1);
+        ctx.strokeStyle = `rgba(255,70,60,${0.78 * alpha})`;
+        ctx.lineWidth = 3.0;
+        ctx.shadowBlur = 14;
+        ctx.shadowColor = 'rgba(190,0,0,0.70)';
+        for (let i = 0; i < 4; i++) {
+            const offset = (i - 1.5) * h * 0.14;
+            ctx.beginPath();
+            ctx.moveTo(-w * 0.45, offset + h * 0.18);
+            ctx.lineTo(w * 0.45, offset - h * 0.18);
+            ctx.stroke();
+        }
+        ctx.restore();
+    } else if (eff.type === 'afterimageDashTrail') {
+        const w = Math.max(80, eff.w || 240);
+        const h = Math.max(20, eff.h || 40);
+        const angle = eff.pathAngle || 0;
+        ctx.save();
+        ctx.rotate(angle);
+        const grad = ctx.createLinearGradient(-w / 2, 0, w / 2, 0);
+        grad.addColorStop(0, `rgba(50,0,0,0)`);
+        grad.addColorStop(0.45, `rgba(95,0,0,${0.30 * alpha})`);
+        grad.addColorStop(0.72, `rgba(255,60,55,${0.28 * alpha})`);
+        grad.addColorStop(1, `rgba(0,0,0,0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    } else if (eff.type === 'afterimageDisappear') {
+        const w = Math.max(40, eff.w || 90);
+        const h = Math.max(40, eff.h || 90);
+        ctx.strokeStyle = `rgba(255,72,64,${0.78 * alpha})`;
+        ctx.lineWidth = 2.4;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = 'rgba(190,0,0,0.58)';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, w * (0.25 + (1 - alpha) * 0.35), h * (0.18 + (1 - alpha) * 0.26), 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+    } else if (eff.type === 'stompDust') {
+        const w = Math.max(50, eff.w || 90);
+        const d = Math.max(28, eff.d || 56);
+        const pulse = 1 - alpha;
+        ctx.save();
+        ctx.scale(eff.dir || 1, 1);
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = 'rgba(255,238,205,0.42)';
+        ctx.fillStyle = `rgba(235,220,190,${0.18 * alpha})`;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, w * (0.28 + pulse * 0.16), d * (0.18 + pulse * 0.12), 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = `rgba(72,52,34,${0.62 * alpha})`;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, w * (0.26 + pulse * 0.18), d * (0.16 + pulse * 0.12), 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(245,232,205,${0.58 * alpha})`;
+        ctx.lineWidth = 1.4;
+        for (let i = 0; i < 5; i++) {
+            const a = -Math.PI * 0.85 + i * Math.PI * 0.42;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(a) * w * 0.08, Math.sin(a) * d * 0.06);
+            ctx.lineTo(Math.cos(a) * w * (0.18 + pulse * 0.17), Math.sin(a) * d * (0.13 + pulse * 0.10));
+            ctx.stroke();
+        }
+        ctx.restore();
+    } else if (eff.type === 'shockwave') {
+        const w = Math.max(80, eff.w || 300);
+        const d = Math.max(40, eff.d || 140);
+        const pulse = 1 - alpha;
+        ctx.save();
+        ctx.shadowBlur = 16;
+        ctx.shadowColor = (eff.color || 'rgba(245,248,255,0.75)');
+        ctx.strokeStyle = eff.accentColor || `rgba(36,52,72,${0.84 * alpha})`;
+        ctx.lineWidth = 7;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, w * (0.20 + pulse * 0.28), d * (0.16 + pulse * 0.22), 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = eff.color || `rgba(245,248,255,${0.88 * alpha})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, w * (0.16 + pulse * 0.26), d * (0.12 + pulse * 0.20), 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(255,255,255,${0.74 * alpha})`;
+        ctx.lineWidth = 1.6;
+        for (let i = 0; i < 7; i++) {
+            const a = (Math.PI * 2 / 7) * i + pulse * 0.35;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(a) * w * 0.08, Math.sin(a) * d * 0.06);
+            ctx.lineTo(Math.cos(a) * w * (0.18 + pulse * 0.23), Math.sin(a) * d * (0.12 + pulse * 0.20));
+            ctx.stroke();
+        }
+        ctx.restore();
     } else if (eff.type === 'particle') {
         const pr = Math.max(2, eff.r || 4);
         ctx.fillStyle = eff.color || "rgba(255,255,255,0.95)";
@@ -498,15 +1229,72 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         const warningType = String(eff.warningRenderType || eff.renderType || '').trim();
         const pulse = 0.7 + Math.sin(Date.now() / 90) * 0.3;
 
+        const warningTypeUpper = warningType.toUpperCase();
         if (eff.pathAngle !== undefined && eff.pathAngle !== null) {
             ctx.save();
             ctx.rotate(eff.pathAngle);
-            ctx.fillStyle = `rgba(255, 70, 70, ${0.14 + pulse * 0.12})`;
-            ctx.fillRect(-w / 2, -d / 2, w, d);
-            ctx.strokeStyle = `rgba(255, 210, 160, ${0.78 * alpha})`;
-            ctx.lineWidth = 2;
-            ctx.strokeRect(-w / 2, -d / 2, w, d);
+
+            if (warningTypeUpper === 'EFT_WARNING_RUSH_LINE' || warningTypeUpper === 'WARNING_RUSH_LINE') {
+                const lineH = Math.max(8, d * 0.35);
+                ctx.lineCap = 'round';
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = 'rgba(255,218,72,0.70)';
+                ctx.strokeStyle = `rgba(82,56,0,${0.88 * alpha})`;
+                ctx.lineWidth = Math.max(4, lineH * 0.52);
+                ctx.beginPath();
+                ctx.moveTo(-w / 2, 0);
+                ctx.lineTo(w / 2, 0);
+                ctx.stroke();
+
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = `rgba(255,220,78,${0.92 * alpha})`;
+                ctx.lineWidth = Math.max(2, lineH * 0.25);
+                ctx.beginPath();
+                ctx.moveTo(-w / 2, 0);
+                ctx.lineTo(w / 2, 0);
+                ctx.stroke();
+
+                ctx.strokeStyle = `rgba(255,255,185,${0.72 * alpha})`;
+                ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                ctx.moveTo(-w / 2, -lineH * 0.50);
+                ctx.lineTo(w / 2, -lineH * 0.50);
+                ctx.stroke();
+
+                // 진행 방향 화살표
+                ctx.fillStyle = `rgba(255,220,78,${0.92 * alpha})`;
+                ctx.beginPath();
+                ctx.moveTo(w / 2, 0);
+                ctx.lineTo(w / 2 - 18, -9);
+                ctx.lineTo(w / 2 - 12, 0);
+                ctx.lineTo(w / 2 - 18, 9);
+                ctx.closePath();
+                ctx.fill();
+            } else {
+                ctx.fillStyle = `rgba(255, 226, 64, ${0.12 + pulse * 0.10})`;
+                ctx.fillRect(-w / 2, -d / 2, w, d);
+                ctx.strokeStyle = `rgba(255, 240, 130, ${0.86 * alpha})`;
+                ctx.lineWidth = 2;
+                ctx.strokeRect(-w / 2, -d / 2, w, d);
+            }
             ctx.restore();
+        } else if (warningTypeUpper === 'WARNING_HITBOX' && String(eff.hitboxType || '').toUpperCase() === 'HITBOX_CIRCLE') {
+            ctx.fillStyle = `rgba(255, 226, 64, ${0.10 + pulse * 0.08})`;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, w / 2, d / 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = `rgba(86, 58, 0, ${0.86 * alpha})`;
+            ctx.lineWidth = 2.4;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, w / 2, d / 2, 0, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.strokeStyle = `rgba(255, 240, 120, ${0.78 * alpha})`;
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, w * (0.33 + pulse * 0.04), d * (0.33 + pulse * 0.04), 0, 0, Math.PI * 2);
+            ctx.stroke();
         } else if (warningType === 'WARNING_MAGIC_CIRCLE') {
             ctx.strokeStyle = `rgba(80,220,255,${0.85 * alpha})`;
             ctx.lineWidth = 3;
@@ -530,10 +1318,10 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
                 ctx.fill();
             }
         } else {
-            ctx.fillStyle = `rgba(255, 70, 70, ${0.18 + pulse * 0.16})`;
+            ctx.fillStyle = `rgba(255, 226, 64, ${0.14 + pulse * 0.12})`;
             ctx.fillRect(-w / 2, -d / 2, w, d);
 
-            ctx.strokeStyle = `rgba(255, 160, 160, ${0.75 * alpha})`;
+            ctx.strokeStyle = `rgba(255, 240, 130, ${0.86 * alpha})`;
             ctx.lineWidth = 2;
             ctx.strokeRect(-w / 2, -d / 2, w, d);
         }

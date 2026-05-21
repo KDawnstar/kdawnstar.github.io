@@ -8,7 +8,7 @@
     "ATK": 30,
     "DEF": 5,
     "Move_Speed": 250,
-    "Jump_Power": 900,
+    "Jump_Power": 700,
     "Model_Render_Type": "RENDER_HUMAN",
     "Model_Color_R": 20,
     "Model_Color_G": 112,

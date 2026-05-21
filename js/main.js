@@ -347,21 +347,38 @@ function normalizeBossPatternActionRuntimeRow(row) {
     const newRow = { ...row };
     newRow.Action_ID = pickRuntimeValue(row.Action_ID, row.Dev_Name);
     newRow.Pattern_ID = pickRuntimeValue(row.Pattern_ID, row.Owner_Pattern_ID);
+    // 최신 카시야스 데이터에서는 이펙트 컬럼명을 Effect_Render_Type으로 정리했다.
+    // 기존 런타임은 VFX_Type을 읽으므로 양쪽 이름을 호환시킨다.
+    newRow.VFX_Type = pickRuntimeValue(row.VFX_Type, row.Effect_Render_Type, row.Action_Effect_Render_Type);
+    newRow.Warning_Render_Type = pickRuntimeValue(row.Warning_Render_Type, row.Warning_Effect_Render_Type);
     return newRow;
 }
 
 function normalizeBossPatternObjectRuntimeRow(row) {
     const newRow = { ...row };
-    newRow.Attack_Object_ID = pickRuntimeValue(row.Attack_Object_ID, row.Object_ID, row.Dev_Name);
+    newRow.Object_ID = pickRuntimeValue(row.Object_ID, row.Attack_Object_ID, row.Dev_Name);
+    newRow.Attack_Object_ID = pickRuntimeValue(row.Attack_Object_ID, newRow.Object_ID, row.Dev_Name);
+    newRow.Effect_Render_Type = pickRuntimeValue(row.Effect_Render_Type, row.VFX_Type, row.Action_Effect_Render_Type);
     return newRow;
 }
 
-function buildBossRuntimeTables(phaseData, patternData, actionData, objectData) {
+function normalizeBossPatternObjectActionRuntimeRow(row) {
+    const newRow = { ...row };
+    newRow.Object_Action_ID = pickRuntimeValue(row.Object_Action_ID, row.Dev_Name);
+    newRow.Object_ID = pickRuntimeValue(row.Object_ID, row.Attack_Object_ID, row.Owner_Object_ID);
+    newRow.VFX_Type = pickRuntimeValue(row.VFX_Type, row.Effect_Render_Type, row.Action_Effect_Render_Type);
+    newRow.Warning_Render_Type = pickRuntimeValue(row.Warning_Render_Type, row.Warning_Effect_Render_Type);
+    return newRow;
+}
+
+function buildBossRuntimeTables(phaseData, patternData, actionData, objectData, objectActionData) {
     gameState.DB_BOSS_PHASE = {};
     gameState.DB_BOSS_PATTERN = {};
     gameState.DB_BOSS_PATTERN_BY_SET = {};
     gameState.DB_BOSS_PATTERN_ACTION = {};
     gameState.DB_BOSS_PATTERN_OBJECT = {};
+    gameState.DB_BOSS_PATTERN_OBJECT_ACTION = {};
+    gameState.DB_BOSS_PATTERN_OBJECT_ACTION_BY_OBJECT = {};
 
     (phaseData || []).forEach(phase => {
         const phaseId = String(phase.Phase_ID || '').trim();
@@ -389,9 +406,31 @@ function buildBossRuntimeTables(phaseData, patternData, actionData, objectData) 
         });
     }
 
+    const objectActionsByObject = {};
+    (objectActionData || []).forEach(action => {
+        const actionId = String(action.Object_Action_ID || '').trim();
+        const objectId = String(action.Object_ID || action.Attack_Object_ID || '').trim();
+
+        if (actionId) gameState.DB_BOSS_PATTERN_OBJECT_ACTION[actionId] = action;
+        if (objectId) {
+            if (!objectActionsByObject[objectId]) objectActionsByObject[objectId] = [];
+            objectActionsByObject[objectId].push(action);
+        }
+    });
+
+    for (const objectId in objectActionsByObject) {
+        objectActionsByObject[objectId].sort((a, b) => {
+            const ao = parseFloat(a.Action_Order) || 0;
+            const bo = parseFloat(b.Action_Order) || 0;
+            return ao - bo;
+        });
+        gameState.DB_BOSS_PATTERN_OBJECT_ACTION_BY_OBJECT[objectId] = objectActionsByObject[objectId];
+    }
+
     (objectData || []).forEach(obj => {
-        const objectId = String(obj.Attack_Object_ID || '').trim();
+        const objectId = String(obj.Object_ID || obj.Attack_Object_ID || '').trim();
         if (!objectId) return;
+        obj.Runtime_Actions = objectActionsByObject[objectId] ? [...objectActionsByObject[objectId]] : [];
         gameState.DB_BOSS_PATTERN_OBJECT[objectId] = obj;
     });
 
@@ -446,6 +485,7 @@ function normalizeRuntimeDataSet(data, type) {
     if (type === 'bossPattern') return rows.map(normalizeBossPatternRuntimeRow);
     if (type === 'bossPatternAction') return rows.map(normalizeBossPatternActionRuntimeRow);
     if (type === 'bossPatternObject') return rows.map(normalizeBossPatternObjectRuntimeRow);
+    if (type === 'bossPatternObjectAction') return rows.map(normalizeBossPatternObjectActionRuntimeRow);
 
     return rows;
 }
@@ -464,8 +504,16 @@ const gameState = {
     hitboxes: [],
     bossAttackObjects: [],
     floatingTexts: [],
+    screenHitFlash: null,
 
     targetUI: { monster: null, timer: 0 },
+    bossDebug: {
+        patternCheck: null,
+        currentAction: null,
+        currentObjectAction: null,
+        logs: [],
+        exportLogs: []
+    },
 
     // 고정 UI 전용 시스템 알림 큐
     systemNotices: [],
@@ -485,6 +533,8 @@ const gameState = {
     DB_BOSS_PATTERN_BY_SET: {},
     DB_BOSS_PATTERN_ACTION: {},
     DB_BOSS_PATTERN_OBJECT: {},
+    DB_BOSS_PATTERN_OBJECT_ACTION: {},
+    DB_BOSS_PATTERN_OBJECT_ACTION_BY_OBJECT: {},
     actions: [],
 
     isAutoSpawn: true,
@@ -507,6 +557,22 @@ const gameState = {
 
 
 let lastTime = performance.now();
+
+
+function updateBossBattleLayoutScale() {
+    const center = document.getElementById('gameCenterPanel');
+    const gameSection = document.getElementById('gameSection');
+    if (!center || !gameSection) return;
+
+    const baseW = 1404; // gameSection 1400px + border
+    const baseH = 1024; // gameSection 1020px + border
+    const rect = center.getBoundingClientRect();
+    const scale = Math.max(0.45, Math.min(1, rect.width / baseW, rect.height / baseH));
+
+    document.documentElement.style.setProperty('--game-scale', scale.toFixed(4));
+}
+
+window.addEventListener('resize', updateBossBattleLayoutScale);
 
 function pushSystemNotice(text, color = '#f1c40f', duration = 1.8) {
     const msg = String(text || '').trim();
@@ -569,6 +635,13 @@ function clearCurrentStageEntities() {
     gameState.bossAttackObjects = [];
     gameState.targetUI.monster = null;
     gameState.targetUI.timer = 0;
+    gameState.bossDebug = {
+        patternCheck: null,
+        currentAction: null,
+        currentObjectAction: null,
+        logs: [],
+        exportLogs: []
+    };
 
     gameState.activeWarp = null;
     gameState.isStageCleared = false;
@@ -941,6 +1014,7 @@ async function loadGameDataAndInit() {
             bossPatternRes,
             bossPatternActionRes,
             bossPatternObjectRes,
+            bossPatternObjectActionRes,
             stageRes
         ] = await Promise.all([
             fetch('./GameData/Player_info.json'),
@@ -950,6 +1024,7 @@ async function loadGameDataAndInit() {
             fetch('./GameData/Boss_Pattern_info.json'),
             fetch('./GameData/Boss_Pattern_Action_info.json'),
             fetch('./GameData/Boss_Pattern_Object_info.json'),
+            fetch('./GameData/Boss_Pattern_Object_Action_info.json'),
             fetch('./GameData/Stage_info.json')
         ]);
 
@@ -960,6 +1035,7 @@ async function loadGameDataAndInit() {
         const bossPatternData = await bossPatternRes.json();
         const bossPatternActionData = await bossPatternActionRes.json();
         const bossPatternObjectData = await bossPatternObjectRes.json();
+        const bossPatternObjectActionData = await bossPatternObjectActionRes.json();
         const stageData = await stageRes.json();
 
         console.log("데이터 로딩 완료! 카시야스 보스전 엔진을 초기화합니다.");
@@ -971,6 +1047,7 @@ async function loadGameDataAndInit() {
         const bptData = normalizeRuntimeDataSet(bossPatternData, 'bossPattern');
         const bpaData = normalizeRuntimeDataSet(bossPatternActionData, 'bossPatternAction');
         const bpoData = normalizeRuntimeDataSet(bossPatternObjectData, 'bossPatternObject');
+        const bpoaData = normalizeRuntimeDataSet(bossPatternObjectActionData, 'bossPatternObjectAction');
         const stData = normalizeRuntimeDataSet(stageData, 'stage');
 
         PlayerManager.init(pData, aData, gameState);
@@ -980,7 +1057,7 @@ async function loadGameDataAndInit() {
         MonsterManager.init(bData, [], [], gameState);
 
         gameState.DB_STAGE = stData || [];
-        buildBossRuntimeTables(bpData, bptData, bpaData, bpoData);
+        buildBossRuntimeTables(bpData, bptData, bpaData, bpoData, bpoaData);
 
         const firstStage =
             gameState.DB_STAGE.find(stage => stage && stage.Stage_ID) ||
@@ -992,6 +1069,7 @@ async function loadGameDataAndInit() {
 
         GameRenderer.init(document.getElementById('gameCanvas'), gameState.WORLD_WIDTH);
         buildUIButtons();
+        updateBossBattleLayoutScale();
 
         loadBossStage(gameState.currentStageId);
 
@@ -1074,6 +1152,8 @@ function gameLoop(timestamp) {
         lastTime = timestamp;
         if (deltaTime > 0.1) deltaTime = 0.016;
 
+        updateBossBattleLayoutScale();
+
         PlayerManager.update(deltaTime, gameState.keys, gameState);
         MonsterManager.update(deltaTime, gameState);
         updateEnvironment(deltaTime);
@@ -1103,6 +1183,11 @@ function gameLoop(timestamp) {
 }
 
 function updateEnvironment(deltaTime) {
+    if (gameState.screenHitFlash) {
+        gameState.screenHitFlash.life -= deltaTime;
+        if (gameState.screenHitFlash.life <= 0) gameState.screenHitFlash = null;
+    }
+
     for (let i = gameState.systemNotices.length - 1; i >= 0; i--) {
     const notice = gameState.systemNotices[i];
         if (!notice) {
@@ -1368,8 +1453,9 @@ function updateEnvironment(deltaTime) {
 
 function buildUIButtons() {
     const controls = document.getElementById('topRightUI');
-    const guideContent = document.getElementById('guideContent');
-    if (!controls) return;
+    const guideContent = document.getElementById('sideGuideContent') || document.getElementById('guideContent');
+    const bossPanel = document.getElementById('bossAIPanel');
+    if (!controls && !bossPanel) return;
 
     const p = gameState.player || { level: 1, active: false };
     const dashReqLv = parseFloat((gameState.actions.find(a => a.Action_Name === '대쉬') || {}).Require_Level) || 2;
@@ -1378,26 +1464,41 @@ function buildUIButtons() {
     const cannonReqLv = parseFloat((gameState.actions.find(a => a.Action_Name === '캐논볼') || {}).Require_Level) || 5;
 
     if (guideContent) {
-        const modeText = gameState.gameMode === 'STAGE' ? '스테이지 진행' : '자유 소환';
-        const testText = gameState.isTestMode ? 'ON' : 'OFF';
-        const autoSpawnText = gameState.isAutoSpawn ? 'ON' : 'OFF';
-
         guideContent.innerHTML = `
-            <span class="key-hint">방향키</span> 8방향 이동 (X, Y축)<br>
-            <span class="key-hint">C</span> 점프 &nbsp; <span class="key-hint">Z</span> 대쉬 (Lv.${dashReqLv})<br>
-            <span class="key-hint">X</span> 평타 &nbsp; <span class="key-hint">F</span> 무기 스왑 (Lv.${swapReqLv})<br>
-            <span class="key-hint">A</span> 웨이브 (Lv.${waveReqLv}) &nbsp; <span class="key-hint">S</span> 캐논볼 (Lv.${cannonReqLv})<br>
-            <span class="key-hint">F6</span> 모드 전환 (${modeText})<br>
-            <span class="key-hint">T</span> 테스트 모드 (${testText})<br>
-            <span class="key-hint">V</span> 3D 히트박스 디버그<br>
-            ${gameState.gameMode === 'FREE_SPAWN'
-                ? `<span class="key-hint">1~9</span> 몬스터 스포너 / 보스 강림<br><span class="key-hint">자동 스폰</span> ${autoSpawnText}`
-                : `<span class="key-hint">목표</span> 적 처치 후 다음 워프 개방`
-            }
+            <div class="control-guide-card">
+                <div class="control-guide-title">기본 이동</div>
+                <div class="control-row"><span class="keycap">방향키</span><span>8방향 이동</span></div>
+                <div class="control-row"><span class="keycap">더블 탭</span><span>같은 방향키 빠르게 2회 + 유지</span></div>
+                <div class="control-row"><span class="keycap">C</span><span>점프</span></div>
+                <div class="control-row"><span class="keycap">Z</span><span>대쉬</span></div>
+            </div>
+            <div class="control-guide-card">
+                <div class="control-guide-title">전투 조작</div>
+                <div class="control-row"><span class="keycap">X</span><span>기본 공격</span></div>
+                <div class="control-row"><span class="keycap">F</span><span>무기 / 공격 모드 전환</span></div>
+                <div class="control-row"><span class="keycap guard">D</span><span>타이밍 가드</span></div>
+                <div class="control-row"><span class="keycap">A</span><span>웨이브</span></div>
+                <div class="control-row"><span class="keycap">S</span><span>캐논볼</span></div>
+            </div>
+            <div class="control-guide-card">
+                <div class="control-guide-title">디버그</div>
+                <div class="control-row"><span class="keycap debug">V</span><span>히트박스 표시</span></div>
+                <div class="control-row"><span class="keycap debug">T</span><span>테스트 모드</span></div>
+                <div class="control-row"><span class="keycap debug">R</span><span>사망 시 부활</span></div>
+            </div>
         `;
     }
 
-    controls.innerHTML = '';
+    if (controls) controls.innerHTML = '';
+
+    if (gameState.gameMode === 'BOSS') {
+        if (!document.getElementById('bossAIPanel') && controls) {
+            controls.innerHTML = `<div id="bossAIPanel" class="boss-ai-panel"></div>`;
+        }
+        return;
+    }
+
+    if (!controls) return;
 
     if (gameState.gameMode === 'STAGE') {
         const stage = gameState.currentStage;
@@ -1550,6 +1651,349 @@ window.toggleGuide = function() {
     }
 };
 
+function escapeDebugHtml(value) {
+    return String(value === null || value === undefined ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function formatDebugNumber(value, digits = 1) {
+    const n = parseFloat(value);
+    if (isNaN(n)) return '0';
+    return n.toFixed(digits);
+}
+
+
+function cloneBossDebugValue(value, depth = 0) {
+    if (depth > 5) return null;
+    if (value === null || value === undefined) return value;
+    if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') return value;
+    if (Array.isArray(value)) return value.slice(0, 50).map(v => cloneBossDebugValue(v, depth + 1));
+    if (typeof value === 'object') {
+        const out = {};
+        for (const key of Object.keys(value)) {
+            if (typeof value[key] === 'function') continue;
+            out[key] = cloneBossDebugValue(value[key], depth + 1);
+        }
+        return out;
+    }
+    return String(value);
+}
+
+function getBossDebugExportSnapshot() {
+    const debug = gameState.bossDebug || {};
+    const target = gameState.targetUI && gameState.targetUI.monster ? gameState.targetUI.monster : null;
+    const boss = target && target.boss ? target.boss : null;
+    const hpRate = target ? (Math.max(0, parseFloat(target.hp) || 0) / Math.max(1, parseFloat(target.maxHp) || 1)) : 0;
+
+    return {
+        exportedAt: new Date().toISOString(),
+        gameMode: gameState.gameMode || '',
+        boss: target ? {
+            name: target.name || target.Character_Name || target.Dev_Name || '',
+            hp: parseFloat(target.hp) || 0,
+            maxHp: parseFloat(target.maxHp) || 0,
+            hpRate: hpRate,
+            active: !!target.active,
+            phaseId: boss ? boss.phaseId : '',
+            patternSetId: boss ? boss.patternSetId : '',
+            isLatePhase: boss ? !!boss.isLatePhase : false,
+            activePatternId: boss && boss.activePattern ? String(boss.activePattern.Pattern_ID || '') : '',
+            activePatternName: boss && boss.activePattern ? (boss.activePattern.Pattern_Name || boss.activePattern.Dev_Name || '') : ''
+        } : null,
+        patternCheck: cloneBossDebugValue(debug.patternCheck || null),
+        currentAction: cloneBossDebugValue(debug.currentAction || null),
+        currentObjectAction: cloneBossDebugValue(debug.currentObjectAction || null),
+        logs: Array.isArray(debug.exportLogs) && debug.exportLogs.length > 0
+            ? cloneBossDebugValue(debug.exportLogs)
+            : cloneBossDebugValue(Array.isArray(debug.logs) ? debug.logs.slice().reverse() : [])
+    };
+}
+
+function makeBossDebugLogFileName(ext) {
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const stamp = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    return `kasiyas_boss_ai_log_${stamp}.${ext}`;
+}
+
+function downloadBossDebugText(filename, text, mimeType) {
+    const blob = new Blob([text], { type: mimeType || 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+        URL.revokeObjectURL(url);
+        a.remove();
+    }, 0);
+}
+
+function formatBossDebugText(snapshot) {
+    const lines = [];
+    lines.push('카시야스 보스 AI / 패턴 로그');
+    lines.push(`Exported At: ${snapshot.exportedAt}`);
+    lines.push('');
+
+    if (snapshot.boss) {
+        lines.push('[Boss]');
+        lines.push(`Name: ${snapshot.boss.name}`);
+        lines.push(`HP: ${snapshot.boss.hp} / ${snapshot.boss.maxHp} (${(snapshot.boss.hpRate * 100).toFixed(1)}%)`);
+        lines.push(`Phase: ${snapshot.boss.phaseId} / Pattern Set: ${snapshot.boss.patternSetId} / Late Phase: ${snapshot.boss.isLatePhase ? 'ON' : 'OFF'}`);
+        lines.push(`Active Pattern: ${snapshot.boss.activePatternId} ${snapshot.boss.activePatternName}`);
+        lines.push('');
+    }
+
+    if (snapshot.patternCheck) {
+        const pc = snapshot.patternCheck;
+        lines.push('[Pattern Check]');
+        lines.push(`Status: ${pc.status || ''} / Ready: ${pc.readyCount || 0} / Dist X:${formatDebugNumber(pc.distX, 0)} Y:${formatDebugNumber(pc.distY, 0)}`);
+        if (pc.selected) {
+            lines.push(`Selected: ${pc.selected.patternId || ''} ${pc.selected.name || ''} / Roll ${formatDebugNumber(pc.selected.roll, 2)} / ${formatDebugNumber(pc.selected.totalWeight, 2)}`);
+        }
+        if (Array.isArray(pc.checks)) {
+            for (const c of pc.checks) {
+                lines.push(`- ${c.patternId || '-'} ${c.name || ''}: ${c.ok ? 'READY' : (c.reason || 'OUT')} / cd ${formatDebugNumber(c.cooldown, 2)} / p ${formatDebugNumber(c.priority, 0)} / w ${formatDebugNumber(c.weight, 0)} / range ${formatDebugNumber(c.useRangeX, 0)}x${formatDebugNumber(c.useRangeY, 0)}`);
+            }
+        }
+        lines.push('');
+    }
+
+    if (snapshot.currentAction) {
+        const a = snapshot.currentAction;
+        lines.push('[Current Boss Action]');
+        lines.push(`${a.actionId || '-'} ${a.actionName || ''} / ${a.actionType || ''} / order ${a.order || ''}`);
+        lines.push(`Hitbox: ${a.hitboxType || 'NONE'} / Hit ${formatDebugNumber(a.hitStart, 2)}-${formatDebugNumber(a.hitEnd, 2)} / Guard ${a.canGuard ? 'YES' : 'NO'}`);
+        lines.push('');
+    }
+
+    if (snapshot.currentObjectAction) {
+        const oa = snapshot.currentObjectAction;
+        lines.push('[Current Object Action]');
+        lines.push(`${oa.actionId || '-'} ${oa.actionName || ''} / object ${oa.objectId || '-'} / ${oa.actionType || ''}`);
+        lines.push(`Hitbox: ${oa.hitboxType || 'NONE'} / Duration ${formatDebugNumber(oa.duration, 2)} / Guard ${oa.canGuard ? 'YES' : 'NO'}`);
+        lines.push('');
+    }
+
+    lines.push('[Event Logs]');
+    const logs = Array.isArray(snapshot.logs) ? snapshot.logs : [];
+    if (logs.length <= 0) {
+        lines.push('No logs.');
+    } else {
+        for (const log of logs) {
+            const time = log.time || log.absoluteTime || '';
+            const type = log.type || 'INFO';
+            const detail = log.detail ? ` / ${log.detail}` : '';
+            lines.push(`${time} [${type}] ${log.message || ''}${detail}`);
+        }
+    }
+
+    return lines.join('\n');
+}
+
+function exportBossDebugLog(format = 'txt') {
+    const snapshot = getBossDebugExportSnapshot();
+    const fmt = String(format || 'txt').toLowerCase();
+
+    if (fmt === 'json') {
+        downloadBossDebugText(
+            makeBossDebugLogFileName('json'),
+            JSON.stringify(snapshot, null, 2),
+            'application/json;charset=utf-8'
+        );
+        return;
+    }
+
+    downloadBossDebugText(
+        makeBossDebugLogFileName('txt'),
+        formatBossDebugText(snapshot),
+        'text/plain;charset=utf-8'
+    );
+}
+
+function clearBossDebugLog() {
+    if (!gameState.bossDebug) return;
+    gameState.bossDebug.logs = [];
+    gameState.bossDebug.exportLogs = [];
+    gameState.bossDebug.patternCheck = null;
+    gameState.bossDebug.currentAction = null;
+    gameState.bossDebug.currentObjectAction = null;
+    renderBossAIPanel(gameState);
+    renderBossPatternLogPanel(gameState);
+}
+
+function renderBossAIPanel(gameState) {
+    const panel = document.getElementById('bossAIPanel');
+    if (!panel) return;
+
+    const debug = gameState.bossDebug || {};
+    const target = gameState.targetUI && gameState.targetUI.monster ? gameState.targetUI.monster : null;
+    const boss = target && target.boss ? target.boss : null;
+    const patternCheck = debug.patternCheck || null;
+    const action = debug.currentAction || null;
+    const objectAction = debug.currentObjectAction || null;
+    const logs = Array.isArray(debug.logs) ? debug.logs : [];
+
+    if (!target || !target.active || !boss) {
+        panel.innerHTML = `
+            <div class="boss-ai-title">보스 AI 상태</div>
+            <div class="boss-ai-empty">보스 런타임 대기 중...</div>
+        `;
+        return;
+    }
+
+    const hpRate = Math.max(0, Math.min(1, (parseFloat(target.hp) || 0) / Math.max(1, parseFloat(target.maxHp) || 1)));
+    const currentPattern = boss.activePattern
+        ? `${String(boss.activePattern.Pattern_ID || '').trim()} ${boss.activePattern.Pattern_Name || boss.activePattern.Dev_Name || ''}`
+        : 'none';
+
+    let html = `
+        <div class="boss-ai-title">보스 AI 상태</div>
+        <div class="boss-ai-section">
+            <div><span class="boss-ai-key">Set</span> ${escapeDebugHtml(boss.patternSetId || '-')} / <span class="boss-ai-key">Phase</span> ${escapeDebugHtml(boss.phaseId || '-')}</div>
+            <div><span class="boss-ai-key">HP</span> ${(hpRate * 100).toFixed(1)}% / <span class="boss-ai-key">Late</span> ${boss.isLatePhase ? 'ON' : 'OFF'}</div>
+            <div><span class="boss-ai-key">Pattern</span> ${escapeDebugHtml(currentPattern)}</div>
+        </div>
+    `;
+
+    if (patternCheck) {
+        const statusText = patternCheck.status === 'WAIT'
+            ? `wait ${formatDebugNumber(patternCheck.noPatternWaitTimer, 2)}s`
+            : `${patternCheck.readyCount || 0} ready`;
+
+        html += `
+            <div class="boss-ai-subtitle">패턴 후보 검사</div>
+            <div class="boss-ai-section">
+                <div><span class="boss-ai-key">Status</span> ${escapeDebugHtml(statusText)}</div>
+                <div><span class="boss-ai-key">Dist</span> X ${formatDebugNumber(patternCheck.distX, 0)} / Y ${formatDebugNumber(patternCheck.distY, 0)}</div>
+            </div>
+        `;
+
+        const checks = Array.isArray(patternCheck.checks) ? patternCheck.checks.slice(0, 7) : [];
+        for (const check of checks) {
+            const stateClass = check.ok ? 'ready' : 'out';
+            const reason = check.ok ? 'READY' : (check.reason || 'OUT');
+            html += `
+                <div class="boss-ai-candidate ${stateClass}">
+                    <div><b>${escapeDebugHtml(check.patternId || '-')}</b> ${escapeDebugHtml(check.name || '')}</div>
+                    <div class="boss-ai-small">
+                        ${escapeDebugHtml(reason)}
+                        / cd ${formatDebugNumber(check.cooldown, 1)}
+                        / p ${formatDebugNumber(check.priority, 0)}
+                        / w ${formatDebugNumber(check.weight, 0)}
+                    </div>
+                </div>
+            `;
+        }
+
+        if (patternCheck.selected) {
+            html += `
+                <div class="boss-ai-selected">
+                    선택됨: <b>${escapeDebugHtml(patternCheck.selected.patternId)}</b>
+                    ${escapeDebugHtml(patternCheck.selected.name || '')}
+                    <div class="boss-ai-small">roll ${formatDebugNumber(patternCheck.selected.roll, 1)} / ${formatDebugNumber(patternCheck.selected.totalWeight, 1)}</div>
+                </div>
+            `;
+        }
+    }
+
+    if (action) {
+        html += `
+            <div class="boss-ai-subtitle">현재 액션</div>
+            <div class="boss-ai-action">
+                <div><b>${escapeDebugHtml(action.actionId || '-')}</b> ${escapeDebugHtml(action.actionName || '')}</div>
+                <div class="boss-ai-small">loop ${action.loopIndex}/${action.loopCount} / order ${action.order} / ${escapeDebugHtml(action.actionType)}</div>
+                <div class="boss-ai-small">move ${escapeDebugHtml(action.moveType)} / hitbox ${escapeDebugHtml(action.hitboxType)}</div>
+                <div class="boss-ai-small">hit ${formatDebugNumber(action.hitStart, 2)}-${formatDebugNumber(action.hitEnd, 2)} / guard ${action.canGuard ? 'YES' : 'NO'}</div>
+            </div>
+        `;
+    }
+
+    if (objectAction) {
+        html += `
+            <div class="boss-ai-subtitle">오브젝트 액션</div>
+            <div class="boss-ai-action">
+                <div><b>${escapeDebugHtml(objectAction.actionId || '-')}</b> ${escapeDebugHtml(objectAction.actionName || '')}</div>
+                <div class="boss-ai-small">object ${escapeDebugHtml(objectAction.objectId || '-')} / order ${objectAction.order} / ${escapeDebugHtml(objectAction.actionType || '')}</div>
+                <div class="boss-ai-small">hitbox ${escapeDebugHtml(objectAction.hitboxType || 'NONE')} / hit ${formatDebugNumber(objectAction.hitStart, 2)}-${formatDebugNumber(objectAction.hitEnd, 2)}</div>
+                <div class="boss-ai-small">guard ${objectAction.canGuard ? 'YES' : 'NO'} / duration ${formatDebugNumber(objectAction.duration, 2)}s</div>
+            </div>
+        `;
+    }
+
+    html += `<div class="boss-ai-subtitle">최근 로그</div>`;
+    if (logs.length <= 0) {
+        html += `<div class="boss-ai-empty">아직 보스 이벤트가 없습니다.</div>`;
+    } else {
+        for (const log of logs.slice(0, 7)) {
+            html += `
+                <div class="boss-ai-log">
+                    <span class="boss-ai-log-type">${escapeDebugHtml(log.type || 'INFO')}</span>
+                    ${escapeDebugHtml(log.message || '')}
+                    ${log.detail ? `<div class="boss-ai-small">${escapeDebugHtml(log.detail)}</div>` : ''}
+                </div>
+            `;
+        }
+    }
+
+    panel.innerHTML = html;
+}
+
+
+function renderBossPatternLogPanel(gameState) {
+    const panel = document.getElementById('bossPatternLogPanel');
+    if (!panel) return;
+
+    const debug = gameState.bossDebug || {};
+    const allLogs = Array.isArray(debug.logs) ? debug.logs : [];
+
+    const typeMap = {
+        SELECT: '선택',
+        ACTION: '액션',
+        HIT: '판정',
+        OBJECT: '오브젝트',
+        OBJECT_ACTION: '오브젝트 액션',
+        OBJECT_HIT: '오브젝트 판정',
+        OBJECT_SKIP: '오브젝트 스킵',
+        OBJECT_END: '오브젝트 종료',
+        SKIP: '스킵',
+        END: '종료',
+        INFO: '정보'
+    };
+
+    if (allLogs.length <= 0) {
+        panel.innerHTML = `<div class="boss-pattern-log-item">보스 패턴 로그 대기 중...</div>`;
+        return;
+    }
+
+    // 최신 SELECT 이후의 이벤트만 표시한다.
+    // 즉, 새 패턴이 선택되면 이전 패턴 로그는 좌측 패널에서 자동으로 사라진다.
+    const selectIndex = allLogs.findIndex(log => String(log.type || '').trim().toUpperCase() === 'SELECT');
+    const currentLogs = selectIndex >= 0 ? allLogs.slice(0, selectIndex + 1) : allLogs.slice(0, 8);
+
+    panel.innerHTML = currentLogs.slice(0, 9).map(log => {
+        const rawType = String(log.type || 'INFO').trim().toUpperCase();
+        const type = typeMap[rawType] || rawType;
+        const time = escapeDebugHtml(log.time || '');
+        const message = escapeDebugHtml(log.message || '');
+        const detail = log.detail ? `<div class="boss-pattern-log-detail">${escapeDebugHtml(log.detail)}</div>` : '';
+
+        return `
+            <div class="boss-pattern-log-item">
+                <span class="boss-pattern-log-type">${type}</span>
+                <span class="boss-pattern-log-time">${time}</span>
+                <div>${message}</div>
+                ${detail}
+            </div>
+        `;
+    }).join('');
+}
+
 function updateHUD() {
     let p = gameState.player;
     if (!p || !p.active) return;
@@ -1635,6 +2079,21 @@ function updateHUD() {
             if (maskEl) maskEl.style.height = clamp(ratio, 0, 100) + '%';
         };
 
+        const setCombatMeter = (rootId, fillId, textId, ratio, text, state = 'ready') => {
+            const rootEl = getEl(rootId);
+            const fillEl = getEl(fillId);
+            const textEl = getEl(textId);
+            const safeRatio = clamp(ratio, 0, 100);
+
+            if (rootEl) {
+                rootEl.classList.remove('ready', 'empty', 'active', 'recover', 'cooldown');
+                if (state) rootEl.classList.add(state);
+                if (safeRatio <= 0.01) rootEl.classList.add('empty');
+            }
+            if (fillEl) fillEl.style.width = safeRatio + '%';
+            if (textEl) textEl.innerText = text;
+        };
+
         let swapAct = gameState.actions.find(a => a.Action_Name === '공격 모드 변경');
         let swapReq = swapAct ? (parseFloat(swapAct.Require_Level) || 0) : 0;
         let swapRatio = (swapAct && p.skillCooldowns[swapAct.Action_Name] > 0)
@@ -1652,6 +2111,104 @@ function updateHUD() {
         let guardRatio = Math.max(0, (p.guardCooldownTimer || 0) / (p.maxGuardCooldown || (parseFloat(guardAct && guardAct.Cooltime) || 1))) * 100;
         setLockAndMask('lockGuard', 'maskGuard', p.level >= guardReq, guardRatio);
 
+        if (p.state === 'Guard' && p.maxGuardTimer > 0) {
+            const remain = Math.max(0, p.guardTimer || 0);
+            setCombatMeter(
+                'combatMeterGuard',
+                'combatMeterGuardFill',
+                'combatMeterGuardText',
+                (remain / Math.max(0.01, p.maxGuardTimer)) * 100,
+                `🛡 가드 ${remain.toFixed(1)}`,
+                'active'
+            );
+        } else if ((p.guardCooldownTimer || 0) > 0 && (p.maxGuardCooldown || 0) > 0) {
+            const remain = Math.max(0, p.guardCooldownTimer || 0);
+            const progress = (1 - remain / Math.max(0.01, p.maxGuardCooldown || 1)) * 100;
+            setCombatMeter(
+                'combatMeterGuard',
+                'combatMeterGuardFill',
+                'combatMeterGuardText',
+                progress,
+                `🛡 회복 ${remain.toFixed(1)}`,
+                'recover'
+            );
+        } else {
+            setCombatMeter('combatMeterGuard', 'combatMeterGuardFill', 'combatMeterGuardText', 100, '🛡 가드 준비', 'ready');
+        }
+
+        if ((p.stanceSwapTimer || 0) > 0 && (p.maxStanceSwap || 0) > 0) {
+            const remain = Math.max(0, p.stanceSwapTimer || 0);
+            const progress = (1 - remain / Math.max(0.01, p.maxStanceSwap || 1)) * 100;
+            setCombatMeter(
+                'combatMeterSwap',
+                'combatMeterSwapFill',
+                'combatMeterSwapText',
+                progress,
+                `🔄 전환 ${remain.toFixed(1)}`,
+                'cooldown'
+            );
+        } else {
+            setCombatMeter('combatMeterSwap', 'combatMeterSwapFill', 'combatMeterSwapText', 100, '🔄 전환 준비', 'ready');
+        }
+
+        if ((p.rapidAtkCooldownTimer || 0) > 0 && (p.maxRapidAtkCd || 0) > 0) {
+            const remain = Math.max(0, p.rapidAtkCooldownTimer || 0);
+            const progress = (1 - remain / Math.max(0.01, p.maxRapidAtkCd || 1)) * 100;
+            setCombatMeter(
+                'combatMeterCombo',
+                'combatMeterComboFill',
+                'combatMeterComboText',
+                progress,
+                `⚔ 연격 ${remain.toFixed(1)}`,
+                'cooldown'
+            );
+        } else {
+            setCombatMeter('combatMeterCombo', 'combatMeterComboFill', 'combatMeterComboText', 100, '⚔ 연격 준비', 'ready');
+        }
+
+
+        const bossCastGauge = getEl('bossCastGauge');
+        const bossCastGaugeFill = getEl('bossCastGaugeFill');
+        const bossCastGaugeText = getEl('bossCastGaugeText');
+        const activeBossForCast = (gameState.monsters || []).find(m => m && m.active && (m.hp || 0) > 0 && m.state !== 'DEAD' && m.state !== 'DIE' && m.boss && m.boss.action);
+        let showBossCastGauge = false;
+        if (activeBossForCast && activeBossForCast.boss && activeBossForCast.boss.action) {
+            const castAction = activeBossForCast.boss.action;
+            const pose = String(castAction.Action_Pose_Type || '').trim().toUpperCase();
+            const effect = String(castAction.VFX_Type || castAction.Effect_Render_Type || '').trim().toUpperCase();
+            const actionId = String(castAction.Action_ID || '').trim();
+            const isHeavySlashCast = actionId === '241021' || pose === 'POSE_KASIYAS_CHARGE_SLASH_DOWN' || effect === 'EFT_KASIYAS_CHARGE_SLASH_DOWN';
+            if (isHeavySlashCast) {
+                let hitStart = parseFloat(castAction.Hitbox_Start_Time);
+                try {
+                    if (typeof MonsterManager !== 'undefined' && MonsterManager.getBossActionHitWindow) {
+                        const hw = MonsterManager.getBossActionHitWindow(activeBossForCast, castAction);
+                        if (hw && isFinite(hw.start) && hw.start > 0) hitStart = hw.start;
+                    }
+                } catch (e) {}
+                if (!isFinite(hitStart) || hitStart <= 0) hitStart = parseFloat(castAction.Action_Anim_Duration) || 1;
+                const timer = Math.max(0, parseFloat(activeBossForCast.timer) || 0);
+                const ratio = clamp((timer / Math.max(0.01, hitStart)) * 100, 0, 100);
+                const remain = Math.max(0, hitStart - timer);
+                showBossCastGauge = true;
+                if (bossCastGauge) {
+                    bossCastGauge.classList.remove('hidden');
+                    bossCastGauge.classList.toggle('danger', ratio >= 96);
+                }
+                if (bossCastGaugeFill) bossCastGaugeFill.style.width = ratio + '%';
+                if (bossCastGaugeText) {
+                    bossCastGaugeText.innerText = ratio >= 100
+                        ? '⚠ 강화 내려베기 발동'
+                        : `강화 내려베기 시전 ${remain.toFixed(1)}s`;
+                }
+            }
+        }
+        if (!showBossCastGauge && bossCastGauge) {
+            bossCastGauge.classList.add('hidden');
+            bossCastGauge.classList.remove('danger');
+            if (bossCastGaugeFill) bossCastGaugeFill.style.width = '0%';
+        }
+
         let waveAct = gameState.actions.find(a => a.Action_Name && a.Action_Name.includes('웨이브'));
         let waveReq = waveAct ? (parseFloat(waveAct.Require_Level) || 5) : 5;
         let waveRatio = (waveAct && p.skillCooldowns[waveAct.Action_Name] > 0)
@@ -1668,37 +2225,40 @@ function updateHUD() {
 
         let debugPanel = getEl('hudDebug');
         if (debugPanel) {
-            let html = `<b style="color:#3498db;">[Player]</b> X:${Math.round(p.x)} Y:${Math.round(p.y)} Z:${Math.round(p.z)}<br>`;
-            html += `<b style="color:#2ecc71;">[Mode]</b> ${gameState.gameMode} | Test:${gameState.isTestMode ? 'ON' : 'OFF'} | Stance:${p.stance}<br>`;
-            html += `<b style="color:#2ecc71;">[Spawners]</b> Active: ${gameState.spawners.length} | Entities: ${gameState.monsters.filter(m => m.active).length}<br>`;
+            const bossTarget = gameState.targetUI && gameState.targetUI.monster && gameState.targetUI.monster.active
+                ? gameState.targetUI.monster
+                : null;
+            const bossRuntime = bossTarget && bossTarget.boss ? bossTarget.boss : null;
+            const guardText = p.guardTimer > 0
+                ? `ACTIVE ${formatDebugNumber(p.guardTimer, 2)}s`
+                : (p.guardCooldownTimer > 0 ? `COOLDOWN ${formatDebugNumber(p.guardCooldownTimer, 2)}s` : 'READY');
+            const runText = p.isRunning || p.runActive ? 'ON' : 'OFF';
 
-            if (gameState.currentStage && gameState.gameMode === 'STAGE') {
-                html += `<b style="color:#f1c40f;">[Stage]</b> ${gameState.currentStage.Stage_ID} - ${gameState.currentStage.Stage_Name}<br>`;
-                html += `<b style="color:#9b59b6;">[Theme]</b> ${gameState.currentStage.Stage_Background_Type || 'DEFAULT'}<br>`;
-                html += `<b style="color:#95a5a6;">[Clear]</b> ${gameState.isStageCleared ? 'YES' : 'NO'}<br>`;
-                if (gameState.activeWarp) {
-                    html += `<b style="color:#8e44ad;">[Warp]</b> X:${Math.round(gameState.activeWarp.x)} Y:${Math.round(gameState.activeWarp.y)} -> ${gameState.activeWarp.targetStageId}<br>`;
-                }
+            let html = `<b style="color:#7fc6ff;">[Player]</b> Pos X:${Math.round(p.x)} Y:${Math.round(p.y)} Z:${Math.round(p.z)} | HP:${Math.max(0, p.hp).toFixed(0)}/${p.maxHp}<br>`;
+            html += `<b style="color:#2ecc71;">[Control]</b> Stance:${p.stance} | Run:${runText} | Guard:${guardText}<br>`;
+            html += `<b style="color:#f1c40f;">[Battle]</b> Mode: Boss Battle | Debug View:${gameState.isDebugView ? 'ON' : 'OFF'} | Test:${gameState.isTestMode ? 'ON' : 'OFF'}<br>`;
+
+            if (bossTarget) {
+                const hpRate = Math.max(0, (bossTarget.hp || 0) / Math.max(1, bossTarget.maxHp || 1));
+                const activePattern = bossRuntime && bossRuntime.activePattern
+                    ? `${bossRuntime.activePattern.Pattern_ID || ''} ${bossRuntime.activePattern.Pattern_Name || bossRuntime.activePattern.Dev_Name || ''}`
+                    : '기본 추적 / 대기';
+                const currentAction = bossRuntime && bossRuntime.action
+                    ? `${bossRuntime.action.Action_ID || ''} ${bossRuntime.action.Action_Name || bossRuntime.action.Dev_Name || ''}`
+                    : '-';
+                const dist = getDistance2D(p.x, p.y, bossTarget.x, bossTarget.y) - (p.bodyX * p.scale / 2) - (bossTarget.d.bodyX * bossTarget.scale / 2);
+
+                html += `<b style="color:#f4d36a;">[Boss]</b> ${bossTarget.d.name} | HP:${Math.max(0, bossTarget.hp).toFixed(0)}/${bossTarget.maxHp} (${(hpRate * 100).toFixed(1)}%) | Dist:${Math.round(dist)}<br>`;
+                html += `<b style="color:#caa7ff;">[Pattern]</b> ${activePattern} | Action:${currentAction} | Late:${bossRuntime && bossRuntime.isLatePhase ? 'ON' : 'OFF'}<br>`;
             }
 
-            if (gameState.targetUI.monster && gameState.targetUI.monster.active) {
-                const m = gameState.targetUI.monster;
-                const d = m.d;
-                const debugStateKey = MonsterAI.resolveRuntimeState(m.state, gameState, m);
-                let dist = getDistance2D(p.x, p.y, m.x, m.y) - (p.bodyX * p.scale / 2) - (d.bodyX * m.scale / 2);
-                const monsterGrade = String(d.grade || '').trim().toUpperCase();
-                const isBoss = monsterGrade.includes('BOSS') || String(m.id || '').startsWith('B');
-                const prefix = m.isChampion ? "[엘리트] " : (isBoss ? "[보스] " : "");
-                const tColor = isBoss ? '#f1c40f' : (m.isChampion ? '#e74c3c' : '#e67e22');
-
-                html += `<b style="color:${tColor};">[Target]</b> ${prefix}${d.name} | HP: ${Math.max(0, m.hp).toFixed(0)}/${m.maxHp} | State: ${debugStateKey} | Dist: ${Math.round(dist)}<br>`;
-                if (debugStateKey === 'P_Evade') html += `<span style="color:#e74c3c;">[Evading]</span><br>`;
-                if (m.isChampion) html += `<span style="color:#e74c3c;">[Champion]</span><br>`;
-                if (m.spawnSource) html += `<span style="color:#95a5a6;">[Source] ${m.spawnSource}${m.isStageBoss ? ' / BOSS' : ''}</span><br>`;
-            }
+            html += `<b style="color:#95a5a6;">[Runtime]</b> Projectiles:${gameState.projectiles.length} | BossObjects:${(gameState.bossAttackObjects || []).length} | Hitboxes:${gameState.hitboxes.length} | Effects:${gameState.effects.length}<br>`;
 
             debugPanel.innerHTML = html;
         }
+
+        renderBossAIPanel(gameState);
+        renderBossPatternLogPanel(gameState);
 
         const systemNoticeUI = getEl('systemNoticeUI');
         if (systemNoticeUI) {

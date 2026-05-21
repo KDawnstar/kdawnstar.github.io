@@ -249,12 +249,28 @@ const PlayerAction = {
 
         if (guardAct) {
             const guardKey = getEngineKeyCode(guardAct.Input_Key);
-            const guardCd = parseFloat(guardAct.Cooltime) || 0;
-            const guardDur = Math.max(0.05, parseFloat(guardAct.Action_Anim_Duration) || 0.6);
+            const isGuardHeld = !!(guardKey && keys[guardKey]);
+            const guardMaxHold = Math.max(
+                0.15,
+                parseFloat(guardAct.Guard_Max_Hold_Time) ||
+                1.5
+            );
+            const guardRecover = Math.max(
+                0,
+                parseFloat(guardAct.Guard_Recover_Time) ||
+                1.0
+            );
+
+            if (player.state === 'Guard' && !isGuardHeld) {
+                // 직접 키를 떼서 해제한 경우에는 회복 시간을 주지 않는다.
+                player.state = 'Idle';
+                player.guardTimer = 0;
+                player.guardForcedRecover = false;
+            }
 
             if (
                 guardKey &&
-                keys[guardKey] &&
+                isGuardHeld &&
                 player.guardCooldownTimer <= 0 &&
                 player.state !== 'Guard' &&
                 player.state !== 'Dash' &&
@@ -265,10 +281,11 @@ const PlayerAction = {
                 player.isGrounded
             ) {
                 player.state = 'Guard';
-                player.guardTimer = guardDur;
-                player.maxGuardTimer = guardDur;
-                player.guardCooldownTimer = guardCd;
-                player.maxGuardCooldown = guardCd;
+                player.guardTimer = guardMaxHold;
+                player.maxGuardTimer = guardMaxHold;
+                player.guardCooldownTimer = 0;
+                player.maxGuardCooldown = guardRecover;
+                player.guardForcedRecover = false;
                 player.guardDirection = guardAct.Guard_Direction || 'CASTER_FRONT';
                 player.guardDefenceType = guardAct.Guard_Defence_Type || 'SUPER_ARMOR';
                 player.isRunning = false;
@@ -284,8 +301,6 @@ const PlayerAction = {
                     w: player.bodyX * player.scale,
                     h: player.bodyZ * player.scale
                 });
-
-                keys[guardKey] = false;
             }
         }
 

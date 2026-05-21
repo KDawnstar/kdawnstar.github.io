@@ -25,7 +25,7 @@ const PlayerManager = {
             invincibleTimer: 0, atkTimer: 0, stanceSwapTimer: 0, maxStanceSwap: 0, rapidAtkCount: 0, rapidAtkAllowTimer: 0, maxRapidAllow: 0, rapidAtkCooldownTimer: 0, maxRapidAtkCd: 0.5, 
             dashCooldownTimer: 0, maxDashCd: 1.0, dashTimer: 0, dashSpeedX: 0, dashSpeedY: 0, ghostTimer: 0, bubbleCooldown: 0,
             isRunning: false, runDirection: null, runSpeedRate: 1.5, movePrevKeys: { LEFT: false, RIGHT: false, UP: false, DOWN: false }, lastMoveTapDir: null, lastMoveTapTimer: 0,
-            guardTimer: 0, maxGuardTimer: 0, guardCooldownTimer: 0, maxGuardCooldown: 0, guardSuccessTimer: 0, guardDirection: 'CASTER_FRONT', guardDefenceType: 'SUPER_ARMOR',
+            guardTimer: 0, maxGuardTimer: 0, guardCooldownTimer: 0, maxGuardCooldown: 0, guardSuccessTimer: 0, guardDirection: 'CASTER_FRONT', guardDefenceType: 'SUPER_ARMOR', guardForcedRecover: false,
             skillCooldowns: {}, freezeTimer: 0, maxFreezeTimer: 0, mashReduced: 0
         };
         gameState.actions = (actionData || []).map(a => ({
@@ -47,7 +47,7 @@ const PlayerManager = {
         gameState.floatingTexts.push({x: p.x, y: p.y, z: p.z + p.bodyZ, text: "✨ 부활!", color: "#f1c40f", size: "32px", timer: 1.0});
     },
 
-    isGuardableHit: function(player, srcX, guardInfo) {
+    isGuardableHit: function(player, srcX, srcY, guardInfo) {
         if (!player || player.guardTimer <= 0 || player.state !== 'Guard') return false;
         if (!guardInfo) return false;
 
@@ -58,33 +58,64 @@ const PlayerManager = {
         const direction = String(player.guardDirection || 'CASTER_FRONT').trim().toUpperCase();
         if (direction === 'ALL' || direction === 'ALL_DIRECTION') return true;
 
-        const dx = (parseFloat(srcX) || player.x) - player.x;
-        if (Math.abs(dx) < 8) return true;
-        return dx * (player.faceDir === -1 ? -1 : 1) >= 0;
+        // 카시야스 보스전 가드는 타이밍형 가드이므로, 정면 판정은 너무 엄격하지 않게 둔다.
+        // 공격 중심점이 플레이어의 약간 뒤쪽으로 잡히는 넓은 검격/돌진도 전방 가드로 받아낼 수 있게 보정한다.
+        const safeSrcX = parseFloat(srcX);
+        const safeSrcY = parseFloat(srcY);
+        const dx = (isNaN(safeSrcX) ? player.x : safeSrcX) - player.x;
+        const dy = (isNaN(safeSrcY) ? player.y : safeSrcY) - player.y;
+        const faceSign = player.faceDir === -1 ? -1 : 1;
+        const signedDx = dx * faceSign;
+        const bodyX = (parseFloat(player.bodyX) || 60) * (parseFloat(player.scale) || 1);
+        const bodyY = (parseFloat(player.bodyY) || 40) * (parseFloat(player.scale) || 1);
+        const rearTolerance = Math.max(48, bodyX * 0.9);
+        const sideTolerance = Math.max(140, bodyY * 3.0);
+
+        if (Math.abs(dx) <= rearTolerance * 0.45) return true;
+        if (Math.abs(dy) > sideTolerance && signedDx < 0) return false;
+        return signedDx >= -rearTolerance;
     },
 
     takeDamage: function(gameState, finalDmg, srcX, srcY, sType, sDur, sProb, guardInfo = null) {
         let p = gameState.player; if (p.state === 'Die') return;
 
-        if (this.isGuardableHit(p, srcX, guardInfo)) {
+        if (this.isGuardableHit(p, srcX, srcY, guardInfo)) {
             p.guardSuccessTimer = 0.24;
             p.kbVx = 0;
             p.kbVy = 0;
+
+            const guardResult = String(guardInfo && guardInfo.guardResult || '').trim().toUpperCase();
+            const reduceRateRaw = parseFloat(guardInfo && guardInfo.guardDmgReduceRate);
+            const reduceRate = !isNaN(reduceRateRaw) && reduceRateRaw >= 0 ? reduceRateRaw : 0;
+            let guardDamage = 0;
+            if (guardResult === 'DAMAGE_REDUCE') {
+                guardDamage = Math.max(1, ((finalDmg || 1) * reduceRate) - p.def);
+                if (!gameState.isTestMode) p.hp -= guardDamage;
+            }
+
+            if (guardInfo && guardInfo.makeKnockback && guardInfo.knockbackDistance > 0 && guardInfo.knockbackCanGuard === false) {
+                const angle = Math.atan2((p.y || 0) - (srcY || 0), (p.x || 0) - (srcX || 0));
+                const kb = guardInfo.knockbackDistance;
+                p.x += Math.cos(angle) * kb;
+                p.y += Math.sin(angle) * kb;
+                p.x = Math.max(0, Math.min(gameState.WORLD_WIDTH || p.x, p.x));
+                p.y = Math.max(0, Math.min(gameState.WORLD_DEPTH || p.y, p.y));
+            }
 
             gameState.floatingTexts.push({
                 x: p.x,
                 y: p.y,
                 z: p.z + p.bodyZ + 42,
-                text: 'GUARD',
-                color: '#8fd3ff',
+                text: guardResult === 'DAMAGE_REDUCE' ? `GUARD ${guardDamage.toFixed(0)}` : 'GUARD',
+                color: guardResult === 'DAMAGE_REDUCE' ? '#ffd166' : '#8fd3ff',
                 size: '26px',
                 timer: 0.65,
                 isBubble: false
             });
             gameState.effects.push({
                 type: 'guard',
-                renderType: 'EFT_GUARD',
-                x: p.x,
+                renderType: guardResult === 'DAMAGE_REDUCE' ? 'EFT_GUARD_REDUCE' : 'EFT_GUARD_SUCCESS',
+                x: p.x + (p.faceDir || 1) * Math.max(18, p.bodyX * p.scale * 0.25),
                 y: p.y,
                 z: p.z + p.bodyZ * 0.55,
                 dir: p.faceDir,
@@ -116,11 +147,30 @@ const PlayerManager = {
             p.isRunning = false;
             p.runDirection = null;
             p.guardTimer = 0;
-            let angle = Math.atan2((p.y||0) - (srcY||0), (p.x||0) - (srcX||0)); let kb = p.kbDist / p.hitDur; p.kbVx = Math.cos(angle) * kb; p.kbVy = Math.sin(angle) * kb;
+            let angle = Math.atan2((p.y||0) - (srcY||0), (p.x||0) - (srcX||0));
+            const customKb = guardInfo && guardInfo.makeKnockback && guardInfo.knockbackDistance > 0 ? guardInfo.knockbackDistance : p.kbDist;
+            let kb = customKb / Math.max(0.05, p.hitDur);
+            p.kbVx = Math.cos(angle) * kb; p.kbVy = Math.sin(angle) * kb;
             p.rapidAtkCount = 0; p.rapidAtkAllowTimer = 0; p.invincibleTimer = 0; 
         }
         gameState.floatingTexts.push({x: p.x, y: p.y, z: p.z + p.bodyZ + 20, text: `${actualDmg.toFixed(0)}`, color: '#ff5252', size: "36px", timer: 1.0});
-        gameState.effects.push({ type: 'hitSpark', x: p.x, y: p.y, z: p.z + p.bodyZ/2, life: 0.15, maxLife: 0.15 });
+        gameState.screenHitFlash = {
+            life: 0.22,
+            maxLife: 0.22,
+            strength: Math.min(1, 0.55 + actualDmg / Math.max(1, p.maxHp) * 2.8)
+        };
+        gameState.effects.push({
+            type: 'hitSpark',
+            renderType: 'EFT_PLAYER_HIT',
+            x: p.x,
+            y: p.y,
+            z: p.z + p.bodyZ/2,
+            life: 0.20,
+            maxLife: 0.20,
+            burstScale: 1.25,
+            color: 'rgba(255,64,54,0.96)',
+            accentColor: 'rgba(40,0,0,0.92)'
+        });
     },
 
     checkLevelUp: function(gameState) { 
@@ -181,14 +231,34 @@ update: function(deltaTime, keys, gameState) {
         if (player.dashCooldownTimer > 0) player.dashCooldownTimer -= deltaTime;
         if (player.guardCooldownTimer > 0) player.guardCooldownTimer = Math.max(0, player.guardCooldownTimer - deltaTime);
         if (player.guardSuccessTimer > 0) player.guardSuccessTimer = Math.max(0, player.guardSuccessTimer - deltaTime);
-        if (player.guardTimer > 0) {
-            player.guardTimer = Math.max(0, player.guardTimer - deltaTime);
-            if (player.state !== 'Hit' && player.state !== 'Freeze' && player.state !== 'Die') {
-                player.state = 'Guard';
-            }
-            if (player.guardTimer <= 0 && player.state === 'Guard') {
+
+        // 홀드형 가드: 키를 누르고 있는 동안 유지되며, 최대 유지시간을 넘기면 회복 시간이 발생한다.
+        if (player.state === 'Guard') {
+            if (player.guardTimer > 0) player.guardTimer = Math.max(0, player.guardTimer - deltaTime);
+            player.isRunning = false;
+            player.runDirection = null;
+            player.kbVx = 0;
+            player.kbVy = 0;
+
+            if (player.guardTimer <= 0) {
                 player.state = 'Idle';
+                player.guardForcedRecover = true;
+                player.guardCooldownTimer = Math.max(player.guardCooldownTimer || 0, player.maxGuardCooldown || 0);
+                if (player.guardCooldownTimer > 0) {
+                    gameState.floatingTexts.push({
+                        x: player.x,
+                        y: player.y,
+                        z: player.z + player.bodyZ + 42,
+                        text: 'GUARD BREAK',
+                        color: '#ff9f43',
+                        size: '22px',
+                        timer: 0.55,
+                        isBubble: false
+                    });
+                }
             }
+        } else if (player.guardTimer > 0) {
+            player.guardTimer = 0;
         }
         if (player.bubbleCooldown > 0) player.bubbleCooldown -= deltaTime;
         if (player.stanceSwapTimer > 0) player.stanceSwapTimer -= deltaTime;

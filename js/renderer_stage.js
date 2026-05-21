@@ -37,6 +37,19 @@ GameRenderer.themePresets = {
         grassStroke: 'rgba(170, 220, 255, 0.55)',
         warpA: 'rgba(110, 220, 255, 0.18)',
         warpB: 'rgba(235, 255, 255, 0.40)'
+    },
+    RENDER_KASIYAS_ARENA: {
+        skyTop: '#321d27',
+        skyBottom: '#8b4a3d',
+        groundTop: '#8b5f54',
+        groundBottom: '#4c3538',
+        mountain: '#5e3b40',
+        cloud: 'rgba(70,45,55,0.42)',
+        fog: 'rgba(130,55,45,0.13)',
+        grass: 'rgba(78, 48, 44, 0.26)',
+        grassStroke: 'rgba(150, 88, 70, 0.32)',
+        warpA: 'rgba(190, 48, 38, 0.20)',
+        warpB: 'rgba(255, 120, 90, 0.35)'
     }
 };
 
@@ -166,6 +179,39 @@ GameRenderer.drawBackground = function(gameState) {
         ctx.fill();
     }
 
+    if (themeKey === 'RENDER_KASIYAS_ARENA') {
+        const ruinColor = 'rgba(73,45,48,0.70)';
+        const ruinStroke = 'rgba(30,18,22,0.72)';
+        for (let i = 0; i < 7; i++) {
+            const bx = ((i * 245 + 60) - camera.x * 0.32) % (canvas.width + 420);
+            const x = bx < -210 ? bx + canvas.width + 420 : bx;
+            const base = GROUND_BASE_Y - 18 + (i % 3) * 9;
+            ctx.save();
+            ctx.translate(x, base);
+            ctx.rotate(((i % 2) ? -1 : 1) * (0.08 + (i % 3) * 0.035));
+            ctx.fillStyle = ruinColor;
+            ctx.strokeStyle = ruinStroke;
+            ctx.lineWidth = 2;
+            if (i % 3 === 0) {
+                ctx.fillRect(-26, -92, 52, 92);
+                ctx.strokeRect(-26, -92, 52, 92);
+                ctx.fillRect(-36, -104, 72, 16);
+                ctx.strokeRect(-36, -104, 72, 16);
+            } else if (i % 3 === 1) {
+                ctx.fillRect(-70, -36, 140, 28);
+                ctx.strokeRect(-70, -36, 140, 28);
+                ctx.beginPath();
+                ctx.moveTo(-66, -36); ctx.lineTo(-28, -70); ctx.lineTo(55, -48); ctx.lineTo(70, -36); ctx.closePath();
+                ctx.fill(); ctx.stroke();
+            } else {
+                ctx.beginPath();
+                ctx.moveTo(-42, 0); ctx.lineTo(-14, -58); ctx.lineTo(20, -70); ctx.lineTo(36, 0); ctx.closePath();
+                ctx.fill(); ctx.stroke();
+            }
+            ctx.restore();
+        }
+    }
+
     let groundGrad = ctx.createLinearGradient(0, GROUND_BASE_Y, 0, canvas.height);
     groundGrad.addColorStop(0, theme.groundTop);
     groundGrad.addColorStop(1, theme.groundBottom);
@@ -211,6 +257,29 @@ GameRenderer.drawBackground = function(gameState) {
             ctx.fill();
             ctx.restore();
         }
+    }
+
+    if (themeKey === 'RENDER_KASIYAS_ARENA') {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(35,22,24,0.28)';
+        ctx.lineWidth = 1.2;
+        for (let i = 0; i < 120; i++) {
+            const wx = ((i * 127) - camera.x) % (canvas.width + 180);
+            const sx = wx < -90 ? wx + canvas.width + 180 : wx;
+            const wy = GROUND_BASE_Y + ((i * 67) % Math.max(1, WORLD_DEPTH));
+            const rw = 38 + (i % 5) * 9;
+            const rh = 16 + (i % 4) * 5;
+            ctx.beginPath();
+            ctx.moveTo(sx - rw * 0.5, wy - rh * 0.2);
+            ctx.lineTo(sx + rw * 0.36, wy - rh * 0.36);
+            ctx.lineTo(sx + rw * 0.50, wy + rh * 0.18);
+            ctx.lineTo(sx - rw * 0.32, wy + rh * 0.42);
+            ctx.closePath();
+            ctx.stroke();
+        }
+        ctx.fillStyle = 'rgba(170,80,58,0.08)';
+        ctx.fillRect(0, GROUND_BASE_Y, canvas.width, canvas.height - GROUND_BASE_Y);
+        ctx.restore();
     }
 
     ctx.fillStyle = theme.grass;
