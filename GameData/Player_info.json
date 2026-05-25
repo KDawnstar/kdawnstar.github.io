@@ -7,7 +7,7 @@
     "HP": 300,
     "ATK": 30,
     "DEF": 5,
-    "Move_Speed": 250,
+    "Move_Speed": 200,
     "Jump_Power": 700,
     "Model_Render_Type": "RENDER_HUMAN",
     "Model_Color_R": 20,
@@ -22,6 +22,13 @@
     "Range_Weapon_Render_Type": "WEAPON_GUN",
     "Hit_Anim_Duration": 0.2,
     "Hit_Knockback_Distance": 10,
-    "Die_Anim_Duration": 1
+    "Die_Anim_Duration": 1,
+    "Max_Fighting_Spirit_Gauge": 100,
+    "ATK_Get_Fighting_Spirit": 3,
+    "ATK_Get_Fighting_Spirit_Cooltime": 3,
+    "Hit_Lose_Fighting_Spirit": 10,
+    "Hit_Lose_Fighting_Spirit_Cooltime": 2,
+    "Fighting_Spirit_DMG_Buff_Rate": 0.2,
+    "Fighting_Spirit_Move_Speed_Buff_Rate": 0.15
   }
 ]

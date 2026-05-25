@@ -11,8 +11,8 @@
     "End_Condition_Value": 0,
     "Next_Phase_ID": 220002,
     "Default_Action_Type": "LOOK_AND_CHASE",
-    "Chase_Start_Distance": 300,
-    "Chase_Stop_Distance": 120,
+    "Chase_Start_Distance": 500,
+    "Chase_Stop_Distance": 150,
     "Default_Move_Speed_Rate": 1,
     "No_Pattern_Wait_Time": 0.2
   },
@@ -28,8 +28,8 @@
     "End_Condition_Value": 0,
     "Next_Phase_ID": 220003,
     "Default_Action_Type": "LOOK_AND_CHASE",
-    "Chase_Start_Distance": 300,
-    "Chase_Stop_Distance": 120,
+    "Chase_Start_Distance": 500,
+    "Chase_Stop_Distance": 150,
     "Default_Move_Speed_Rate": 1,
     "No_Pattern_Wait_Time": 0.2
   },
@@ -45,8 +45,8 @@
     "End_Condition_Value": 0,
     "Next_Phase_ID": 0,
     "Default_Action_Type": "LOOK_AND_CHASE",
-    "Chase_Start_Distance": 300,
-    "Chase_Stop_Distance": 120,
+    "Chase_Start_Distance": 500,
+    "Chase_Stop_Distance": 150,
     "Default_Move_Speed_Rate": 1,
     "No_Pattern_Wait_Time": 0.2
   }

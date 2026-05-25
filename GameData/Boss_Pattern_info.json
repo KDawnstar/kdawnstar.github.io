@@ -8,13 +8,13 @@
     "Pattern_Cond_Type": "COOLDOWN_READY",
     "Pattern_Cond_Value": 0,
     "Pattern_Cooldown": 5,
-    "Pattern_Initial_Cooltime": 0,
+    "Pattern_Initial_Cooltime": 1.5,
     "Random_Weight": 100,
     "Pattern_Priority": 10,
-    "Action_Sequence_Loop_Count": "",
-    "Late_Phase_Action_Sequence_Loop_Count": "",
-    "Pattern_Use_Range_X": 250,
-    "Pattern_Use_Range_Y": 100
+    "Action_Sequence_Loop_Count": null,
+    "Late_Phase_Action_Sequence_Loop_Count": null,
+    "Pattern_Use_Range_X": 900,
+    "Pattern_Use_Range_Y": 250
   },
   {
     "Pattern_Set_ID": 230001,
@@ -24,8 +24,8 @@
     "Pattern_Category": "BASIC",
     "Pattern_Cond_Type": "COOLDOWN_READY",
     "Pattern_Cond_Value": 0,
-    "Pattern_Cooldown": 6,
-    "Pattern_Initial_Cooltime": 5,
+    "Pattern_Cooldown": 8,
+    "Pattern_Initial_Cooltime": 4,
     "Random_Weight": 80,
     "Pattern_Priority": 10,
     "Action_Sequence_Loop_Count": 3,
@@ -41,13 +41,13 @@
     "Pattern_Category": "BASIC",
     "Pattern_Cond_Type": "COOLDOWN_READY",
     "Pattern_Cond_Value": 0,
-    "Pattern_Cooldown": 7,
-    "Pattern_Initial_Cooltime": 5,
+    "Pattern_Cooldown": 8,
+    "Pattern_Initial_Cooltime": 4,
     "Random_Weight": 70,
     "Pattern_Priority": 10,
-    "Action_Sequence_Loop_Count": "",
-    "Late_Phase_Action_Sequence_Loop_Count": "",
-    "Pattern_Use_Range_X": 1000,
+    "Action_Sequence_Loop_Count": null,
+    "Late_Phase_Action_Sequence_Loop_Count": null,
+    "Pattern_Use_Range_X": 1200,
     "Pattern_Use_Range_Y": 300
   },
   {
@@ -58,14 +58,14 @@
     "Pattern_Category": "BASIC",
     "Pattern_Cond_Type": "COOLDOWN_READY",
     "Pattern_Cond_Value": 0,
-    "Pattern_Cooldown": 10,
+    "Pattern_Cooldown": 12,
     "Pattern_Initial_Cooltime": 10,
     "Random_Weight": 60,
     "Pattern_Priority": 10,
-    "Action_Sequence_Loop_Count": "",
-    "Late_Phase_Action_Sequence_Loop_Count": "",
-    "Pattern_Use_Range_X": 1400,
-    "Pattern_Use_Range_Y": 400
+    "Action_Sequence_Loop_Count": null,
+    "Late_Phase_Action_Sequence_Loop_Count": null,
+    "Pattern_Use_Range_X": 1200,
+    "Pattern_Use_Range_Y": 300
   },
   {
     "Pattern_Set_ID": 230001,
@@ -75,14 +75,14 @@
     "Pattern_Category": "BASIC",
     "Pattern_Cond_Type": "COOLDOWN_READY",
     "Pattern_Cond_Value": 0,
-    "Pattern_Cooldown": 10,
+    "Pattern_Cooldown": 12,
     "Pattern_Initial_Cooltime": 10,
     "Random_Weight": 70,
     "Pattern_Priority": 10,
-    "Action_Sequence_Loop_Count": "",
-    "Late_Phase_Action_Sequence_Loop_Count": "",
-    "Pattern_Use_Range_X": 300,
-    "Pattern_Use_Range_Y": 100
+    "Action_Sequence_Loop_Count": null,
+    "Late_Phase_Action_Sequence_Loop_Count": null,
+    "Pattern_Use_Range_X": 900,
+    "Pattern_Use_Range_Y": 250
   },
   {
     "Pattern_Set_ID": 230001,
@@ -96,10 +96,10 @@
     "Pattern_Initial_Cooltime": 15,
     "Random_Weight": 30,
     "Pattern_Priority": 30,
-    "Action_Sequence_Loop_Count": "",
-    "Late_Phase_Action_Sequence_Loop_Count": "",
-    "Pattern_Use_Range_X": "",
-    "Pattern_Use_Range_Y": ""
+    "Action_Sequence_Loop_Count": null,
+    "Late_Phase_Action_Sequence_Loop_Count": null,
+    "Pattern_Use_Range_X": 1400,
+    "Pattern_Use_Range_Y": 400
   },
   {
     "Pattern_Set_ID": 230001,
@@ -113,10 +113,10 @@
     "Pattern_Initial_Cooltime": 15,
     "Random_Weight": 20,
     "Pattern_Priority": 30,
-    "Action_Sequence_Loop_Count": "",
-    "Late_Phase_Action_Sequence_Loop_Count": "",
-    "Pattern_Use_Range_X": "",
-    "Pattern_Use_Range_Y": ""
+    "Action_Sequence_Loop_Count": null,
+    "Late_Phase_Action_Sequence_Loop_Count": null,
+    "Pattern_Use_Range_X": null,
+    "Pattern_Use_Range_Y": null
   },
   {
     "Pattern_Set_ID": 230001,
@@ -130,9 +130,9 @@
     "Pattern_Initial_Cooltime": 0,
     "Random_Weight": 0,
     "Pattern_Priority": 100,
-    "Action_Sequence_Loop_Count": "",
-    "Late_Phase_Action_Sequence_Loop_Count": "",
-    "Pattern_Use_Range_X": "",
-    "Pattern_Use_Range_Y": ""
+    "Action_Sequence_Loop_Count": null,
+    "Late_Phase_Action_Sequence_Loop_Count": null,
+    "Pattern_Use_Range_X": null,
+    "Pattern_Use_Range_Y": null
   }
 ]

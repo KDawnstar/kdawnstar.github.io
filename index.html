@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>카시야스 보스전 테스트</title>
     <style>
-        body { margin: 0; background-color: #0a0a0a; color: white; font-family: 'Malgun Gothic', '맑은 고딕', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
+        body { margin: 0; background-color: #0a0a0a; color: white; font-family: 'Malgun Gothic', '맑은 고딕', 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
         
 .system-notice-anchor {
     position: absolute;
@@ -807,12 +807,72 @@
 }
 
 .hud-orb-panel {
+    position: relative;
     width: 124px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 6px;
+}
+
+.hud-orb-stack {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.hud-orb.spirit {
+    background-color: rgba(35, 18, 4, 0.96);
+    cursor: help;
+}
+
+.hud-orb.spirit .hud-orb-fill {
+    background:
+        radial-gradient(circle at 50% 30%, rgba(255,238,176,0.30), rgba(255,238,176,0) 48%),
+        linear-gradient(180deg, rgba(255,206,88,0.94), rgba(211,82,28,0.94));
+    box-shadow: inset 0 0 18px rgba(255,255,210,0.10), 0 0 14px rgba(255,160,54,0.14);
+}
+
+.hud-orb.spirit:hover {
+    box-shadow:
+        inset 0 10px 20px rgba(255,255,255,0.10),
+        inset 0 -14px 18px rgba(0,0,0,0.34),
+        0 0 18px rgba(255,169,63,0.34);
+}
+
+.hud-orb-tooltip {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 10px);
+    transform: translateX(-50%) translateY(4px);
+    width: 238px;
+    padding: 10px 12px;
+    border-radius: 9px;
+    border: 1px solid rgba(255,204,111,0.52);
+    background: rgba(8, 8, 12, 0.94);
+    color: rgba(255,246,222,0.96);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.45;
+    text-align: left;
+    white-space: normal;
+    z-index: 60;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease, transform 0.12s ease;
+    box-shadow: 0 10px 22px rgba(0,0,0,0.45);
+}
+
+.hud-orb-tooltip b { color: #ffd56f; }
+.hud-orb-tooltip .muted { color: rgba(210,220,235,0.76); font-weight: 600; }
+.hud-orb-panel.spirit-panel:hover .hud-orb-tooltip,
+.hud-orb.spirit:hover + .hud-orb-tooltip,
+.hud-orb-tooltip.force-visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
 }
 
 .hud-orb-label {
@@ -1325,7 +1385,7 @@ body {
 
 /* v2.9 중앙 전투 화면 확대 + 패널 가독성 개선 */
 :root {
-    --panel-font: 'Malgun Gothic', '맑은 고딕', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    --panel-font: 'Malgun Gothic', '맑은 고딕', 'Segoe UI', sans-serif;
 }
 
 body,
@@ -1616,7 +1676,252 @@ button,
     .boss-log-action-buttons { gap: 4px; }
 }
 
-    </style>
+
+/* v5.2 하단 HUD / 보스 UI 폰트 가독성 개선 */
+:root {
+    --panel-font: 'Malgun Gothic', '맑은 고딕', 'Segoe UI', sans-serif;
+}
+
+body,
+button,
+.external-panel,
+.boss-ai-panel,
+#hudDebug,
+.boss-pattern-log-list,
+.control-guide-card,
+#bottomHUD,
+#hudSection,
+.boss-cast-gauge,
+.boss-log-action-btn {
+    font-family: var(--panel-font) !important;
+}
+
+#bottomHUD {
+    grid-template-columns: minmax(0, 1fr) 430px !important;
+    column-gap: 18px !important;
+    padding: 16px 20px !important;
+}
+
+#hudCenter {
+    height: 164px !important;
+    grid-template-columns: 292px minmax(0, 1fr) !important;
+    column-gap: 20px !important;
+    padding: 12px 16px !important;
+}
+
+.hud-name {
+    font-size: 20px !important;
+    line-height: 1.18 !important;
+    margin-bottom: 7px !important;
+}
+
+.hud-center-sub {
+    font-size: 14px !important;
+    margin-bottom: 10px !important;
+}
+
+.hud-center-exp-bar {
+    height: 16px !important;
+}
+
+.hud-center-exp-bar .hud-bar-text,
+.hud-exp-container .hud-bar-text {
+    font-size: 11px !important;
+}
+
+.hud-mini-meter {
+    height: 25px !important;
+}
+
+.hud-mini-meter-label {
+    font-size: 12px !important;
+    padding: 0 8px !important;
+    letter-spacing: -0.2px !important;
+}
+
+.hud-orb-panel {
+    width: 132px !important;
+    gap: 7px !important;
+}
+
+.hud-orb-stack {
+    gap: 12px !important;
+}
+
+.hud-orb-label {
+    font-size: 12px !important;
+}
+
+.hud-orb {
+    width: 108px !important;
+    height: 108px !important;
+}
+
+.hud-orb-text {
+    font-size: 13px !important;
+    line-height: 1.15 !important;
+    padding: 0 9px !important;
+}
+
+.hud-orb-percent {
+    font-size: 11px !important;
+}
+
+.hud-bar-text {
+    font-size: 13px !important;
+}
+
+.hud-skill-wrap {
+    width: 430px !important;
+    height: 164px !important;
+}
+
+.hud-skill-header {
+    height: 40px !important;
+    flex-basis: 40px !important;
+    padding: 0 13px !important;
+}
+
+.hud-skill-title {
+    font-size: 14px !important;
+}
+
+.hud-skill-sub {
+    font-size: 12px !important;
+}
+
+.hud-skill-body {
+    padding: 12px 12px 14px !important;
+}
+
+.skill-slot {
+    width: 70px !important;
+    height: 70px !important;
+}
+
+.skill-key {
+    min-width: 24px !important;
+    font-size: 13px !important;
+    padding: 3px 8px !important;
+    bottom: 5px !important;
+}
+
+.skill-lock {
+    font-size: 25px !important;
+}
+
+.boss-cast-gauge {
+    top: -36px !important;
+    height: 28px !important;
+}
+
+.boss-cast-gauge-text {
+    font-size: 14px !important;
+}
+
+@media (max-width: 1500px) {
+    #bottomHUD {
+        grid-template-columns: minmax(0, 1fr) 410px !important;
+        column-gap: 14px !important;
+        padding: 15px 16px !important;
+    }
+    .hud-skill-wrap {
+        width: 410px !important;
+    }
+    .skill-slot {
+        width: 68px !important;
+        height: 68px !important;
+    }
+    .hud-mini-meter-label {
+        font-size: 11.5px !important;
+    }
+}
+
+
+    
+
+/* v5.3 보스 UI/좌우 로그 가시성 보정 */
+:root {
+    --panel-font: 'Malgun Gothic', '맑은 고딕', 'Segoe UI', sans-serif;
+}
+
+body,
+button,
+.external-panel,
+.boss-ai-panel,
+#hudDebug,
+.boss-pattern-log-list,
+.control-guide-card,
+#bottomHUD,
+#hudSection,
+.boss-cast-gauge,
+.boss-log-action-btn {
+    font-family: var(--panel-font) !important;
+}
+
+.external-panel-title {
+    font-size: 14px !important;
+    font-weight: 900 !important;
+}
+
+.external-panel-subtitle {
+    font-size: 10px !important;
+}
+
+.boss-pattern-log-list {
+    font-size: 12px !important;
+    line-height: 1.48 !important;
+    color: rgba(245, 248, 255, 0.94) !important;
+}
+
+.boss-pattern-log-item {
+    padding: 8px 9px !important;
+    margin-bottom: 7px !important;
+}
+
+.boss-pattern-log-type {
+    min-width: 48px !important;
+    font-size: 11px !important;
+}
+
+.boss-pattern-log-detail,
+.boss-pattern-log-time {
+    font-size: 11px !important;
+}
+
+#bossAIPanel.boss-ai-panel,
+#rightSidePanel #hudDebug {
+    font-size: 12px !important;
+    line-height: 1.5 !important;
+    color: rgba(238, 247, 255, 0.94) !important;
+}
+
+.boss-ai-title {
+    font-size: 14px !important;
+}
+
+.boss-ai-subtitle,
+.boss-ai-small {
+    font-size: 11px !important;
+}
+
+.boss-ai-empty {
+    color: rgba(170, 255, 198, 0.96) !important;
+}
+
+@media (max-width: 1500px) {
+    #bossAIPanel.boss-ai-panel,
+    #rightSidePanel #hudDebug,
+    .boss-pattern-log-list {
+        font-size: 11px !important;
+    }
+    .boss-pattern-log-detail,
+    .boss-pattern-log-time {
+        font-size: 10.5px !important;
+    }
+}
+
+</style>
 </head>
 <body>
 
@@ -1705,13 +2010,30 @@ button,
         </div>
         <div id="bottomHUD">
                         <div id="hudCenter">
-            <div class="hud-orb-panel">
-                <div class="hud-orb-label">생명력</div>
-                <div class="hud-orb hp">
-                    <div class="hud-orb-fill" id="hudHpFill"></div>
-                    <div class="hud-orb-gloss"></div>
-                    <div class="hud-orb-ring"></div>
-                    <div class="hud-orb-text" id="hudHpText">1000 / 1000</div>
+            <div class="hud-orb-stack">
+                <div class="hud-orb-panel">
+                    <div class="hud-orb-label">생명력</div>
+                    <div class="hud-orb hp">
+                        <div class="hud-orb-fill" id="hudHpFill"></div>
+                        <div class="hud-orb-gloss"></div>
+                        <div class="hud-orb-ring"></div>
+                        <div class="hud-orb-text" id="hudHpText">1000 / 1000</div>
+                    </div>
+                </div>
+                <div class="hud-orb-panel spirit-panel">
+                    <div class="hud-orb-label">투기</div>
+                    <div class="hud-orb spirit" id="hudSpiritOrb">
+                        <div class="hud-orb-fill" id="hudSpiritFill"></div>
+                        <div class="hud-orb-gloss"></div>
+                        <div class="hud-orb-ring"></div>
+                        <div class="hud-orb-text" id="hudSpiritText">0 / 100</div>
+                    </div>
+                    <div class="hud-orb-tooltip" id="hudSpiritTooltip">
+                        <b>투기 게이지</b><br>
+                        <span class="muted">가드 성공과 공격 적중으로 획득합니다.</span><br>
+                        투기 1당 공격력 <b>0.03%</b> 상승<br>
+                        투기 1당 이동속도 <b>0.03%</b> 상승
+                    </div>
                 </div>
             </div>
 
@@ -1837,20 +2159,40 @@ button,
         </aside>
     </div>
 
-    <script src="js/renderer_core.js"></script>
-    <script src="js/renderer_stage.js"></script>
-    <script src="js/renderer_player.js"></script>
-    <script src="js/renderer_monster.js"></script>
-    <script src="js/renderer_overlay.js"></script>
+    <script src="js/render/render_palette_system.js"></script>
+    <script src="js/render/model_body_renderer.js"></script>
+    <script src="js/render/render_manager.js"></script>
+    <script src="js/render/stage_renderer.js"></script>
+    <script src="js/player/player_renderer.js"></script>
+    <script src="js/boss/boss_renderer.js"></script>
+    <script src="js/boss/boss_object_renderer.js"></script>
+    <script src="js/render/effect_renderer.js"></script>
+    <script src="js/render/ui_renderer.js"></script>
+    <script src="js/render/debug_renderer.js"></script>
 
-    <script src="js/player_core.js"></script>
-    <script src="js/player_action.js"></script>
+    <script src="js/player/player_entity.js"></script>
+    <script src="js/player/player_action_system.js"></script>
 
-    <script src="js/monster_core.js"></script>
-    <script src="js/monster_ai.js"></script>
-    <script src="js/monster_skill.js"></script>
+    <script src="js/monster/monster_spawn_system.js"></script>
+    <script src="js/boss/boss_debug_system.js"></script>
+    <script src="js/boss/boss_vfx_system.js"></script>
+    <script src="js/boss/boss_phase_system.js"></script>
+    <script src="js/boss/boss_position_system.js"></script>
+    <script src="js/boss/boss_pattern_system.js"></script>
+    <script src="js/boss/boss_behavior_system.js"></script>
+    <script src="js/boss/boss_combat_system.js"></script>
+    <script src="js/boss/boss_object_system.js"></script>
+    <script src="js/boss/boss_action_system.js"></script>
+    <script src="js/boss/boss_state_flow_system.js"></script>
+    <script src="js/monster/monster_data_system.js"></script>
+    <script src="js/monster/monster_update_system.js"></script>
+    <script src="js/monster/monster_runtime_system.js"></script>
+    <script src="js/legacy/legacy_monster_ai_system.js"></script>
+    <script src="js/legacy/legacy_monster_skill_system.js"></script>
 
-    <script src="js/main.js"></script>
+    <script src="js/core/game_data_loader.js"></script>
+    <script src="js/core/game_data_normalizer.js"></script>
+    <script src="js/core/game_app.js"></script>
 
 </body>
 </html>
