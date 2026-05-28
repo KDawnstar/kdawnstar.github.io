@@ -76,6 +76,10 @@ const MonsterManager = {
         return BossCombatSystem.queueKasiyasMajorPattern3CrossGuardResolve.apply(this, arguments);
     },
 
+    resolveKasiyasMajorPattern3CrossGroggyAction: function() {
+        return BossCombatSystem.resolveKasiyasMajorPattern3CrossGroggyAction.apply(this, arguments);
+    },
+
     resolveKasiyasMajorPattern3PendingCrossGroggy: function() {
         return BossCombatSystem.resolveKasiyasMajorPattern3PendingCrossGroggy.apply(this, arguments);
     },

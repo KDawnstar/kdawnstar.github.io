@@ -135,11 +135,22 @@ const BossCombatSystem = {
         rt.crossSlashSpecialResolved = true;
         const groggyAction = this.resolveKasiyasMajorPattern3CrossGroggyAction
             ? this.resolveKasiyasMajorPattern3CrossGroggyAction(m, action, gameState)
-            : action;
+            : (BossCombatSystem.resolveKasiyasMajorPattern3CrossGroggyAction
+                ? BossCombatSystem.resolveKasiyasMajorPattern3CrossGroggyAction(m, action, gameState)
+                : action);
+        const resolvedGroggyAction = groggyAction || action || {};
+        const resolvedGroggyTime = parseFloat(resolvedGroggyAction.Groggy_Time);
+        const resolvedGroggyHitRate = parseFloat(resolvedGroggyAction.Groggy_Hit_DMG_Rate);
+        const resolvedGroggyPose = String(resolvedGroggyAction.Groggy_Pose_Type || 'POSE_KASIYAS_P1_GROGGY').trim() || 'POSE_KASIYAS_P1_GROGGY';
         rt.pendingCrossSlashGroggy = {
-            action: groggyAction || action,
+            action: resolvedGroggyAction,
             triggerAction: action,
             result: result || {},
+            // 교차 발도는 가드 성공 후 실제 그로기 진입까지 시간이 있으므로,
+            // 나중에 액션 객체가 정리되더라도 데이터 테이블의 그로기 값이 사라지지 않게 예약 시점에 확정 저장한다.
+            groggyTime: (!isNaN(resolvedGroggyTime) && resolvedGroggyTime > 0) ? resolvedGroggyTime : null,
+            groggyPoseType: resolvedGroggyPose,
+            groggyHitDmgRate: (!isNaN(resolvedGroggyHitRate) && resolvedGroggyHitRate >= 0) ? resolvedGroggyHitRate : null,
             timer: 0,
             flashDone: false
         };
@@ -241,7 +252,11 @@ const BossCombatSystem = {
                 });
             }
         }
-        return this.enterBossGroggyFromGuardSpecial(m, pending.action || {}, gameState, pending.result || {});
+        const actionForGroggy = { ...(pending.action || {}) };
+        if (pending.groggyTime !== null && pending.groggyTime !== undefined) actionForGroggy.Groggy_Time = pending.groggyTime;
+        if (pending.groggyPoseType) actionForGroggy.Groggy_Pose_Type = pending.groggyPoseType;
+        if (pending.groggyHitDmgRate !== null && pending.groggyHitDmgRate !== undefined) actionForGroggy.Groggy_Hit_DMG_Rate = pending.groggyHitDmgRate;
+        return this.enterBossGroggyFromGuardSpecial(m, actionForGroggy, gameState, pending.result || {});
     },
 
     enterBossGroggyFromGuardSpecial: function(m, action, gameState, result) {
