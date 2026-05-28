@@ -83,6 +83,49 @@ const BossCombatSystem = {
         return String(energies[0] || '').trim().toUpperCase() === String(energies[1] || '').trim().toUpperCase();
     },
 
+    resolveKasiyasMajorPattern3CrossGroggyAction: function(m, action, gameState) {
+        const boss = m && m.boss ? m.boss : null;
+        const sourceAction = action || {};
+        const hasGroggyTime = !isNaN(parseFloat(sourceAction.Groggy_Time)) && parseFloat(sourceAction.Groggy_Time) > 0;
+        const specialType = String(sourceAction.Guard_Special_Result_Type || '').trim().toUpperCase();
+        if (hasGroggyTime && specialType !== 'CLONE_OWNER_GROGGY') return sourceAction;
+
+        const cond = String(sourceAction.Guard_Special_Result_Occurrence_Cond || 'ATK_GUARD_GRANT_TEMPERED_BLADE_GUARD').trim().toUpperCase();
+        const activeActions = boss && boss.activePattern && Array.isArray(boss.activePattern.Runtime_Actions)
+            ? boss.activePattern.Runtime_Actions
+            : [];
+        const fromActive = activeActions.find(a => {
+            if (!a) return false;
+            const aSpecial = String(a.Guard_Special_Result_Type || '').trim().toUpperCase();
+            const aCond = String(a.Guard_Special_Result_Occurrence_Cond || '').trim().toUpperCase();
+            const aGroggy = parseFloat(a.Groggy_Time);
+            return aSpecial === 'BOSS_GROGGY' && aCond === cond && !isNaN(aGroggy) && aGroggy > 0;
+        });
+        if (fromActive) return fromActive;
+
+        const db = gameState && gameState.DB_BOSS_PATTERN_ACTION ? gameState.DB_BOSS_PATTERN_ACTION : null;
+        if (db) {
+            const list = Array.isArray(db) ? db : Object.values(db);
+            const fromDb = list.find(a => {
+                if (!a) return false;
+                const patternId = String(a.Pattern_ID || '').trim();
+                const aSpecial = String(a.Guard_Special_Result_Type || '').trim().toUpperCase();
+                const aCond = String(a.Guard_Special_Result_Occurrence_Cond || '').trim().toUpperCase();
+                const aGroggy = parseFloat(a.Groggy_Time);
+                return patternId === '231008' && aSpecial === 'BOSS_GROGGY' && aCond === cond && !isNaN(aGroggy) && aGroggy > 0;
+            });
+            if (fromDb) return fromDb;
+        }
+
+        // 안전 fallback: 분신 교차 발도에 Groggy_Time이 비어 있어도 대형 패턴 3번의 의도값을 사용한다.
+        return {
+            ...sourceAction,
+            Groggy_Time: sourceAction.Groggy_Time || 8,
+            Groggy_Pose_Type: sourceAction.Groggy_Pose_Type || 'POSE_KASIYAS_P1_GROGGY',
+            Groggy_Hit_DMG_Rate: sourceAction.Groggy_Hit_DMG_Rate || 1.2
+        };
+    },
+
     queueKasiyasMajorPattern3CrossGuardResolve: function(m, action, gameState, result) {
         const boss = m && m.boss ? m.boss : null;
         if (!boss || !gameState || !action) return false;
@@ -90,8 +133,12 @@ const BossCombatSystem = {
         const rt = boss.majorPattern3Runtime;
         if (rt.crossSlashSpecialResolved || rt.pendingCrossSlashGroggy) return false;
         rt.crossSlashSpecialResolved = true;
+        const groggyAction = this.resolveKasiyasMajorPattern3CrossGroggyAction
+            ? this.resolveKasiyasMajorPattern3CrossGroggyAction(m, action, gameState)
+            : action;
         rt.pendingCrossSlashGroggy = {
-            action: action,
+            action: groggyAction || action,
+            triggerAction: action,
             result: result || {},
             timer: 0,
             flashDone: false
@@ -640,6 +687,18 @@ const BossCombatSystem = {
 
         gameState.targetUI.monster = m; gameState.targetUI.timer = 3.0;
         m.isProvoked = true;
+
+        const isBossGroggy = boss && (parseFloat(boss.groggyTimer) || 0) > 0;
+        if (isBossGroggy) {
+            // 그로기 중에는 데미지/폰트/피격 이펙트만 적용하고,
+            // 일반 HIT 상태 전환·넉백으로 그로기 포즈와 타이머가 흔들리지 않게 한다.
+            m.state = 'GROGGY';
+            m.timer = 0;
+            m.kbVx = 0;
+            m.kbVy = 0;
+            m.hitByEnemyTimer = 0;
+            return;
+        }
 
         if (m.hp > 0) {
             m.hitByEnemyTimer = Math.max(
