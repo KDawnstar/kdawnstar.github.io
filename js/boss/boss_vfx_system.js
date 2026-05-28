@@ -282,6 +282,84 @@ const BossVFXSystem = {
         }
     },
 
+    pushKasiyasRushBodyEffect: function(actor, path, action, gameState, options = {}) {
+        if (!actor || !gameState || !Array.isArray(gameState.effects)) return;
+        const nowTimer = (parseFloat(actor.actionTimer) || parseFloat(actor.timer) || 0);
+        const last = parseFloat(actor.kasiyasRushBodyVfxTimer);
+        if (Number.isFinite(last) && nowTimer - last < 0.035) return;
+        actor.kasiyasRushBodyVfxTimer = nowTimer;
+
+        const scale = parseFloat(actor.scale) || 1;
+        const bodyX = ((actor.d && parseFloat(actor.d.bodyX)) || 80) * scale;
+        const bodyY = ((actor.d && parseFloat(actor.d.bodyY)) || 60) * scale;
+        const bodyZ = ((actor.d && parseFloat(actor.d.bodyZ)) || 160) * scale;
+        const hitW = Math.max(bodyX, ((action && parseFloat(action.Hitbox_Size_X)) || 0) * scale);
+        const hitD = Math.max(bodyY, ((action && parseFloat(action.Hitbox_Size_Y)) || 0) * scale);
+        // 이펙트는 화면에 보이는 X/Y 범위만 주 기준으로 삼고, Hitbox_Size_Z/Offset_Z는 직접 위치 보정에 쓰지 않는다.
+        // Z 판정이 큰 공격에서 이펙트가 하늘 쪽으로 뜨거나 X축 검기처럼 길게 보이는 문제를 줄이기 위한 기준이다.
+        const hitOffX = ((action && parseFloat(action.Hitbox_Offset_X)) || 0) * scale;
+        const hitOffY = ((action && parseFloat(action.Hitbox_Offset_Y)) || 0) * scale;
+        const dirX = path && Math.abs(parseFloat(path.dirX) || 0) > 0.001 ? parseFloat(path.dirX) : ((actor.faceDir || 1) >= 0 ? 1 : -1);
+        const dirY = path ? (parseFloat(path.dirY) || 0) : 0;
+        const angle = Math.atan2(dirY, dirX);
+        const isClone = !!options.isClone;
+        const upperActionEffect = String((action && (action.VFX_Type || action.Effect_Render_Type)) || '').trim().toUpperCase();
+        const isBasicRushIssen = upperActionEffect === 'EFT_KASIYAS_RUSH_ISSEN' || upperActionEffect === 'EFT_RUSH_ISSEN' || upperActionEffect === 'EFT_KASIYAS_RUSH_SLASH';
+        const renderType = upperActionEffect || (isClone ? 'EFT_KASIYAS_CLONE_LOW_RUSH' : 'EFT_KASIYAS_LOW_RUSH');
+        const visualW = Math.max(
+            isBasicRushIssen ? 96 : 112,
+            bodyX * (isBasicRushIssen ? 1.28 : (isClone ? 1.45 : 1.56)),
+            hitW * (isBasicRushIssen ? 0.78 : (isClone ? 0.86 : 0.94))
+        );
+        const visualD = Math.max(
+            isBasicRushIssen ? 46 : 58,
+            bodyY * (isBasicRushIssen ? 1.10 : (isClone ? 1.28 : 1.42)),
+            hitD * (isBasicRushIssen ? 0.82 : (isClone ? 0.92 : 1.00))
+        );
+        // 화면상 높이는 캐릭터 신체를 덮는 정도로 제한한다. 판정 Z가 커져도 이펙트가 위로 떠오르지 않는다.
+        const visualH = Math.max(72, bodyZ * (isBasicRushIssen ? 0.58 : (isClone ? 0.66 : 0.74)), visualD * 0.54);
+        const fxX = (parseFloat(actor.x) || 0) + dirX * hitOffX * 0.30;
+        const fxY = (parseFloat(actor.y) || 0) + hitOffY * 0.55;
+        const fxZ = (parseFloat(actor.z) || 0) + Math.max(28, bodyZ * (isBasicRushIssen ? 0.38 : 0.44));
+
+        gameState.effects.push({
+            type: 'kasiyasRushBodySlash',
+            renderType: renderType,
+            x: fxX,
+            y: fxY,
+            z: fxZ,
+            dir: dirX >= 0 ? 1 : -1,
+            w: visualW,
+            d: visualD,
+            h: visualH,
+            life: isClone ? 0.145 : 0.165,
+            maxLife: isClone ? 0.145 : 0.165,
+            pathAngle: angle,
+            isClone: isClone,
+            color: isBasicRushIssen ? 'rgba(235,34,32,0.82)' : (isClone ? 'rgba(210,36,54,0.74)' : 'rgba(255,44,40,0.90)'),
+            accentColor: isBasicRushIssen ? 'rgba(18,0,0,0.82)' : (isClone ? 'rgba(50,0,18,0.70)' : 'rgba(18,0,0,0.90)'),
+            hotColor: isBasicRushIssen ? 'rgba(255,176,80,0.58)' : (isClone ? 'rgba(255,135,100,0.55)' : 'rgba(255,215,86,0.72)'),
+            bodyCoverRush: true,
+            basicRushIssen: isBasicRushIssen
+        });
+
+        // 몸에 붙는 공격 이펙트와 별개로, 아주 짧은 잔상만 뒤에 남긴다.
+        gameState.effects.push({
+            type: 'afterimageDashTrail',
+            renderType: renderType,
+            x: fxX - dirX * Math.max(bodyX, hitW * 0.42) * 0.22,
+            y: fxY - dirY * Math.max(bodyY, hitD * 0.42) * 0.22,
+            z: (parseFloat(actor.z) || 0) + Math.max(18, bodyZ * 0.30),
+            dir: dirX >= 0 ? 1 : -1,
+            w: Math.max(92, bodyX * (isBasicRushIssen ? 1.20 : (isClone ? 1.36 : 1.56)), hitW * (isBasicRushIssen ? 0.52 : 0.66)),
+            h: Math.max(24, bodyY * 0.60, hitD * 0.24),
+            life: 0.10,
+            maxLife: 0.10,
+            pathAngle: angle,
+            cloneTrail: isClone
+        });
+    },
+
     pushPathResidualSlashField: function(path, width, height, gameState, warningDuration, delayDuration, hitDuration, renderType) {
         if (!path) return;
         const length = this.getPathLength(path);
@@ -398,6 +476,37 @@ const BossVFXSystem = {
         let life = 0.24;
     
         const upperEff = effEnum.toUpperCase();
+        if (upperEff === 'EFT_KASIYAS_SWORD_QUICK_DRAW' || upperEff === 'EFT_KASIYAS_RUSH_ISSEN' || upperEff === 'EFT_RUSH_ISSEN' || upperEff === 'EFT_KASIYAS_RUSH_SLASH') {
+            // 돌진 계열은 경로 전체에 깔리는 일반 slash가 아니라 실제 이동 중인 몸/검을 덮는 부착형 이펙트로 표현한다.
+            // Hitbox_Size/Offset은 pushKasiyasRushBodyEffect에서 X/Y 기준으로 반영한다.
+            return;
+        }
+        if (upperEff === 'EFT_KASIYAS_P1_M2_FINAL_SLASH') {
+            // 최종 참격의 실제 판정 Z 크기는 맵 전체 공격용으로 매우 크게 잡혀 있다.
+            // 그 값을 그대로 이펙트 높이/출력 Z에 쓰면 참격이 하늘 쪽에서 발생해 보이므로,
+            // 판정 크기와 별개로 화면에서 보이는 참격 전용 높이를 낮게 제한한다.
+            const visualH = Math.max(300 * effectScale, Math.min(430 * effectScale, Math.max(atkD * 0.76, 330 * effectScale)));
+            const visualZ = atkZ + Math.max(26 * effectScale, Math.min(98 * effectScale, visualH * 0.18));
+            gameState.effects.push({
+                type: 'kasiyasFinalSlash',
+                renderType: upperEff,
+                x: atkX,
+                y: atkY,
+                z: visualZ,
+                dir: m.faceDir || 1,
+                // 실제 히트박스 범위를 충분히 덮도록 시각 범위를 공격 범위보다 약간 크게 잡는다.
+                // 렌더러에서는 이 값을 기준으로 화면을 가르는 대각선 참격선을 생성한다.
+                w: Math.max(atkW * 1.50, 2100 * effectScale),
+                d: Math.max(atkD * 1.75, 700 * effectScale),
+                h: Math.max(visualH * 1.32, 500 * effectScale),
+                life: 0.78,
+                maxLife: 0.78,
+                color: 'rgba(132,0,0,0.98)',
+                accentColor: 'rgba(8,0,0,0.98)'
+            });
+            return;
+        }
+
         if (upperEff === 'EFT_KASIYAS_SWORDPLAY') {
             gameState.effects.push({
                 type: 'swordplaySlashes',
@@ -582,6 +691,11 @@ const BossVFXSystem = {
     pushBossObjectActionEffect: function(obj, action, hitbox, gameState) {
         const renderType = String(action.VFX_Type || '').trim().toUpperCase();
         if (!renderType) return;
+        if (renderType === 'EFT_KASIYAS_SWORD_QUICK_DRAW') {
+            // 대형 패턴 3번 분신 돌진 발도는 실제 이동 중인 몸/검에 붙는 kasiyasRushBodySlash로만 표현한다.
+            // 여기서 일반 slash 이펙트를 추가하면 확장 히트박스 크기만큼 기존 반달형 검호가 크게 출력된다.
+            return;
+        }
     
         if (renderType === 'EFT_KASIYAS_SWORDPLAY') {
             gameState.effects.push({
@@ -596,6 +710,10 @@ const BossVFXSystem = {
                 h: Math.max(hitbox.h, 140 * (obj.scale || 1)),
                 life: 0.20,
                 maxLife: 0.20,
+                sourceObject: obj,
+                sourceObjectId: String(obj.data && (obj.data.Object_ID || obj.data.Attack_Object_ID) || '').trim(),
+                sourceActionId: String(action.Object_Action_ID || '').trim(),
+                cancelOnGuard: true,
                 color: 'rgba(255,72,58,0.76)',
                 accentColor: 'rgba(18,0,0,0.82)'
             });
@@ -617,8 +735,34 @@ const BossVFXSystem = {
                 h: Math.max(1, hitbox.h),
                 life: 0.28,
                 maxLife: 0.28,
+                sourceObject: obj,
+                sourceObjectId: String(obj.data && (obj.data.Object_ID || obj.data.Attack_Object_ID) || '').trim(),
+                sourceActionId: String(action.Object_Action_ID || '').trim(),
+                cancelOnGuard: true,
                 color: 'rgba(255,72,58,0.78)',
                 accentColor: 'rgba(18,0,0,0.82)'
+            });
+            return;
+        }
+
+        if (renderType === 'EFT_SHOCKWAVE') {
+            gameState.effects.push({
+                type: 'shockwave',
+                renderType: renderType,
+                x: hitbox.x,
+                y: hitbox.y,
+                z: hitbox.z + Math.max(4, hitbox.h * 0.22),
+                w: Math.max(1, hitbox.w),
+                d: Math.max(1, hitbox.d),
+                h: Math.max(1, hitbox.h),
+                life: 0.32,
+                maxLife: 0.32,
+                sourceObject: obj,
+                sourceObjectId: String(obj.data && (obj.data.Object_ID || obj.data.Attack_Object_ID) || '').trim(),
+                sourceActionId: String(action.Object_Action_ID || '').trim(),
+                cancelOnGuard: true,
+                color: 'rgba(245,248,255,0.92)',
+                accentColor: 'rgba(40,52,68,0.82)'
             });
             return;
         }
@@ -636,6 +780,10 @@ const BossVFXSystem = {
                 dir: obj.faceDir || 1,
                 life: 0.24,
                 maxLife: 0.24,
+                sourceObject: obj,
+                sourceObjectId: String(obj.data && (obj.data.Object_ID || obj.data.Attack_Object_ID) || '').trim(),
+                sourceActionId: String(action.Object_Action_ID || '').trim(),
+                cancelOnGuard: true,
                 color: 'rgba(255, 58, 50, 0.96)',
                 accentColor: 'rgba(24, 0, 0, 0.90)'
             });
@@ -655,6 +803,10 @@ const BossVFXSystem = {
             h: hitbox.h,
             life: 0.22,
             maxLife: 0.22,
+            sourceObject: obj,
+            sourceObjectId: String(obj.data && (obj.data.Object_ID || obj.data.Attack_Object_ID) || '').trim(),
+            sourceActionId: String(action.Object_Action_ID || '').trim(),
+            cancelOnGuard: true,
             color: 'rgba(255, 56, 50, 0.98)',
             accentColor: 'rgba(28, 0, 0, 0.90)'
         });

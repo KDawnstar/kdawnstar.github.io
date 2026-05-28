@@ -22,6 +22,75 @@ const BossPatternSystem = {
         return 1;
     },
 
+
+    getBossPatternActionSourceId: function(pattern) {
+        return String(pattern && (pattern.Runtime_Action_Source_ID || pattern.Pattern_Action_Source_ID || pattern.Pattern_ID) || '').trim();
+    },
+
+    isKasiyasMajorPattern3Pattern: function(pattern) {
+        const patternId = String(pattern && pattern.Pattern_ID || '').trim();
+        const sourceId = this.getBossPatternActionSourceId(pattern);
+        return patternId === '231008' || patternId === '231009' || sourceId === '231008';
+    },
+
+    shuffleBossActionGroupList: function(list) {
+        const arr = Array.isArray(list) ? [...list] : [];
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+        }
+        return arr;
+    },
+
+    buildBossPatternRuntimeActions: function(pattern, gameState) {
+        const sourceActions = Array.isArray(pattern && pattern.Runtime_Actions) ? pattern.Runtime_Actions : [];
+        const result = [];
+        const usedRandomOrders = new Set();
+
+        for (const action of sourceActions) {
+            const randomOrder = String(action && action.Random_Action_Order != null ? action.Random_Action_Order : '').trim();
+            if (!randomOrder || randomOrder === '0') {
+                result.push(action);
+                continue;
+            }
+            if (usedRandomOrders.has(randomOrder)) continue;
+            usedRandomOrders.add(randomOrder);
+
+            const groupRows = sourceActions.filter(a => String(a && a.Random_Action_Order != null ? a.Random_Action_Order : '').trim() === randomOrder);
+            const byGroup = new Map();
+            groupRows.forEach(row => {
+                const groupKey = String(row.Random_Action_Group || row.Random_Action_Set_ID || row.Action_ID || '').trim() || `ACTION_${result.length}_${byGroup.size}`;
+                if (!byGroup.has(groupKey)) byGroup.set(groupKey, []);
+                byGroup.get(groupKey).push(row);
+            });
+
+            const groups = Array.from(byGroup.entries()).map(([key, rows]) => {
+                const sortedRows = rows.slice().sort((a, b) => {
+                    const ag = parseFloat(a.Random_Action_Group_Order);
+                    const bg = parseFloat(b.Random_Action_Group_Order);
+                    if (!isNaN(ag) || !isNaN(bg)) return (isNaN(ag) ? 9999 : ag) - (isNaN(bg) ? 9999 : bg);
+                    return (parseFloat(a.Action_Order) || 0) - (parseFloat(b.Action_Order) || 0);
+                });
+                const minOrder = sortedRows.reduce((v, row) => Math.min(v, parseFloat(row.Action_Order) || 999999), 999999);
+                return { key, rows: sortedRows, minOrder };
+            }).sort((a, b) => a.minOrder - b.minOrder);
+
+            const shuffled = this.shuffleBossActionGroupList(groups);
+            shuffled.forEach(group => group.rows.forEach(row => result.push(row)));
+
+            try {
+                this.pushBossDebugLog(
+                    gameState,
+                    'RANDOM_ACTION',
+                    `${String(pattern && pattern.Pattern_ID || '').trim()} ${this.getBossDebugName(pattern)}`,
+                    `Random_Action_Order ${randomOrder}: ${shuffled.map(g => g.key).join(' > ')}`
+                );
+            } catch(e) {}
+        }
+
+        return result;
+    },
+
     updateBossCooldowns: function(m, deltaTime) {
         const boss = m.boss;
         if (!boss || !boss.patternCooldowns) return;
@@ -97,6 +166,36 @@ const BossPatternSystem = {
         const boss = m ? m.boss : null;
         const moveType = this.normalizeBossActionMoveType(action.Action_Move_Type);
         const timeRate = this.getLatePhaseActionTimeRate(action, boss);
+        const actionType = String(action.Action_Type || '').trim().toUpperCase();
+
+        if (String(action.Call_Object_Action_ID || action.Object_Action_ID || '').trim()) {
+            const callType = String(action.Call_Object_Action_Type || '').trim().toUpperCase() || 'START_AND_WAIT';
+            const callId = String(action.Call_Object_Action_ID || action.Object_Action_ID || '').trim();
+            const callAction = gameState && gameState.DB_BOSS_PATTERN_OBJECT_ACTION ? gameState.DB_BOSS_PATTERN_OBJECT_ACTION[callId] : null;
+            const objectId = String(action.Call_Object_ID || action.Object_ID || (callAction && (callAction.Object_ID || callAction.Attack_Object_ID)) || '').trim();
+            const explicitDuration = parseFloat(action.Action_Anim_Duration);
+            const calledDuration = parseFloat(callAction && callAction.Action_Anim_Duration);
+
+            let ownDuration = (!isNaN(explicitDuration) && explicitDuration > 0)
+                ? Math.max(0.05, explicitDuration * timeRate)
+                : (actionType === 'CALL_OBJECT_ACTION' ? Math.max(0.05, 0.05 * timeRate) : 0);
+
+            let objectRuntimeDuration = 0;
+            if (objectId && typeof this.findActiveBossPatternActorByObjectId === 'function' && typeof this.getBossObjectCurrentActionDuration === 'function') {
+                const actor = this.findActiveBossPatternActorByObjectId(gameState, objectId);
+                const actorActionId = actor && actor.action ? String(actor.action.Object_Action_ID || '').trim() : '';
+                if (actor && actor.action && (!callId || actorActionId === callId)) {
+                    objectRuntimeDuration = Math.max(0, this.getBossObjectCurrentActionDuration(actor, actor.action));
+                }
+            }
+            if (objectRuntimeDuration <= 0) objectRuntimeDuration = Math.max(0, parseFloat((m && m.boss && m.boss.syncedObjectActionDuration)) || 0);
+            if (objectRuntimeDuration <= 0 && !isNaN(calledDuration) && calledDuration > 0) objectRuntimeDuration = calledDuration * timeRate;
+
+            if (callType === 'START_ONLY') return ownDuration > 0 ? ownDuration : Math.max(0.05, 0.05 * timeRate);
+            if (callType === 'START_SYNC_WAIT' || callType === 'START_AND_WAIT' || actionType === 'CALL_OBJECT_ACTION') {
+                return Math.max(ownDuration || 0.05, objectRuntimeDuration || 0.05);
+            }
+        }
 
         if (moveType === 'RUSH') {
             const path = m && m.boss ? (m.boss.currentDashPath || m.boss.previewDashPath || m.boss.lastDashPath) : null;
@@ -148,7 +247,9 @@ const BossPatternSystem = {
         const condType = String(pattern.Pattern_Cond_Type || '').trim().toUpperCase();
 
         if (!condType || condType === 'COOLDOWN_READY') return true;
-        if (condType === 'LATE_PHASE' || condType === 'LATE_PHASE_START') return !!boss.isLatePhase;
+        if (condType === 'LATE_PHASE') return !!boss.isLatePhase;
+        if (condType === 'LATE_PHASE_START') return !!boss.isLatePhase && !boss.lateOpeningPatternUsed;
+        if (condType === 'LATE_PHASE_MAJOR_PATTERN') return !!boss.isLatePhase && !!boss.lateOpeningPatternUsed;
 
         return true;
     },
@@ -296,15 +397,38 @@ const BossPatternSystem = {
         if (!boss || !pattern) return;
 
         boss.activePattern = pattern;
+        if (String(pattern.Pattern_ID || '').trim() === String(boss.phase && boss.phase.Late_Opening_Pattern_ID || '').trim()) {
+            boss.lateOpeningPatternUsed = true;
+        }
         boss.currentActionIndex = -1;
         boss.currentLoopIndex = 0;
         boss.loopCount = this.getPatternLoopCount(pattern, boss);
         boss.action = null;
         boss.actionHitFired = false;
+        boss.runtimeActions = this.buildBossPatternRuntimeActions(pattern, gameState);
         boss.pattern4Runtime = null;
         boss.majorPattern1Runtime = null;
+        boss.majorPattern2Runtime = null;
+        boss.majorPattern3Runtime = null;
         boss.nextDiagonalOwnerCorner = null;
         boss.nextDiagonalCloneCorner = null;
+
+        if (String(pattern.Pattern_ID || '').trim() === '231007') {
+            if (typeof this.clearKasiyasMajorPattern2Objects === 'function') {
+                this.clearKasiyasMajorPattern2Objects(gameState, { removeActors: true });
+            }
+            boss.majorPattern2Runtime = { objectGroupSelections: {} };
+        }
+
+
+        if (this.isKasiyasMajorPattern3Pattern(pattern)) {
+            if (typeof this.clearKasiyasMajorPattern3Runtime === 'function') {
+                this.clearKasiyasMajorPattern3Runtime(gameState, { removeActors: true, clearMark: true });
+            } else if (typeof BossObjectSystem !== 'undefined' && BossObjectSystem.clearKasiyasMajorPattern3Runtime) {
+                BossObjectSystem.clearKasiyasMajorPattern3Runtime(gameState, { removeActors: true, clearMark: true });
+            }
+            boss.majorPattern3Runtime = { randomRushStarted: true, randomRushPaths: {} };
+        }
 
         this.ensureBossDebug(gameState).currentObjectAction = null;
         this.pushBossDebugLog(
@@ -324,6 +448,16 @@ const BossPatternSystem = {
         const pattern = boss.activePattern;
         if (pattern) {
             const patternId = String(pattern.Pattern_ID || '').trim();
+            if (patternId === '231007' && typeof this.clearKasiyasMajorPattern2Objects === 'function') {
+                this.clearKasiyasMajorPattern2Objects(gameState, { removeActors: true });
+            }
+            if (this.isKasiyasMajorPattern3Pattern(pattern)) {
+                if (typeof this.clearKasiyasMajorPattern3Runtime === 'function') {
+                    this.clearKasiyasMajorPattern3Runtime(gameState, { removeActors: true, clearMark: true });
+                } else if (typeof BossObjectSystem !== 'undefined' && BossObjectSystem.clearKasiyasMajorPattern3Runtime) {
+                    BossObjectSystem.clearKasiyasMajorPattern3Runtime(gameState, { removeActors: true, clearMark: true });
+                }
+            }
             boss.patternCooldowns[patternId] = parseFloat(pattern.Pattern_Cooldown) || 1;
             this.pushBossDebugLog(
                 gameState,
@@ -341,6 +475,7 @@ const BossPatternSystem = {
         boss.currentLoopIndex = 0;
         boss.loopCount = 1;
         boss.action = null;
+        boss.runtimeActions = null;
         boss.actionHitFired = false;
         boss.actionHitsDone = 0;
         boss.actionCycleTimer = 0;
@@ -359,7 +494,7 @@ const BossPatternSystem = {
         const pattern = boss && boss.activePattern;
         if (!boss || !pattern) return;
 
-        const actions = pattern.Runtime_Actions || [];
+        const actions = boss.runtimeActions || pattern.Runtime_Actions || [];
 
         while (true) {
             boss.currentActionIndex++;
@@ -395,7 +530,7 @@ const BossPatternSystem = {
             boss.parryCueTimer = 0;
 
             const actionType = String(action.Action_Type || '').trim().toUpperCase();
-            if (['WAIT','WARNING_PATH','WARNING','SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT','MOVE','MOVE_GROUP'].includes(actionType)) m.state = 'IDLE';
+            if (['WAIT','WARNING_PATH','WARNING','SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT','MOVE','MOVE_GROUP','CALL_OBJECT_ACTION'].includes(actionType)) m.state = 'IDLE';
             else m.state = 'ATK_MELEE';
 
             m.timer = 0;

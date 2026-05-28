@@ -204,7 +204,7 @@ const GameRenderer = {
         }
 
         for (let obj of (gameState.bossAttackObjects || [])) {
-            if (obj && obj.active && (obj.kind === 'actor' || obj.kind === 'collectible')) {
+            if (obj && obj.active && (obj.kind === 'actor' || obj.kind === 'collectible' || obj.kind === 'interactiveSword')) {
                 renderables.push({
                     y: obj.y,
                     draw: function() {
@@ -250,7 +250,7 @@ const GameRenderer = {
         if (typeof this.drawBossPatternDialogue === 'function') {
             this.drawBossPatternDialogue(ctx, canvas, gameState);
         }
-        this.drawTargetUI(ctx, canvas, targetUI);
+        this.drawTargetUI(ctx, canvas, targetUI, gameState);
         this.drawScreenHitFeedback(ctx, canvas, gameState.screenHitFlash);
     },
 
@@ -268,6 +268,22 @@ const GameRenderer = {
 
         ctx.save();
         ctx.globalCompositeOperation = 'source-over';
+        const mode = String(flash.mode || '').trim().toLowerCase();
+        if (mode === 'white' || mode === 'gold') {
+            const fullAlpha = Math.min(0.62, strength * t * 0.58);
+            ctx.fillStyle = mode === 'gold'
+                ? `rgba(255, 232, 120, ${fullAlpha})`
+                : `rgba(255, 255, 245, ${fullAlpha})`;
+            ctx.fillRect(0, 0, w, h);
+            const glow = ctx.createRadialGradient(w / 2, h * 0.48, 0, w / 2, h * 0.48, Math.max(w, h) * 0.72);
+            glow.addColorStop(0, `rgba(255, 244, 166, ${Math.min(0.48, fullAlpha * 0.72)})`);
+            glow.addColorStop(0.45, `rgba(255, 206, 84, ${Math.min(0.20, fullAlpha * 0.32)})`);
+            glow.addColorStop(1, 'rgba(255, 206, 84, 0)');
+            ctx.fillStyle = glow;
+            ctx.fillRect(0, 0, w, h);
+            ctx.restore();
+            return;
+        }
         const gradL = ctx.createLinearGradient(0, 0, edge, 0);
         gradL.addColorStop(0, `rgba(150,0,0,${alpha})`);
         gradL.addColorStop(1, 'rgba(150,0,0,0)');

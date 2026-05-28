@@ -52,8 +52,48 @@ const MonsterManager = {
         return BossCombatSystem.enterBossGroggyFromParry.apply(this, arguments);
     },
 
+    hasTwoSameKasiyasApostleEnergies: function() {
+        return BossCombatSystem.hasTwoSameKasiyasApostleEnergies.apply(this, arguments);
+    },
+
+    enterBossGroggyFromGuardSpecial: function() {
+        return BossCombatSystem.enterBossGroggyFromGuardSpecial.apply(this, arguments);
+    },
+
+    tryApplyBossGuardSpecialResult: function() {
+        return BossCombatSystem.tryApplyBossGuardSpecialResult.apply(this, arguments);
+    },
+
+    playerHasTemperedBladeGuard: function() {
+        return BossCombatSystem.playerHasTemperedBladeGuard.apply(this, arguments);
+    },
+
+    consumeTemperedBladeGuard: function() {
+        return BossCombatSystem.consumeTemperedBladeGuard.apply(this, arguments);
+    },
+
+    queueKasiyasMajorPattern3CrossGuardResolve: function() {
+        return BossCombatSystem.queueKasiyasMajorPattern3CrossGuardResolve.apply(this, arguments);
+    },
+
+    resolveKasiyasMajorPattern3PendingCrossGroggy: function() {
+        return BossCombatSystem.resolveKasiyasMajorPattern3PendingCrossGroggy.apply(this, arguments);
+    },
+
     tryResolveBossParryByPlayerHit: function() {
         return BossCombatSystem.tryResolveBossParryByPlayerHit.apply(this, arguments);
+    },
+
+    getBossExplicitActionDamageRate: function() {
+        return BossCombatSystem.getBossExplicitActionDamageRate.apply(this, arguments);
+    },
+
+    getBossDefaultDamageRate: function() {
+        return BossCombatSystem.getBossDefaultDamageRate.apply(this, arguments);
+    },
+
+    getBossReceivedDamageRate: function() {
+        return BossCombatSystem.getBossReceivedDamageRate.apply(this, arguments);
     },
 
     takeDamage: function() {
@@ -110,6 +150,22 @@ const MonsterManager = {
 
     getPatternLoopCount: function() {
         return BossPatternSystem.getPatternLoopCount.apply(this, arguments);
+    },
+
+    getBossPatternActionSourceId: function() {
+        return BossPatternSystem.getBossPatternActionSourceId.apply(this, arguments);
+    },
+
+    isKasiyasMajorPattern3Pattern: function() {
+        return BossPatternSystem.isKasiyasMajorPattern3Pattern.apply(this, arguments);
+    },
+
+    shuffleBossActionGroupList: function() {
+        return BossPatternSystem.shuffleBossActionGroupList.apply(this, arguments);
+    },
+
+    buildBossPatternRuntimeActions: function() {
+        return BossPatternSystem.buildBossPatternRuntimeActions.apply(this, arguments);
     },
 
     updateBossCooldowns: function() {
@@ -189,6 +245,70 @@ const MonsterManager = {
         return BossPositionSystem.computeDashPathToMapEdge.apply(this, arguments);
     },
 
+    isBossFixedMapPlaceType: function() {
+        return BossPositionSystem.isBossFixedMapPlaceType.apply(this, arguments);
+    },
+
+    normalizeBossFixedMapPlaceType: function() {
+        return BossPositionSystem.normalizeBossFixedMapPlaceType.apply(this, arguments);
+    },
+
+    computeDashPathToFixedMapPosition: function() {
+        return BossPositionSystem.computeDashPathToFixedMapPosition.apply(this, arguments);
+    },
+
+    computeDashPathForActionDirection: function() {
+        return BossPositionSystem.computeDashPathForActionDirection.apply(this, arguments);
+    },
+
+    computeDashPathToMapEdgeByVector: function() {
+        return BossPositionSystem.computeDashPathToMapEdgeByVector.apply(this, arguments);
+    },
+
+    isValidBossDashPath: function() {
+        return BossPositionSystem.isValidBossDashPath.apply(this, arguments);
+    },
+
+    computeSafeDashPathForActionDirection: function() {
+        return BossPositionSystem.computeSafeDashPathForActionDirection.apply(this, arguments);
+    },
+
+    isKasiyasMajorPattern3RandomRushAction: function() {
+        return BossPositionSystem.isKasiyasMajorPattern3RandomRushAction.apply(this, arguments);
+    },
+
+    computeKasiyasMajorPattern3SideRushPath: function() {
+        return BossPositionSystem.computeKasiyasMajorPattern3SideRushPath.apply(this, arguments);
+    },
+
+    setKasiyasMajorPattern3RushActorsHidden: function() {
+        return BossActionSystem.setKasiyasMajorPattern3RushActorsHidden.apply(this, arguments);
+    },
+
+    getKasiyasMajorPattern3RushPathKey: function() {
+        return BossActionSystem.getKasiyasMajorPattern3RushPathKey.apply(this, arguments);
+    },
+
+    getKasiyasMajorPattern3RushStore: function() {
+        return BossActionSystem.getKasiyasMajorPattern3RushStore.apply(this, arguments);
+    },
+
+    isValidKasiyasMajorPattern3RushPath: function() {
+        return BossActionSystem.isValidKasiyasMajorPattern3RushPath.apply(this, arguments);
+    },
+
+    getKasiyasMajorPattern3StoredRushPath: function() {
+        return BossActionSystem.getKasiyasMajorPattern3StoredRushPath.apply(this, arguments);
+    },
+
+    ensureKasiyasMajorPattern3RushSlotPath: function() {
+        return BossActionSystem.ensureKasiyasMajorPattern3RushSlotPath.apply(this, arguments);
+    },
+
+    getKasiyasMajorPattern3RushSlotPath: function() {
+        return BossActionSystem.getKasiyasMajorPattern3RushSlotPath.apply(this, arguments);
+    },
+
     getBossDiagonalCornerPositions: function() {
         return BossPositionSystem.getBossDiagonalCornerPositions.apply(this, arguments);
     },
@@ -239,6 +359,10 @@ const MonsterManager = {
 
     pushPathSlashEffects: function() {
         return BossVFXSystem.pushPathSlashEffects.apply(this, arguments);
+    },
+
+    pushKasiyasRushBodyEffect: function() {
+        return BossVFXSystem.pushKasiyasRushBodyEffect.apply(this, arguments);
     },
 
     pushPathResidualSlashField: function() {
@@ -322,6 +446,10 @@ const MonsterManager = {
         return BossActionSystem.prepareBossDashMoveToPlayer.apply(this, arguments);
     },
 
+    startCalledBossObjectActionForPatternAction: function() {
+        return BossActionSystem.startCalledBossObjectActionForPatternAction.apply(this, arguments);
+    },
+
     onBossPatternActionStart: function() {
         return BossActionSystem.onBossPatternActionStart.apply(this, arguments);
     },
@@ -351,6 +479,54 @@ const MonsterManager = {
 
     getBossObjectIdFromData: function() {
         return BossObjectSystem.getBossObjectIdFromData.apply(this, arguments);
+    },
+
+    getBossOwnerRuntimeFromCaster: function() {
+        return BossObjectSystem.getBossOwnerRuntimeFromCaster.apply(this, arguments);
+    },
+
+    getBossPatternObjectGroupCandidates: function() {
+        return BossObjectSystem.getBossPatternObjectGroupCandidates.apply(this, arguments);
+    },
+
+    pickRandomBossObjectCandidate: function() {
+        return BossObjectSystem.pickRandomBossObjectCandidate.apply(this, arguments);
+    },
+
+    selectBossObjectIdFromGroup: function() {
+        return BossObjectSystem.selectBossObjectIdFromGroup.apply(this, arguments);
+    },
+
+    isBossObjectGetInputActive: function() {
+        return BossObjectSystem.isBossObjectGetInputActive.apply(this, arguments);
+    },
+
+    isPlayerInsideBossObjectGetRange: function() {
+        return BossObjectSystem.isPlayerInsideBossObjectGetRange.apply(this, arguments);
+    },
+
+    getBossObjectGetDistanceScore: function() {
+        return BossObjectSystem.getBossObjectGetDistanceScore.apply(this, arguments);
+    },
+
+    getNearestBossInteractiveSword: function() {
+        return BossObjectSystem.getNearestBossInteractiveSword.apply(this, arguments);
+    },
+
+    refreshNearestBossInteractiveSwordTarget: function() {
+        return BossObjectSystem.refreshNearestBossInteractiveSwordTarget.apply(this, arguments);
+    },
+
+    consumeBossInteractiveSword: function() {
+        return BossObjectSystem.consumeBossInteractiveSword.apply(this, arguments);
+    },
+
+    getApostleEnergyColorInfo: function() {
+        return BossObjectSystem.getApostleEnergyColorInfo.apply(this, arguments);
+    },
+
+    applyBossObjectGetEffect: function() {
+        return BossObjectSystem.applyBossObjectGetEffect.apply(this, arguments);
     },
 
     isBossObjectActionConditionMet: function() {
@@ -393,6 +569,10 @@ const MonsterManager = {
         return BossCombatSystem.getBossObjectActionHitbox.apply(this, arguments);
     },
 
+    getBossObjectActionHitboxes: function() {
+        return BossCombatSystem.getBossObjectActionHitboxes.apply(this, arguments);
+    },
+
     pushBossObjectActionEffect: function() {
         return BossVFXSystem.pushBossObjectActionEffect.apply(this, arguments);
     },
@@ -407,6 +587,38 @@ const MonsterManager = {
 
     updateBossAttackObjects: function() {
         return BossObjectSystem.updateBossAttackObjects.apply(this, arguments);
+    },
+
+    clearKasiyasMajorPattern2Objects: function() {
+        return BossObjectSystem.clearKasiyasMajorPattern2Objects.apply(this, arguments);
+    },
+
+    clearKasiyasMajorPattern3Runtime: function() {
+        return BossObjectSystem.clearKasiyasMajorPattern3Runtime.apply(this, arguments);
+    },
+
+    isKasiyasMajorPattern3CloneObject: function() {
+        return BossObjectSystem.isKasiyasMajorPattern3CloneObject.apply(this, arguments);
+    },
+
+    findActiveBossPatternActorByObjectId: function() {
+        return BossObjectSystem.findActiveBossPatternActorByObjectId.apply(this, arguments);
+    },
+
+    applyKasiyasOniMarkFromObject: function() {
+        return BossObjectSystem.applyKasiyasOniMarkFromObject.apply(this, arguments);
+    },
+
+    startBossObjectActionById: function() {
+        return BossObjectSystem.startBossObjectActionById.apply(this, arguments);
+    },
+
+    updateKasiyasOniMarkPulse: function() {
+        return BossCombatSystem.updateKasiyasOniMarkPulse.apply(this, arguments);
+    },
+
+    applyKasiyasOniMarkAttackResult: function() {
+        return BossCombatSystem.applyKasiyasOniMarkAttackResult.apply(this, arguments);
     },
 
     updateBossDefaultAction: function() {

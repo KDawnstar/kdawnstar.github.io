@@ -413,6 +413,14 @@ GameRenderer.drawPlayerEntity = function(ctx, player) {
 
     ctx.restore();
 
+    if (typeof this.drawPlayerKasiyasOniMark === 'function') {
+        this.drawPlayerKasiyasOniMark(ctx, player, bodyY, ph);
+    }
+
+    if (typeof this.drawPlayerApostleEnergyAura === 'function') {
+        this.drawPlayerApostleEnergyAura(ctx, player, bodyY, ph);
+    }
+
     if (player.stanceSwapTimer > 0 || player.rapidAtkCooldownTimer > 0 || player.rapidAtkAllowTimer > 0 || player.guardCooldownTimer > 0) {
         let cdRatio = 0;
         let cdColor = "#fff";
@@ -444,3 +452,178 @@ GameRenderer.drawPlayerEntity = function(ctx, player) {
         ctx.fill();
     }
 };
+
+
+
+GameRenderer.drawPlayerKasiyasOniMark = function(ctx, player, bodyY, bodyH) {
+    const mark = player && player.kasiyasOniMark ? player.kasiyasOniMark : null;
+    const tempered = !!(player && player.kasiyasTemperedBladeReady);
+    if ((!mark || !mark.active) && !tempered) return;
+
+    const now = Date.now();
+    const pulse = 0.5 + Math.sin(now / (mark && mark.pulse ? 72 : 180)) * 0.5;
+    const flash = Math.max(0, Math.min(1, parseFloat(mark && mark.flashTimer) || parseFloat(player.kasiyasTemperedBladeFlashTimer) || 0));
+    const x = player.x;
+    const y = bodyY - bodyH * 1.22;
+    const scale = (mark && mark.pulse ? 1.16 : 1.0) + pulse * (mark && mark.pulse ? 0.18 : 0.07) + flash * 0.10;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+
+    if (tempered && (!mark || !mark.active)) {
+        // 연단된 칼날의 가능성은 낙인과 다른 보상 상태이므로 별도 금색/백색 검기 이펙트로 표시한다.
+        ctx.globalAlpha = 0.78 + pulse * 0.20;
+        ctx.shadowBlur = 24 + pulse * 12;
+        ctx.shadowColor = 'rgba(255,236,112,0.98)';
+        ctx.strokeStyle = 'rgba(255,236,112,0.96)';
+        ctx.lineWidth = 3.2;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 32 + pulse * 4, 15 + pulse * 2, Date.now() / 780, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(148,232,255,0.74)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 25 + pulse * 3, 35 + pulse * 4, -Date.now() / 920, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255,248,180,0.24)';
+        ctx.beginPath();
+        ctx.moveTo(0, -27); ctx.lineTo(20, 0); ctx.lineTo(0, 27); ctx.lineTo(-20, 0); ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,230,0.95)';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(-22, 8);
+        ctx.lineTo(23, -10);
+        ctx.moveTo(-10, -24);
+        ctx.lineTo(12, 22);
+        ctx.stroke();
+        for (let i = 0; i < 5; i++) {
+            const a = Date.now() / 420 + i * Math.PI * 2 / 5;
+            const rx = Math.cos(a) * (32 + pulse * 4);
+            const ry = Math.sin(a) * (18 + pulse * 3);
+            ctx.fillStyle = i % 2 ? 'rgba(145,232,255,0.78)' : 'rgba(255,242,130,0.86)';
+            ctx.beginPath();
+            ctx.arc(rx, ry, 2.8 + pulse * 0.8, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+        return;
+    }
+
+    ctx.globalAlpha = 0.78 + pulse * 0.18 + flash * 0.18;
+    ctx.shadowBlur = mark && mark.pulse ? 24 : 15;
+    ctx.shadowColor = mark && mark.pulse ? 'rgba(255,38,44,0.98)' : 'rgba(150,0,0,0.88)';
+    const grad = ctx.createRadialGradient(0, 0, 4, 0, 0, 30);
+    grad.addColorStop(0, 'rgba(255,210,120,0.90)');
+    grad.addColorStop(0.38, 'rgba(255,38,48,0.78)');
+    grad.addColorStop(1, 'rgba(24,0,0,0.12)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, 28, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = mark && mark.pulse ? 'rgba(255,230,120,0.95)' : 'rgba(255,68,68,0.92)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, -25);
+    ctx.lineTo(21, 0);
+    ctx.lineTo(0, 25);
+    ctx.lineTo(-21, 0);
+    ctx.closePath();
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.92;
+    ctx.strokeStyle = 'rgba(30,0,0,0.95)';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(-10, -4);
+    ctx.quadraticCurveTo(0, -18, 10, -4);
+    ctx.moveTo(-12, 6);
+    ctx.quadraticCurveTo(0, 18, 12, 6);
+    ctx.moveTo(0, -20);
+    ctx.lineTo(0, 20);
+    ctx.stroke();
+
+    const stack = Math.max(0, parseInt(mark && mark.stack) || 0);
+    const maxStack = Math.max(1, parseInt(mark && mark.maxStack) || 3);
+    for (let i = 0; i < maxStack; i++) {
+        const dotX = (i - (maxStack - 1) / 2) * 11;
+        ctx.globalAlpha = i < stack ? 0.95 : 0.28;
+        ctx.fillStyle = i < stack ? 'rgba(255,236,120,0.95)' : 'rgba(255,80,80,0.55)';
+        ctx.beginPath();
+        ctx.arc(dotX, 34, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    ctx.restore();
+};
+
+GameRenderer.getPlayerApostleEnergyColor = function(value) {
+    const key = String(value || '').trim().toUpperCase();
+    if (key === 'APOSTLE_YELLOW') return { color: 'rgba(255,216,70,0.94)', edge: 'rgba(255,246,170,0.92)' };
+    if (key === 'APOSTLE_BLACK') return { color: 'rgba(152,84,255,0.90)', edge: 'rgba(232,214,255,0.82)' };
+    return { color: 'rgba(255,78,66,0.94)', edge: 'rgba(255,226,196,0.86)' };
+};
+
+GameRenderer.drawPlayerApostleEnergyAura = function(ctx, player, bodyY, bodyH) {
+    const energies = Array.isArray(player && player.kasiyasApostleEnergies) ? player.kasiyasApostleEnergies.filter(Boolean) : [];
+    if (!player || energies.length <= 0) return;
+
+    const sameColor = energies.length >= 2 && energies[0] === energies[1];
+    const pulse = 0.5 + Math.sin(Date.now() / 150) * 0.5;
+    const flash = Math.max(0, Math.min(1, parseFloat(player.kasiyasApostleEnergyFlashTimer) || 0));
+    const centerX = player.x;
+    const centerY = bodyY - bodyH * 1.08;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    if (sameColor) {
+        const info = this.getPlayerApostleEnergyColor(energies[0]);
+        ctx.globalAlpha = 0.45 + pulse * 0.20 + flash * 0.12;
+        ctx.strokeStyle = info.color;
+        ctx.lineWidth = 3.0;
+        ctx.shadowBlur = 14 + pulse * 10;
+        ctx.shadowColor = info.color;
+        ctx.beginPath();
+        ctx.ellipse(centerX, centerY, 44 + pulse * 5, 24 + pulse * 3, 0, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.globalAlpha = 0.30 + pulse * 0.18;
+        ctx.fillStyle = info.color;
+        ctx.beginPath();
+        ctx.ellipse(centerX, centerY, 32 + pulse * 5, 18 + pulse * 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    energies.forEach((energy, idx) => {
+        const info = this.getPlayerApostleEnergyColor(energy);
+        const count = energies.length;
+        const angle = Date.now() / 520 + idx * (Math.PI * 2 / Math.max(1, count)) + (sameColor ? 0.3 : 0);
+        const rx = sameColor ? 44 : 34;
+        const ry = sameColor ? 24 : 20;
+        const x = centerX + Math.cos(angle) * rx;
+        const y = centerY + Math.sin(angle) * ry;
+        const r = sameColor ? 8 + pulse * 1.8 : 7 + pulse * 1.2;
+
+        ctx.globalAlpha = sameColor ? 0.96 : 0.86;
+        ctx.shadowBlur = sameColor ? 18 : 12;
+        ctx.shadowColor = info.color;
+        ctx.fillStyle = info.color;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = 0.75;
+        ctx.strokeStyle = info.edge;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(x, y, r + 3, 0, Math.PI * 2);
+        ctx.stroke();
+    });
+
+    ctx.restore();
+};
+

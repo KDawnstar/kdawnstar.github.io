@@ -4,7 +4,7 @@
     "Dev_Name": "Monster_Kasiyas_Phase_1",
     "Monster_Name": "정복자 카시야스",
     "Level": 10,
-    "HP": 1000,
+    "HP": 1500,
     "ATK": 50,
     "DEF": 5,
     "Move_Speed": 250,
@@ -19,16 +19,16 @@
     "AI_Type": "BOSS_PATTERN",
     "Pattern_Set_ID": 230001,
     "Move_Defence_Type": "SUPER_ARMOR",
+    "Default_Hit_DMG_Rate": 1,
     "Hit_Anim_Duration": 0,
-    "Die_Anim_Duration": 1,
-    "Groggy_DMG_Rate": 1.5
+    "Die_Anim_Duration": 1
   },
   {
     "Monster_ID": 201002,
     "Dev_Name": "Monster_Kasiyas_Phase_2",
     "Monster_Name": "정복자 카시야스",
     "Level": 10,
-    "HP": 1200,
+    "HP": 1700,
     "ATK": 55,
     "DEF": 5,
     "Move_Speed": 250,
@@ -43,16 +43,16 @@
     "AI_Type": "BOSS_PATTERN",
     "Pattern_Set_ID": 230002,
     "Move_Defence_Type": "SUPER_ARMOR",
+    "Default_Hit_DMG_Rate": 1,
     "Hit_Anim_Duration": 0,
-    "Die_Anim_Duration": 1,
-    "Groggy_DMG_Rate": 1.5
+    "Die_Anim_Duration": 1
   },
   {
     "Monster_ID": 201003,
     "Dev_Name": "Monster_Kasiyas_Phase_3",
     "Monster_Name": "정복자 카시야스",
     "Level": 10,
-    "HP": 1500,
+    "HP": 2000,
     "ATK": 60,
     "DEF": 5,
     "Move_Speed": 250,
@@ -67,8 +67,8 @@
     "AI_Type": "BOSS_PATTERN",
     "Pattern_Set_ID": 230003,
     "Move_Defence_Type": "SUPER_ARMOR",
+    "Default_Hit_DMG_Rate": 1,
     "Hit_Anim_Duration": 0,
-    "Die_Anim_Duration": 1,
-    "Groggy_DMG_Rate": 1.5
+    "Die_Anim_Duration": 1
   }
 ]

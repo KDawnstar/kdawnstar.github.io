@@ -1,7 +1,7 @@
 // [카시야스 보스전] UI 렌더링 (ui_renderer.js)
 // - 보스 UI: 던파식 상단 고정 HP 상태창 + 고정 머리 초상화 + 현재 패턴 번호 표시
 // - 일반 몬스터/엘리트 UI: 기존 중앙 타겟 UI 유지
-GameRenderer.drawTargetUI = function(ctx, canvas, targetUI) {
+GameRenderer.drawTargetUI = function(ctx, canvas, targetUI, gameState = null) {
     if (!(targetUI && targetUI.timer > 0 && targetUI.monster)) return;
 
     const tm = targetUI.monster;
@@ -149,6 +149,35 @@ GameRenderer.drawTargetUI = function(ctx, canvas, targetUI) {
         return '패턴 대기 중';
     };
 
+    const getBossReceivedDamageRate = function(monster) {
+        const boss = monster && monster.boss ? monster.boss : null;
+        const getDefaultRate = () => {
+            const defaultRate = parseFloat(monster && monster.d && monster.d.defaultHitDmgRate);
+            return Number.isFinite(defaultRate) && defaultRate >= 0 ? defaultRate : 1;
+        };
+        if (!boss) return getDefaultRate();
+        if ((parseFloat(boss.groggyTimer) || 0) > 0) {
+            const groggyRate = parseFloat(boss.groggyHitDmgRate);
+            if (Number.isFinite(groggyRate) && groggyRate >= 0) return groggyRate;
+            return getDefaultRate();
+        }
+        const action = boss.action || null;
+        const rawRate = action && action.Action_Hit_DMG_Rate;
+        const hasActionRate = !(rawRate === null || rawRate === undefined || rawRate === '');
+        const actionRate = parseFloat(rawRate);
+        if (hasActionRate && Number.isFinite(actionRate) && actionRate >= 0) return actionRate;
+
+        const defenceType = String(action && (action.Action_Defence_Type || action.Defence_Type) || '').trim().toUpperCase();
+        if (defenceType === 'INVINCIBLE') return 0;
+
+        return getDefaultRate();
+    };
+
+    const getBossReceivedDamageRateText = function(monster) {
+        const rate = getBossReceivedDamageRate(monster);
+        return `받는 피해 ${Math.round(rate * 100)}%`;
+    };
+
     const drawKasiyasPortrait = function(px, py, size) {
         ctx.save();
         ctx.beginPath();
@@ -275,6 +304,7 @@ GameRenderer.drawTargetUI = function(ctx, canvas, targetUI) {
         const maxHp = Math.max(1, readNumber(tm.maxHp, tm.maxHP, d.maxHp, d.HP, hp || 1));
         const hpRatio = Math.max(0, Math.min(1, hp / maxHp));
         const patternText = getBossPatternText(tm);
+        const receivedDamageText = getBossReceivedDamageRateText(tm);
 
         // 외곽 그림자
         ctx.save();
@@ -372,11 +402,123 @@ GameRenderer.drawTargetUI = function(ctx, canvas, targetUI) {
             fill: 'rgba(245, 213, 101, 0.98)',
             strokeWidth: 3
         });
+        const dmgBadgeW = 132;
+        const dmgBadgeX = infoX + infoW - dmgBadgeW - 8;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(infoX + 102, patternBoxY, Math.max(80, dmgBadgeX - (infoX + 112)), patternBoxH);
+        ctx.clip();
         drawText(patternText, infoX + 106, patternBoxY + patternBoxH / 2 + 1, {
             font: makeFont('900', 15),
             fill: '#ffffff',
             strokeWidth: 3
         });
+        ctx.restore();
+
+        ctx.fillStyle = 'rgba(35, 14, 14, 0.92)';
+        ctx.fillRect(dmgBadgeX, patternBoxY + 2, dmgBadgeW, patternBoxH - 4);
+        ctx.strokeStyle = 'rgba(255, 206, 92, 0.42)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(dmgBadgeX + 0.5, patternBoxY + 2.5, dmgBadgeW - 1, patternBoxH - 5);
+        drawText(receivedDamageText, dmgBadgeX + dmgBadgeW - 7, patternBoxY + patternBoxH / 2 + 1, {
+            font: makeFont('900', 13),
+            align: 'right',
+            fill: '#ffe6a1',
+            strokeWidth: 3
+        });
+
+        // 대형 패턴 3번: 귀면족의 낙인 해제 조건은 HP 상태창에 붙이지 않고,
+        // 하단에 별도 기믹 게이지 패널처럼 표시한다.
+        const playerMark = gameState && gameState.player ? gameState.player.kasiyasOniMark : null;
+        if (playerMark && playerMark.active) {
+            const bossNeed = Math.max(1, parseInt(playerMark.requireBossGuard) || 2);
+            const cloneNeed = Math.max(1, parseInt(playerMark.requireCloneGuard) || 2);
+            const bossCnt = Math.max(0, Math.min(bossNeed, parseInt(playerMark.bossGuardCount) || 0));
+            const cloneCnt = Math.max(0, Math.min(cloneNeed, parseInt(playerMark.cloneGuardCount) || 0));
+            const bossDone = bossCnt >= bossNeed;
+            const cloneDone = cloneCnt >= cloneNeed;
+            const markW = Math.min(430, Math.max(330, infoW * 0.62));
+            const markH = bossDone && cloneDone ? 34 : 50;
+            const markX = infoX + 10;
+            const markY = y + uiH + 8;
+            drawSharpPanel(markX, markY, markW, markH, 'rgba(13, 4, 8, 0.90)', 'rgba(255, 205, 83, 0.70)');
+            ctx.strokeStyle = playerMark.pulse ? 'rgba(255, 64, 64, 0.96)' : 'rgba(150, 45, 54, 0.55)';
+            ctx.lineWidth = playerMark.pulse ? 2 : 1;
+            ctx.strokeRect(markX + 2.5, markY + 2.5, markW - 5, markH - 5);
+            drawDiamond(markX + 15, markY + 17, 5.5, playerMark.pulse ? 'rgba(255, 60, 60, 0.98)' : 'rgba(148, 36, 52, 0.94)', 'rgba(255, 214, 119, 0.78)');
+            drawText('귀면족의 낙인 해제', markX + 30, markY + 17, {
+                font: makeFont('900', 14),
+                fill: 'rgba(255, 219, 122, 0.98)',
+                strokeWidth: 3
+            });
+
+            const drawGuardGauge = (label, count, need, gx, gy, done, fillColor) => {
+                drawText(label, gx, gy + 9, {
+                    font: makeFont('900', 12),
+                    fill: done ? '#b8ffc6' : '#ffffff',
+                    strokeWidth: 3
+                });
+                const segW = 34;
+                const segH = 11;
+                const gap = 4;
+                const sx = gx + 42;
+                for (let i = 0; i < need; i++) {
+                    const px = sx + i * (segW + gap);
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.74)';
+                    ctx.fillRect(px, gy + 2, segW, segH);
+                    ctx.strokeStyle = 'rgba(255, 220, 111, 0.52)';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(px + 0.5, gy + 2.5, segW - 1, segH - 1);
+                    if (i < count) {
+                        const grad = ctx.createLinearGradient(px, gy + 2, px, gy + 2 + segH);
+                        grad.addColorStop(0, '#fff2a3');
+                        grad.addColorStop(0.45, fillColor);
+                        grad.addColorStop(1, '#7b2a12');
+                        ctx.fillStyle = grad;
+                        ctx.fillRect(px + 2, gy + 4, segW - 4, segH - 4);
+                    }
+                }
+                drawText(`${count}/${need}`, sx + need * (segW + gap) + 6, gy + 9, {
+                    font: makeFont('900', 11),
+                    fill: done ? '#b8ffc6' : 'rgba(255,255,255,0.86)',
+                    strokeWidth: 3
+                });
+            };
+
+            if (bossDone && cloneDone) {
+                drawText('연단된 칼날 준비', markX + markW - 16, markY + 17, {
+                    font: makeFont('900', 15),
+                    align: 'right',
+                    fill: '#ffe96c',
+                    strokeWidth: 4
+                });
+            } else {
+                drawGuardGauge('본체', bossCnt, bossNeed, markX + 34, markY + 30, bossDone, '#dc2b26');
+                drawGuardGauge('분신', cloneCnt, cloneNeed, markX + 208, markY + 30, cloneDone, '#9b49ff');
+            }
+        } else if (gameState && gameState.player && gameState.player.kasiyasTemperedBladeReady) {
+            const markW = Math.min(390, Math.max(310, infoW * 0.56));
+            const markH = 36;
+            const markX = infoX + 10;
+            const markY = y + uiH + 8;
+            const pulse = 0.5 + Math.sin(Date.now() / 130) * 0.5;
+            drawSharpPanel(markX, markY, markW, markH, 'rgba(18, 12, 4, 0.92)', 'rgba(255, 230, 116, 0.82)');
+            ctx.strokeStyle = `rgba(255, 244, 155, ${0.55 + pulse * 0.30})`;
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(markX + 2.5, markY + 2.5, markW - 5, markH - 5);
+            drawDiamond(markX + 17, markY + 18, 6.5, 'rgba(255, 238, 122, 0.98)', 'rgba(150, 232, 255, 0.78)');
+            drawText('연단된 칼날 준비', markX + 34, markY + 21, {
+                font: makeFont('900', 15),
+                fill: '#fff0a3',
+                strokeWidth: 4
+            });
+            drawText('강화 가드 1회', markX + markW - 16, markY + 21, {
+                font: makeFont('900', 13),
+                align: 'right',
+                fill: 'rgba(180, 238, 255, 0.96)',
+                strokeWidth: 3
+            });
+        }
 
         // 좌측 초상화 영역: 텍스트/체력바와 분리해서 안정적으로 렌더링한다.
         drawSharpPanel(portraitX, portraitY, portraitSize, portraitSize, 'rgba(5, 6, 10, 0.96)', 'rgba(231, 183, 73, 0.95)');

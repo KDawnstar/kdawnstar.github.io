@@ -102,9 +102,35 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
                         boss.actionHitFired = true;
                     }
                 }
+                // 대형 패턴 3번 교차 발도 파훼는 가드 순간 즉시 그로기에 들어가지 않고,
+                // 본체/분신이 교차 돌진을 끝낸 뒤 화면 플래시와 충돌 연출을 거쳐 그로기에 진입한다.
+                if (boss.majorPattern3Runtime && boss.majorPattern3Runtime.pendingCrossSlashGroggy) {
+                    if (typeof this.resolveKasiyasMajorPattern3PendingCrossGroggy === 'function') {
+                        this.resolveKasiyasMajorPattern3PendingCrossGroggy(m, gameState);
+                        return true;
+                    }
+                }
                 this.startNextBossPatternAction(m, gameState);
             }
             return true;
+        }
+
+        if (gameState.bossPractice && gameState.bossPractice.enabled) {
+            m.state = 'IDLE';
+            m.kbVx = 0;
+            m.kbVy = 0;
+            return true;
+        }
+
+        if (boss.isLatePhase && !boss.lateOpeningPatternStarted && !boss.lateOpeningPatternUsed) {
+            const lateOpeningId = String(boss.phase && boss.phase.Late_Opening_Pattern_ID || '').trim();
+            const lateOpeningPattern = lateOpeningId && gameState.DB_BOSS_PATTERN ? gameState.DB_BOSS_PATTERN[lateOpeningId] : null;
+            if (lateOpeningPattern && Array.isArray(lateOpeningPattern.Runtime_Actions) && lateOpeningPattern.Runtime_Actions.length > 0) {
+                boss.lateOpeningPatternStarted = true;
+                boss.lateOpeningPatternUsed = true;
+                this.startBossPattern(m, lateOpeningPattern, gameState);
+                return true;
+            }
         }
 
         const readyPattern = this.selectReadyBossPattern(m, distX, distY, dist2D, gameState);

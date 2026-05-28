@@ -21,6 +21,13 @@ GameRenderer.normalizeKasiyasPoseType = function(value) {
         POSE_KASIYAS_ATK_READY_03: 'POSE_ATK_READY_03',
         POSE_KASIYAS_HORIZONTAL_SLASH_READY: 'POSE_HORIZONTAL_SLASH_READY',
         POSE_KASIYAS_CHARGE_HORIZONTAL_SLASH: 'POSE_CHARGE_HORIZONTAL_SLASH',
+        POSE_KASIYAS_P1_M2_FINAL_SLASH: 'POSE_P1_M2_FINAL_SLASH',
+        POSE_KASIYAS_SWORD_QUICK_DRAW_READY: 'POSE_P1_M3_LOW_RUSH_READY',
+        POSE_KASIYAS_SWORD_QUICK_DRAW: 'POSE_P1_M3_LOW_RUSH',
+        POSE_P1_M3_LOW_RUSH_READY: 'POSE_P1_M3_LOW_RUSH_READY',
+        POSE_P1_M3_LOW_RUSH: 'POSE_P1_M3_LOW_RUSH',
+        POSE_KASIYAS_SLAM_THE_SWORD_DOWN_READY: 'POSE_SLAM_THE_SWORD_DOWN_READY',
+        POSE_KASIYAS_SLAM_THE_SWORD_DOWN: 'POSE_SLAM_THE_SWORD_DOWN',
         POSE_KASIYAS_DEFAULT: 'POSE_DEFAULT',
         POSE_STABBING: 'POSE_STABBING',
         POSE_SLASH_UP: 'POSE_SLASH_UP',
@@ -38,6 +45,11 @@ GameRenderer.normalizeKasiyasPoseType = function(value) {
         POSE_ATK_READY_03: 'POSE_ATK_READY_03',
         POSE_HORIZONTAL_SLASH_READY: 'POSE_HORIZONTAL_SLASH_READY',
         POSE_CHARGE_HORIZONTAL_SLASH: 'POSE_CHARGE_HORIZONTAL_SLASH',
+        POSE_P1_M2_FINAL_SLASH: 'POSE_P1_M2_FINAL_SLASH',
+        POSE_P1_M3_LOW_RUSH_READY: 'POSE_P1_M3_LOW_RUSH_READY',
+        POSE_P1_M3_LOW_RUSH: 'POSE_P1_M3_LOW_RUSH',
+        POSE_SLAM_THE_SWORD_DOWN_READY: 'POSE_SLAM_THE_SWORD_DOWN_READY',
+        POSE_SLAM_THE_SWORD_DOWN: 'POSE_SLAM_THE_SWORD_DOWN',
         POSE_DEFAULT: 'POSE_DEFAULT'
     };
 
@@ -64,6 +76,22 @@ GameRenderer.resolveKasiyasPoseType = function(m) {
     }
 
     return 'POSE_DEFAULT';
+};
+
+
+GameRenderer.drawKasiyasGroundShadow = function(ctx, x, drawY, w, dY, drawScale = 1) {
+    const scale = Math.max(0.05, parseFloat(drawScale) || 1);
+    const radiusX = Math.max(8, (parseFloat(w) || 80) * 0.54 * scale);
+    const radiusY = Math.max(5, (parseFloat(dY) || 60) * 0.50 * scale);
+    ctx.save();
+    ctx.globalAlpha = 1;
+    if ('filter' in ctx) ctx.filter = 'none';
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.beginPath();
+    ctx.ellipse(parseFloat(x) || 0, parseFloat(drawY) || 0, radiusX, radiusY, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
 };
 
 GameRenderer.getKasiyasActionProgress = function(m, gameState) {
@@ -180,6 +208,7 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
     const smooth = progress * progress * (3 - 2 * progress);
     const attackPulse = Math.sin(Math.min(1, progress) * Math.PI);
     const bodyLean =
+        ((poseType === 'POSE_P1_M3_LOW_RUSH' || poseType === 'POSE_P1_M3_LOW_RUSH_READY') ? 0.30 :
         (poseType === 'POSE_STABBING' ? (isRush ? 0.24 : 0.11) :
         poseType === 'POSE_SHOULDER_ATK' ? 0.34 :
         poseType === 'POSE_FIST_BUMPING' ? 0.10 :
@@ -189,10 +218,13 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         poseType === 'POSE_ATK_READY_02' ? -0.16 :
         poseType === 'POSE_ATK_READY_03' ? 0.06 :
         poseType === 'POSE_HORIZONTAL_SLASH_READY' ? -0.10 :
+        poseType === 'POSE_P1_M2_FINAL_SLASH' ? 0.24 :
         poseType === 'POSE_CHARGE_HORIZONTAL_SLASH' ? 0.16 :
         poseType === 'POSE_SWORDPLAY' ? (-0.11 + attackPulse * 0.06) :
         poseType === 'POSE_SLASH_UP' ? -0.07 :
-        poseType === 'POSE_SLASH_DOWN' || poseType === 'POSE_HEAVY_SLASH_DOWN' ? 0.06 : 0);
+        poseType === 'POSE_SLAM_THE_SWORD_DOWN_READY' ? -0.12 :
+        poseType === 'POSE_SLAM_THE_SWORD_DOWN' ? 0.18 :
+        poseType === 'POSE_SLASH_DOWN' || poseType === 'POSE_HEAVY_SLASH_DOWN' ? 0.06 : 0));
 
     const drawLimb = (x1, y1, x2, y2, width, color, outline = true) => {
         ctx.save();
@@ -505,6 +537,53 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         drawKatana(handX, handY, -0.30, h * 0.70, 20, 7);
         // 발 내려찍기 준비: 한쪽 다리를 들어올린 듯한 짧은 실루엣 보강.
         drawPlate([[w * 0.08, -h * 0.27], [w * 0.28, -h * 0.22], [w * 0.22, -h * 0.11], [w * 0.04, -h * 0.16]], skinDark, line, 1.6);
+    } else if (poseType === 'POSE_P1_M3_LOW_RUSH_READY') {
+        // 대형 패턴 3번 돌진 전조: 자세를 낮추고 검을 뒤로 빼며 지면을 박차기 직전의 실루엣.
+        const coil = 0.5 + Math.sin(Date.now() / 90) * 0.5;
+        handX = -w * (0.30 + 0.04 * coil);
+        handY = -h * (0.36 + 0.02 * coil);
+        swordAngle = 0.22;
+        swordLen = h * 1.10;
+        curve = 4;
+        drawLimb(shoulderFrontX - w * 0.08, shoulderY + h * 0.08, handX, handY, w * 0.13, skinBase);
+        drawClawHand(handX, handY, w * 0.16, 1);
+        drawKatana(handX, handY, swordAngle, swordLen, 18, curve);
+        drawPlate([[-w * 0.34, -h * 0.36], [w * 0.28, -h * 0.33], [w * 0.34, -h * 0.22], [-w * 0.24, -h * 0.20]], skinDark, line, 1.6);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = `rgba(255,68,52,${0.25 + coil * 0.20})`;
+        ctx.lineWidth = Math.max(2, w * 0.030);
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.55, -h * 0.30);
+        ctx.lineTo(w * 0.34, -h * 0.36);
+        ctx.moveTo(-w * 0.48, -h * 0.20);
+        ctx.lineTo(w * 0.22, -h * 0.23);
+        ctx.stroke();
+        ctx.restore();
+    } else if (poseType === 'POSE_P1_M3_LOW_RUSH') {
+        // 대형 패턴 3번 돌진 발도: 서서 베는 모션이 아니라 낮은 자세로 파고들며 검을 끌고 지나간다.
+        const rushT = Math.max(0, Math.min(1, progress));
+        const snap = rushT < 0.45 ? rushT / 0.45 : 1;
+        handX = w * (0.18 + 0.42 * snap);
+        handY = -h * (0.34 + 0.04 * attackPulse);
+        swordAngle = -0.02;
+        swordLen = h * 1.18;
+        curve = 3;
+        drawLimb(shoulderFrontX - w * 0.08, shoulderY + h * 0.09, handX, handY, w * 0.13, skinBase);
+        drawClawHand(handX, handY, w * 0.16, 1);
+        drawKatana(handX, handY, swordAngle, swordLen, 18, curve);
+        drawPlate([[-w * 0.38, -h * 0.34], [w * 0.30, -h * 0.32], [w * 0.40, -h * 0.20], [-w * 0.22, -h * 0.18]], skinDark, line, 1.6);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = `rgba(255,42,36,${0.34 + attackPulse * 0.22})`;
+        ctx.lineWidth = Math.max(2.2, w * 0.034);
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.58, -h * 0.28);
+        ctx.lineTo(w * 0.66, -h * 0.39);
+        ctx.moveTo(-w * 0.50, -h * 0.19);
+        ctx.lineTo(w * 0.52, -h * 0.21);
+        ctx.stroke();
+        ctx.restore();
     } else if (poseType === 'POSE_STABBING') {
         handX = w * (isRush ? 0.60 : 0.47);
         handY = -h * (isRush ? 0.58 : 0.60);
@@ -564,6 +643,33 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.12, skinBase);
         drawClawHand(handX, handY, w * 0.15, 1);
         drawKatana(handX, handY, swordAngle, swordLen, 22, curve);
+    } else if (poseType === 'POSE_P1_M2_FINAL_SLASH') {
+        // 대형 패턴 2번 최종 참격: 몸을 크게 비틀었다가 전방 전체를 베어내는 과장된 일격.
+        const windup = Math.max(0, Math.min(1, progress / 0.34));
+        const release = Math.max(0, Math.min(1, (progress - 0.18) / 0.82));
+        const finalSwing = release * release * (3 - 2 * release);
+        handX = w * (-0.46 + 1.32 * finalSwing);
+        handY = -h * (0.84 - 0.20 * finalSwing + 0.035 * attackPulse);
+        swordAngle = -1.42 + finalSwing * 2.12;
+        swordLen = h * 1.34;
+        curve = 12;
+        drawLimb(shoulderFrontX - w * 0.08, shoulderY + h * 0.02, handX, handY, w * 0.145, skinBase);
+        drawClawHand(handX, handY, w * 0.17, 1);
+        drawKatana(handX, handY, swordAngle, swordLen, 26, curve);
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = `rgba(255,58,42,${0.28 + attackPulse * 0.24})`;
+        ctx.lineWidth = Math.max(2.4, w * 0.045);
+        ctx.beginPath();
+        ctx.arc(w * 0.10, -h * 0.62, w * (0.52 + windup * 0.12), -1.16, 0.46 + finalSwing * 0.36);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(20,0,0,${0.36 + attackPulse * 0.18})`;
+        ctx.lineWidth = Math.max(3.2, w * 0.060);
+        ctx.beginPath();
+        ctx.arc(w * 0.10, -h * 0.62, w * (0.63 + windup * 0.10), -1.02, 0.34 + finalSwing * 0.28);
+        ctx.stroke();
+        ctx.restore();
     } else if (poseType === 'POSE_CHARGE_HORIZONTAL_SLASH') {
         // 3차 강화 횡베기: 한 손 검을 크게 휘둘러 원형 범위를 쓸어버리는 강화 발도형 베기.
         handX = w * (-0.24 + 0.94 * smooth);
@@ -592,6 +698,32 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.11, skinBase);
         drawClawHand(handX, handY, w * 0.15, 1);
         drawKatana(handX, handY, swordAngle, swordLen, 21, 8);
+    } else if (poseType === 'POSE_SLAM_THE_SWORD_DOWN_READY') {
+        // 대형 패턴 2번 잔상 전용: 베는 동작이 아니라, 검을 지면에 꽂기 위해 높이 들어 올리는 준비 자세.
+        handX = w * (0.10 + 0.05 * attackPulse);
+        handY = -h * (0.92 + 0.02 * attackPulse);
+        swordAngle = -1.72 + 0.12 * attackPulse;
+        swordLen = h * 1.02;
+        drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.12, skinBase);
+        drawClawHand(handX, handY, w * 0.15, 1);
+        drawKatana(handX, handY, swordAngle, swordLen, 18, 3);
+    } else if (poseType === 'POSE_SLAM_THE_SWORD_DOWN') {
+        // 대형 패턴 2번 잔상 전용: 검 끝이 지면을 찍는 수직 내려찍기. 일반 내려베기보다 검이 땅에 박히는 실루엣을 우선한다.
+        handX = w * (0.12 + 0.03 * attackPulse);
+        handY = -h * (0.47 - 0.05 * attackPulse);
+        swordAngle = 1.36 - 0.06 * attackPulse;
+        swordLen = h * 0.62;
+        drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.12, skinBase);
+        drawClawHand(handX, handY, w * 0.15, 1);
+        drawKatana(handX, handY, swordAngle, swordLen, 17, 1);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = `rgba(255,210,110,${0.30 + attackPulse * 0.26})`;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.ellipse(handX + Math.cos(swordAngle) * swordLen, -h * 0.03, w * 0.34, h * 0.045, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
     } else if (poseType === 'POSE_SLASH_DOWN' || poseType === 'POSE_HEAVY_SLASH_DOWN') {
         handX = w * (0.12 + 0.15 * attackPulse);
         handY = -h * (0.80 - 0.25 * smooth);
@@ -1166,6 +1298,181 @@ GameRenderer.drawKasiyasEnergyChargeCue = function(ctx, x, bodyY, bodyH, isStron
 };
 
 
+GameRenderer.drawKasiyasFinalSlashChargeCue = function(ctx, x, bodyY, bodyH, dir = 1, intensity = 1.0) {
+    const h = Math.max(130, parseFloat(bodyH) || 170);
+    const level = Math.max(0.42, Math.min(1.35, parseFloat(intensity) || 1.0));
+    const baseY = bodyY - h * 0.06;
+    const coreY = bodyY - h * 0.58;
+    const chestY = bodyY - h * 0.46;
+    const swordY = bodyY - h * 0.86;
+    const now = Date.now();
+    const pulse = 0.5 + Math.sin(now / 38) * 0.5;
+    const fastPulse = 0.5 + Math.sin(now / 20) * 0.5;
+    const spin = now / 340;
+    const face = dir >= 0 ? 1 : -1;
+
+    const energyColors = [
+        'rgba(190,0,0,',      // 붉은 사도의 기운
+        'rgba(255,184,38,',   // 노란 사도의 기운
+        'rgba(8,0,0,',        // 검은 사도의 기운
+        'rgba(118,32,188,'    // 보라색 차원 잔광
+    ];
+
+    ctx.save();
+    ctx.translate(x, 0);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // 바닥 연출은 보조로만 남기고, 사방에서 기운이 모이는 느낌을 우선한다.
+    ctx.save();
+    ctx.translate(0, baseY);
+    ctx.globalAlpha = (0.16 + pulse * 0.08) * level;
+    ctx.shadowBlur = 18 + pulse * 10;
+    ctx.shadowColor = 'rgba(120,0,0,0.62)';
+    const floorGrad = ctx.createRadialGradient(0, 0, 8, 0, 0, h * 1.02);
+    floorGrad.addColorStop(0.00, 'rgba(255,176,44,0.07)');
+    floorGrad.addColorStop(0.28, 'rgba(130,0,0,0.12)');
+    floorGrad.addColorStop(0.64, 'rgba(28,0,0,0.10)');
+    floorGrad.addColorStop(1.00, 'rgba(0,0,0,0)');
+    ctx.fillStyle = floorGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, h * 0.92, h * 0.18, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // 첨부 이미지처럼 상하좌우/대각선 공간에 떠 있는 기운 구슬이 몸과 검으로 빨려 들어간다.
+    const orbCount = Math.round(18 + level * 12);
+    for (let i = 0; i < orbCount; i++) {
+        const ratio = i / orbCount;
+        const phase = (now / (470 + (i % 7) * 45) + ratio * 1.91) % 1;
+        const pull = phase;
+        const angle = spin * (0.58 + (i % 5) * 0.06) + i * Math.PI * 2 / orbCount;
+        const orbitW = h * (0.58 + (i % 6) * 0.095 + level * 0.13);
+        const orbitH = h * (0.50 + (i % 5) * 0.085 + level * 0.10);
+        const startX = Math.cos(angle) * orbitW;
+        const startY = chestY + Math.sin(angle) * orbitH - h * (0.02 + (i % 3) * 0.04);
+        const targetIsSword = (i % 4 === 1 || i % 4 === 3);
+        const targetX = face * h * (targetIsSword ? 0.16 : 0.045);
+        const targetY = targetIsSword ? swordY : coreY;
+        const wobble = Math.sin(now / 95 + i * 1.7) * h * 0.035;
+        const px = startX * (1 - pull) + targetX * pull + wobble * (1 - Math.abs(0.5 - pull) * 1.6);
+        const py = startY * (1 - pull) + targetY * pull + Math.cos(now / 115 + i) * h * 0.025;
+        const colorBase = energyColors[i % energyColors.length];
+        const alpha = (0.28 + pull * 0.28 + fastPulse * 0.08) * level;
+        const r = h * (0.014 + (i % 4) * 0.004) * (0.85 + pull * 0.35);
+
+        ctx.save();
+        ctx.shadowBlur = 10 + pull * 18 * level;
+        ctx.shadowColor = colorBase + '0.78)';
+        ctx.fillStyle = colorBase + Math.min(0.88, alpha).toFixed(3) + ')';
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 구슬 뒤쪽에 짧은 꼬리를 남겨 흡입 방향을 읽기 쉽게 한다.
+        if (pull > 0.08 && pull < 0.94) {
+            const tailX = startX * (1 - Math.max(0, pull - 0.11)) + targetX * Math.max(0, pull - 0.11);
+            const tailY = startY * (1 - Math.max(0, pull - 0.11)) + targetY * Math.max(0, pull - 0.11);
+            ctx.strokeStyle = colorBase + Math.min(0.52, alpha * 0.62).toFixed(3) + ')';
+            ctx.lineWidth = Math.max(1.4, h * 0.009 * level);
+            ctx.beginPath();
+            ctx.moveTo(tailX, tailY);
+            ctx.lineTo(px, py);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    // 전신을 감싸는 곡선형 흡입 궤적. 지면이 아니라 사방의 기류가 몸으로 빨려 들어오는 느낌을 강화한다.
+    const streamCount = Math.round(14 + level * 10);
+    for (let i = 0; i < streamCount; i++) {
+        const ratio = i / streamCount;
+        const phase = (now / (600 + (i % 5) * 64) + ratio * 1.53) % 1;
+        const angle = spin * (0.72 + (i % 4) * 0.09) + i * Math.PI * 2 / streamCount;
+        const outerX = Math.cos(angle) * h * (0.76 + (i % 5) * 0.11 + level * 0.12);
+        const outerY = chestY + Math.sin(angle) * h * (0.62 + (i % 4) * 0.07) - h * 0.04;
+        const targetIsSword = i % 3 === 0;
+        const targetX = face * h * (targetIsSword ? 0.18 : 0.05);
+        const targetY = targetIsSword ? swordY : coreY;
+        const midX = outerX * 0.48 + Math.sin(angle + spin * 1.6) * h * 0.15;
+        const midY = outerY * 0.48 + targetY * 0.52 + Math.cos(angle - spin) * h * 0.10;
+        const colorBase = energyColors[(i + 1) % energyColors.length];
+        const a = Math.min(0.70, (0.20 + phase * 0.30 + pulse * 0.10) * level);
+
+        ctx.save();
+        ctx.shadowBlur = 8 + phase * 16 * level;
+        ctx.shadowColor = colorBase + '0.62)';
+        ctx.strokeStyle = colorBase + a.toFixed(3) + ')';
+        ctx.lineWidth = Math.max(1.7, h * (0.009 + (i % 3) * 0.0025) * level);
+        ctx.beginPath();
+        ctx.moveTo(outerX, outerY);
+        ctx.quadraticCurveTo(midX, midY, targetX, targetY);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // 몸통 중심의 압축 코어. 대기 구간이 길어질수록 전신으로 기운을 끌어모으는 중심점처럼 보이게 한다.
+    ctx.save();
+    ctx.translate(0, coreY);
+    ctx.globalAlpha = Math.min(0.92, (0.56 + pulse * 0.18) * level);
+    ctx.shadowBlur = 24 + pulse * 26 * level;
+    ctx.shadowColor = 'rgba(210,0,0,0.82)';
+    const coreGrad = ctx.createRadialGradient(0, 0, 4, 0, 0, h * (0.34 + level * 0.12));
+    coreGrad.addColorStop(0.00, 'rgba(255,206,64,0.34)');
+    coreGrad.addColorStop(0.22, 'rgba(186,0,0,0.44)');
+    coreGrad.addColorStop(0.55, 'rgba(28,0,0,0.32)');
+    coreGrad.addColorStop(0.82, 'rgba(86,18,138,0.16)');
+    coreGrad.addColorStop(1.00, 'rgba(0,0,0,0)');
+    ctx.fillStyle = coreGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, h * (0.30 + level * 0.08), h * (0.20 + level * 0.05), -0.12 * face, 0, Math.PI * 2);
+    ctx.fill();
+
+    for (let i = 0; i < 7; i++) {
+        const a = spin * 1.9 + i * Math.PI * 2 / 7;
+        const rx = h * (0.18 + (i % 3) * 0.038 + pulse * 0.016) * (0.95 + level * 0.12);
+        const ry = h * (0.09 + (i % 2) * 0.022) * (0.95 + level * 0.10);
+        ctx.strokeStyle = i % 3 === 0
+            ? `rgba(255,182,36,${Math.min(0.70, (0.30 + pulse * 0.18) * level)})`
+            : (i % 3 === 1 ? `rgba(172,0,0,${Math.min(0.78, (0.44 + pulse * 0.16) * level)})` : `rgba(8,0,0,${Math.min(0.86, (0.60 + pulse * 0.12) * level)})`);
+        ctx.lineWidth = i % 3 === 2 ? 3.4 : 2.2;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, rx, ry, a * 0.15, a, a + Math.PI * 0.92);
+        ctx.stroke();
+    }
+    ctx.restore();
+
+    // 검 쪽으로 압축되는 차지 코어. 최종 대기 액션에서는 강하게, 잔상 견제 중에는 약하게 유지된다.
+    ctx.save();
+    ctx.translate(face * h * 0.16, swordY);
+    ctx.globalAlpha = Math.min(0.94, (0.62 + fastPulse * 0.16) * level);
+    ctx.shadowBlur = 20 + fastPulse * 24 * level;
+    ctx.shadowColor = 'rgba(255,158,30,0.82)';
+    const swordGrad = ctx.createRadialGradient(0, 0, 3, 0, 0, h * (0.15 + level * 0.07 + pulse * 0.03));
+    swordGrad.addColorStop(0.00, 'rgba(255,218,78,0.56)');
+    swordGrad.addColorStop(0.30, 'rgba(196,0,0,0.46)');
+    swordGrad.addColorStop(0.64, 'rgba(18,0,0,0.34)');
+    swordGrad.addColorStop(1.00, 'rgba(0,0,0,0)');
+    ctx.fillStyle = swordGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, h * (0.16 + level * 0.07), h * (0.09 + level * 0.035), -0.22 * face, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = `rgba(255,196,52,${Math.min(0.80, (0.46 + fastPulse * 0.22) * level)})`;
+    ctx.lineWidth = Math.max(1.4, h * 0.011 * level);
+    for (let i = 0; i < 5; i++) {
+        const a = spin * 2.5 + i * Math.PI * 2 / 5;
+        ctx.beginPath();
+        ctx.arc(0, 0, h * (0.08 + i * 0.015 + level * 0.014), a, a + Math.PI * 0.76);
+        ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.restore();
+};
+
+
 GameRenderer.drawBossOverheadShockwaveGauge = function(ctx, m, bodyY, bodyH) {
     const boss = m && m.boss;
     const action = boss && boss.action;
@@ -1274,6 +1581,7 @@ GameRenderer.drawBossOverheadShockwaveGauge = function(ctx, m, bodyY, bodyH) {
 };
 
 GameRenderer.drawMonsterEntity = function(ctx, m) {
+    if (m && m.boss && m.boss.kasiyasP1M3RushHidden) return;
     const d = m.d;
     const w = d.bodyX * m.scale;
     const dY = d.bodyY * m.scale;
@@ -1286,10 +1594,15 @@ GameRenderer.drawMonsterEntity = function(ctx, m) {
     let drawY = this.GROUND_BASE_Y + m.y;
     let bodyY = drawY - m.z;
 
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.beginPath();
-    ctx.ellipse(m.x, drawY, w / 2 * drawScale + 5, dY / 2 * drawScale, 0, 0, Math.PI * 2);
-    ctx.fill();
+    const isKasiyasBoss = !!(m && m.boss) || String(d && d.renderType || d && d.Model_Render_Type || '').trim().toUpperCase().indexOf('KASIYAS') >= 0;
+    if (isKasiyasBoss && typeof this.drawKasiyasGroundShadow === 'function') {
+        this.drawKasiyasGroundShadow(ctx, m.x, drawY, w, dY, drawScale);
+    } else {
+        ctx.fillStyle = 'rgba(0,0,0,0.60)';
+        ctx.beginPath();
+        ctx.ellipse(m.x, drawY, w / 2 * drawScale + 5, dY / 2 * drawScale, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
 
     ctx.save();
     ctx.translate(m.x, bodyY);
@@ -1301,7 +1614,12 @@ GameRenderer.drawMonsterEntity = function(ctx, m) {
     if (identityEffect === 'EFT_KASIYAS_REAL_EYES' && typeof this.drawKasiyasIdentityCue === 'function') {
         this.drawKasiyasIdentityCue(ctx, m.x, bodyY, h, true);
     }
-    if ((identityEffect === 'EFT_KASIYAS_ENERGY_CHARGE_STRONG' || identityEffect === 'EFT_KASIYAS_ENERGY_CHARGE_CLONE') && typeof this.drawKasiyasEnergyChargeCue === 'function') {
+    if ((identityEffect === 'EFT_KASIYAS_P1_M2_FINAL_SLASH_CHARGE' || identityEffect === 'EFT_KASIYAS_APOSTLE_ENERGY_CHARGE') && typeof this.drawKasiyasFinalSlashChargeCue === 'function') {
+        // 대형 패턴 2번은 이동 완료 후 잔상 견제 중에도 계속 기운을 끌어모은다.
+        // FINAL_SLASH_CHARGE는 최종 대기 구간이므로 더 강하게 표시한다.
+        const chargeIntensity = identityEffect === 'EFT_KASIYAS_P1_M2_FINAL_SLASH_CHARGE' ? 1.12 : 0.68;
+        this.drawKasiyasFinalSlashChargeCue(ctx, m.x, bodyY, h, m.faceDir || 1, chargeIntensity);
+    } else if ((identityEffect === 'EFT_KASIYAS_ENERGY_CHARGE_STRONG' || identityEffect === 'EFT_KASIYAS_ENERGY_CHARGE_CLONE') && typeof this.drawKasiyasEnergyChargeCue === 'function') {
         this.drawKasiyasEnergyChargeCue(ctx, m.x, bodyY, h, identityEffect === 'EFT_KASIYAS_ENERGY_CHARGE_STRONG');
     }
 

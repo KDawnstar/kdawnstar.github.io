@@ -103,6 +103,9 @@ init: function(monsterData, patternData, skillData, gameState) {
                 atkRange: parseFloat(m.ATK_Range) || 0,
                 atkDmgRate: parseFloat(m.ATK_DMG_Rate) || 1,
                 atkCycle: parseFloat(m.ATK_Cycle) || 0,
+                defaultHitDmgRate: Number.isFinite(parseFloat(m.Default_Hit_DMG_Rate)) && parseFloat(m.Default_Hit_DMG_Rate) >= 0
+                    ? parseFloat(m.Default_Hit_DMG_Rate)
+                    : 1,
                 defType: MonsterDataAdapter.normalizeDefType(m.ATK_Defence_Type || m.Move_Defence_Type || ''),
 
                 hitX: parseFloat(m.Hitbox_Size_X) || 50,

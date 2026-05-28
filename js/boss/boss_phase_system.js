@@ -43,6 +43,8 @@ const BossPhaseSystem = {
             noPatternWaitTimer: 0,
             isLatePhase: false,
             lateNoticeShown: false,
+            lateOpeningPatternUsed: false,
+            lateOpeningPatternStarted: false,
             previewDashPath: null,
             currentDashPath: null,
             lastDashPath: null

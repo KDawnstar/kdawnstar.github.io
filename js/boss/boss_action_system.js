@@ -14,6 +14,12 @@ const BossActionSystem = {
 
         if (gaze === 'LOOKING_LEFT') { m.faceDir = -1; return; }
         if (gaze === 'LOOKING_RIGHT') { m.faceDir = 1; return; }
+        if (gaze === 'LOOKING_MAP_CENTER' || gaze === 'MAP_CENTER') {
+            const worldW = Math.max(1, parseFloat(gameState && gameState.WORLD_WIDTH) || 1400);
+            const dx = worldW / 2 - (parseFloat(m.x) || 0);
+            if (Math.abs(dx) > 0.001) m.faceDir = dx >= 0 ? 1 : -1;
+            return;
+        }
 
         if (gaze === 'LOOKING_PLAYER' || gaze === 'LOOKING_TARGET' || gaze === 'GAZE_LOOK_ENEMY') {
             const p = gameState && gameState.player ? gameState.player : null;
@@ -43,33 +49,142 @@ const BossActionSystem = {
     getBossFixedMapPosition: function(gameState, placeType) {
         const worldW = Math.max(1, parseFloat(gameState && gameState.WORLD_WIDTH) || 1400);
         const worldD = Math.max(1, parseFloat(gameState && gameState.WORLD_DEPTH) || 400);
-        const marginX = Math.max(90, worldW * 0.08);
-        const marginY = Math.max(55, worldD * 0.12);
+        const sideMarginX = Math.max(90, worldW * 0.08);
+        const innerMarginX = Math.max(150, Math.min(230, worldW * 0.14));
+        const innerMarginY = Math.max(62, Math.min(92, worldD * 0.18));
+        const edgeMarginX = Math.max(48, Math.min(82, worldW * 0.04));
+        const edgeMarginY = Math.max(28, Math.min(48, worldD * 0.075));
         const key = String(placeType || '').trim().toUpperCase();
+        const center = { x: worldW / 2, y: worldD / 2, slotKey: 'CENTER' };
         const map = {
-            PLACE_MAP_CENTER: { x: worldW / 2, y: worldD / 2, slotKey: 'CENTER' },
-            MAP_CENTER: { x: worldW / 2, y: worldD / 2, slotKey: 'CENTER' },
-            CENTER: { x: worldW / 2, y: worldD / 2, slotKey: 'CENTER' },
-            PLACE_MAP_NE: { x: worldW - marginX * 2.55, y: marginY * 1.55, slotKey: 'NE' },
-            PLACE_MAP_SE: { x: worldW - marginX * 2.55, y: worldD - marginY * 1.55, slotKey: 'SE' },
-            PLACE_MAP_SW: { x: marginX * 2.55, y: worldD - marginY * 1.55, slotKey: 'SW' },
-            PLACE_MAP_NW: { x: marginX * 2.55, y: marginY * 1.55, slotKey: 'NW' }
+            PLACE_MAP_CENTER: center,
+            MAP_CENTER: center,
+            CENTER: center,
+            PLACE_MAP_EAST: { x: worldW - sideMarginX, y: worldD / 2, slotKey: 'EAST' },
+            MAP_EAST: { x: worldW - sideMarginX, y: worldD / 2, slotKey: 'EAST' },
+            EAST: { x: worldW - sideMarginX, y: worldD / 2, slotKey: 'EAST' },
+            PLACE_MAP_WEST: { x: sideMarginX, y: worldD / 2, slotKey: 'WEST' },
+            MAP_WEST: { x: sideMarginX, y: worldD / 2, slotKey: 'WEST' },
+            WEST: { x: sideMarginX, y: worldD / 2, slotKey: 'WEST' },
+
+            // 기존 PLACE_MAP_*는 대형 패턴 3번 교차 발도 기준에 맞춰 맵 끝 모서리 쪽으로 유지한다.
+            PLACE_MAP_NE: { x: worldW - edgeMarginX, y: edgeMarginY, slotKey: 'EDGE_NE' },
+            PLACE_MAP_SE: { x: worldW - edgeMarginX, y: worldD - edgeMarginY, slotKey: 'EDGE_SE' },
+            PLACE_MAP_SW: { x: edgeMarginX, y: worldD - edgeMarginY, slotKey: 'EDGE_SW' },
+            PLACE_MAP_NW: { x: edgeMarginX, y: edgeMarginY, slotKey: 'EDGE_NW' },
+            PLACE_MAP_EDGE_NE: { x: worldW - edgeMarginX, y: edgeMarginY, slotKey: 'EDGE_NE' },
+            PLACE_MAP_EDGE_SE: { x: worldW - edgeMarginX, y: worldD - edgeMarginY, slotKey: 'EDGE_SE' },
+            PLACE_MAP_EDGE_SW: { x: edgeMarginX, y: worldD - edgeMarginY, slotKey: 'EDGE_SW' },
+            PLACE_MAP_EDGE_NW: { x: edgeMarginX, y: edgeMarginY, slotKey: 'EDGE_NW' },
+            MAP_EDGE_NE: { x: worldW - edgeMarginX, y: edgeMarginY, slotKey: 'EDGE_NE' },
+            MAP_EDGE_SE: { x: worldW - edgeMarginX, y: worldD - edgeMarginY, slotKey: 'EDGE_SE' },
+            MAP_EDGE_SW: { x: edgeMarginX, y: worldD - edgeMarginY, slotKey: 'EDGE_SW' },
+            MAP_EDGE_NW: { x: edgeMarginX, y: edgeMarginY, slotKey: 'EDGE_NW' },
+
+            // 대형 패턴 1번 분신 배치처럼 “모서리 방향이지만 조금 안쪽”이어야 하는 위치.
+            PLACE_MAP_INNER_NE: { x: worldW - innerMarginX, y: innerMarginY, slotKey: 'INNER_NE' },
+            PLACE_MAP_INNER_SE: { x: worldW - innerMarginX, y: worldD - innerMarginY, slotKey: 'INNER_SE' },
+            PLACE_MAP_INNER_SW: { x: innerMarginX, y: worldD - innerMarginY, slotKey: 'INNER_SW' },
+            PLACE_MAP_INNER_NW: { x: innerMarginX, y: innerMarginY, slotKey: 'INNER_NW' },
+            MAP_INNER_NE: { x: worldW - innerMarginX, y: innerMarginY, slotKey: 'INNER_NE' },
+            MAP_INNER_SE: { x: worldW - innerMarginX, y: worldD - innerMarginY, slotKey: 'INNER_SE' },
+            MAP_INNER_SW: { x: innerMarginX, y: worldD - innerMarginY, slotKey: 'INNER_SW' },
+            MAP_INNER_NW: { x: innerMarginX, y: innerMarginY, slotKey: 'INNER_NW' }
         };
         return map[key] || map.PLACE_MAP_CENTER;
     },
 
     getBossPositionSlotGroup: function(gameState, groupId) {
         const group = String(groupId || '').trim().toUpperCase();
-        if (group === 'CENTER_NE_SE_SW_NW_FIVE_SLOT' || group === 'MAJOR_PATTERN_1_FIVE_SLOT' || !group) {
+        if (group === 'CENTER_NE_SE_SW_NW_FIVE_SLOT' || group === 'MAJOR_PATTERN_1_FIVE_SLOT' || group === 'CENTER_INNER_NE_SE_SW_NW_FIVE_SLOT' || !group) {
             return [
                 this.getBossFixedMapPosition(gameState, 'PLACE_MAP_CENTER'),
-                this.getBossFixedMapPosition(gameState, 'PLACE_MAP_NE'),
-                this.getBossFixedMapPosition(gameState, 'PLACE_MAP_SE'),
-                this.getBossFixedMapPosition(gameState, 'PLACE_MAP_SW'),
-                this.getBossFixedMapPosition(gameState, 'PLACE_MAP_NW')
+                this.getBossFixedMapPosition(gameState, 'PLACE_MAP_INNER_NE'),
+                this.getBossFixedMapPosition(gameState, 'PLACE_MAP_INNER_SE'),
+                this.getBossFixedMapPosition(gameState, 'PLACE_MAP_INNER_SW'),
+                this.getBossFixedMapPosition(gameState, 'PLACE_MAP_INNER_NW')
+            ];
+        }
+        if (group === 'CENTER_EDGE_NE_SE_SW_NW_FIVE_SLOT' || group === 'MAJOR_PATTERN_3_EDGE_FIVE_SLOT') {
+            return [
+                this.getBossFixedMapPosition(gameState, 'PLACE_MAP_CENTER'),
+                this.getBossFixedMapPosition(gameState, 'PLACE_MAP_EDGE_NE'),
+                this.getBossFixedMapPosition(gameState, 'PLACE_MAP_EDGE_SE'),
+                this.getBossFixedMapPosition(gameState, 'PLACE_MAP_EDGE_SW'),
+                this.getBossFixedMapPosition(gameState, 'PLACE_MAP_EDGE_NW')
             ];
         }
         return [this.getBossFixedMapPosition(gameState, 'PLACE_MAP_CENTER')];
+    },
+
+
+
+    setKasiyasMajorPattern3RushActorsHidden: function(m, gameState, hidden) {
+        const boss = m && m.boss ? m.boss : null;
+        if (boss) boss.kasiyasP1M3RushHidden = !!hidden;
+        if (gameState && Array.isArray(gameState.bossAttackObjects)) {
+            gameState.bossAttackObjects.forEach(obj => {
+                if (!obj) return;
+                const data = obj.data || {};
+                const objectId = String(data.Object_ID || data.Attack_Object_ID || obj.objectId || '').trim();
+                const objectType = String(data.Object_Type || '').trim().toUpperCase();
+                if (objectId === '251018' || objectType.indexOf('CLONE') >= 0) {
+                    obj.kasiyasP1M3RushHidden = !!hidden;
+                }
+            });
+        }
+    },
+
+
+
+    getKasiyasMajorPattern3RushPathKey: function(action, actorKind = '') {
+        const group = String(action && (action.Random_Action_Group || action._Random_Action_Group || action.Random_Action_Set_ID || action._Random_Action_Set_ID) || '').trim();
+        if (group) return group.toUpperCase();
+        const randomOrder = String(action && (action.Random_Action_Order || action._Random_Action_Order) || '').trim();
+        const id = String(action && (action.Action_ID || action.Object_Action_ID || action._Pattern_Action_ID) || '').trim();
+        return `${String(actorKind || 'ACTOR').toUpperCase()}:${randomOrder || 'NO_RANDOM'}:${id || 'NO_ID'}`;
+    },
+
+    getKasiyasMajorPattern3RushStore: function(actor) {
+        const boss = actor && actor.boss ? actor.boss : (actor && actor.owner && actor.owner.boss ? actor.owner.boss : null);
+        if (!boss) return null;
+        boss.majorPattern3Runtime = boss.majorPattern3Runtime || {};
+        boss.majorPattern3Runtime.randomRushPaths = boss.majorPattern3Runtime.randomRushPaths || {};
+        return boss.majorPattern3Runtime.randomRushPaths;
+    },
+
+    isValidKasiyasMajorPattern3RushPath: function(path) {
+        return !!(path && path.randomSideRush && (parseFloat(path.length) || 0) >= 90);
+    },
+
+    getKasiyasMajorPattern3StoredRushPath: function(actor, action, gameState, actorKind = 'BOSS', options = {}) {
+        const store = this.getKasiyasMajorPattern3RushStore(actor);
+        const key = this.getKasiyasMajorPattern3RushPathKey(action, actorKind);
+        if (!store || !key) return null;
+        let path = store[key] || null;
+        const allowCreate = options.create !== false;
+        if (!this.isValidKasiyasMajorPattern3RushPath(path) && allowCreate && typeof this.computeKasiyasMajorPattern3SideRushPath === 'function') {
+            path = this.computeKasiyasMajorPattern3SideRushPath(actor, action, gameState);
+            if (path) {
+                path.randomActionGroupKey = key;
+                path.randomActorKind = String(actorKind || '').toUpperCase();
+                store[key] = path;
+            }
+        }
+        return path;
+    },
+
+    ensureKasiyasMajorPattern3RushSlotPath: function(actor, action, gameState, actorKind = 'BOSS') {
+        // 대형 패턴 3번 6회 랜덤 돌진은 "돌진 액션"이 경로를 새로 뽑는 구조가 아니라,
+        // Random_Action_Group별로 확정된 경로를 본체/분신이 그대로 수행하는 구조로 고정한다.
+        return this.getKasiyasMajorPattern3StoredRushPath(actor, action, gameState, actorKind, { create: true });
+    },
+
+    getKasiyasMajorPattern3RushSlotPath: function(actor, action, actorKind = 'BOSS') {
+        const store = this.getKasiyasMajorPattern3RushStore(actor);
+        const key = this.getKasiyasMajorPattern3RushPathKey(action, actorKind);
+        if (!store || !key) return null;
+        return store[key] || null;
     },
 
     shuffleArrayInPlace: function(arr) {
@@ -420,9 +535,10 @@ const BossActionSystem = {
         const speed = this.getBossActionMoveSpeed(m, action, boss) || 1200;
 
         const rawDuration = parseFloat(action.Action_Anim_Duration);
-        const duration = (!isNaN(rawDuration) && rawDuration > 0)
-            ? Math.max(0.05, rawDuration)
-            : Math.max(0.18, Math.min(0.85, moveDistance / Math.max(1, speed)));
+        const speedDuration = Math.max(0.18, Math.min(0.85, moveDistance / Math.max(1, speed)));
+        // 플레이어 위치로 돌진/추격하는 액션은 고정 이동 시간보다 속도 데이터가 우선되어야 한다.
+        // Action_Anim_Duration은 모션의 기준 시간으로 남기되, 실제 도착 시간은 Move_Speed_Rate 기반으로 계산한다.
+        const duration = speedDuration;
 
         boss.actionMove = {
             type: moveDir,
@@ -460,18 +576,85 @@ const BossActionSystem = {
     },
 
 
+    startCalledBossObjectActionForPatternAction: function(m, action, gameState) {
+        const boss = m && m.boss ? m.boss : null;
+        if (!boss || !action || !gameState) return false;
+        const callId = String(action.Call_Object_Action_ID || action.Object_Action_ID || '').trim();
+        if (!callId) return false;
+
+        const callType = String(action.Call_Object_Action_Type || '').trim().toUpperCase() || 'START_AND_WAIT';
+        let started = false;
+        if (typeof BossObjectSystem !== 'undefined' && BossObjectSystem.startBossObjectActionById) {
+            started = !!BossObjectSystem.startBossObjectActionById.call(this, m, action, gameState);
+        }
+
+        boss.syncedObjectActionDuration = 0;
+        boss.syncedObjectActionType = callType;
+        boss.syncedObjectActionId = callId;
+
+        if (started && (callType === 'START_SYNC_WAIT' || callType === 'START_AND_WAIT')) {
+            const callAction = gameState.DB_BOSS_PATTERN_OBJECT_ACTION ? gameState.DB_BOSS_PATTERN_OBJECT_ACTION[callId] : null;
+            const objectId = String(action.Call_Object_ID || action.Object_ID || (callAction && (callAction.Object_ID || callAction.Attack_Object_ID)) || '').trim();
+            const actor = objectId && typeof this.findActiveBossPatternActorByObjectId === 'function'
+                ? this.findActiveBossPatternActorByObjectId(gameState, objectId)
+                : null;
+            if (actor && actor.action) {
+                boss.syncedObjectActionDuration = Math.max(0.001, this.getBossObjectCurrentActionDuration(actor, actor.action));
+            } else if (callAction) {
+                boss.syncedObjectActionDuration = Math.max(0.001, parseFloat(callAction.Action_Anim_Duration) || 0.001);
+            }
+        }
+
+        return started;
+    },
+
     onBossPatternActionStart: function(m, action, gameState) {
         const boss = m.boss;
         if (!boss) return;
 
         // 새 액션 시작 시 이전 액션의 이동 정보가 남아 다음 액션 지속시간/시선에 섞이지 않도록 초기화한다.
         boss.actionMove = null;
+        boss.syncedObjectActionDuration = 0;
+        boss.syncedObjectActionType = '';
+        boss.syncedObjectActionId = '';
 
         const type = String(action.Action_Type || '').trim().toUpperCase();
         const hitboxType = String(action.Hitbox_Type || '').trim().toUpperCase();
         const pathSource = String(action.Hitbox_Path_Source || '').trim().toUpperCase();
-        const vfxType = String(action.VFX_Type || action.Warning_Render_Type || '').trim().toUpperCase();
+        const vfxType = String(action.VFX_Type || action.Warning_Render_Type || action.Effect_Render_Type || '').trim().toUpperCase();
         const moveType = this.normalizeBossActionMoveType(action.Action_Move_Type);
+        const activePatternSourceId = (typeof this.getBossPatternActionSourceId === 'function') ? this.getBossPatternActionSourceId(boss.activePattern) : String(boss.activePattern && boss.activePattern.Pattern_ID || '').trim();
+        const isM3RandomRushAction = activePatternSourceId === '231008' && typeof this.isKasiyasMajorPattern3RandomRushAction === 'function' && this.isKasiyasMajorPattern3RandomRushAction(action);
+        const actionName = String(action.Action_Name || '').trim();
+        const actionId = String(action.Action_ID || '').trim();
+        const isM3VanishAction = activePatternSourceId === '231008' && (
+            actionId === '241050' ||
+            actionName.indexOf('본체 및 분신 사라짐') >= 0 ||
+            actionName.indexOf('은신') >= 0
+        );
+
+        if (isM3VanishAction && typeof this.setKasiyasMajorPattern3RushActorsHidden === 'function') {
+            this.setKasiyasMajorPattern3RushActorsHidden(m, gameState, true);
+            if (typeof this.updateKasiyasOniMarkPulse === 'function') this.updateKasiyasOniMarkPulse(gameState, false);
+            const duration = this.getBossActionDuration(m, action, gameState);
+            const bodyX = ((m.d && m.d.bodyX) || 80) * (m.scale || 1);
+            const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
+            gameState.effects.push({
+                type: 'afterimageDisappear',
+                renderType: action.Effect_Render_Type || 'EFT_KASIYAS_P1_M3_VANISH',
+                x: m.x,
+                y: m.y,
+                z: m.z + bodyZ * 0.55,
+                w: bodyX * 1.65,
+                h: bodyZ * 0.95,
+                life: Math.max(0.12, Math.min(0.5, duration || 0.35)),
+                maxLife: Math.max(0.12, Math.min(0.5, duration || 0.35))
+            });
+        } else if (activePatternSourceId === '231008' && !isM3RandomRushAction && typeof this.setKasiyasMajorPattern3RushActorsHidden === 'function') {
+            // 랜덤 측면 돌진 구간 이외의 이동/교차 발도/분신 소멸 구간에서는
+            // 이전 랜덤 돌진에서 남은 숨김 상태를 반드시 해제한다.
+            this.setKasiyasMajorPattern3RushActorsHidden(m, gameState, false);
+        }
 
         this.applyBossActionGaze(m, action, gameState);
         this.startBossPatternDialogue(m, action, gameState);
@@ -481,15 +664,78 @@ const BossActionSystem = {
             return;
         }
 
+        if (type === 'CALL_OBJECT_ACTION') {
+            if (isM3RandomRushAction && typeof this.setKasiyasMajorPattern3RushActorsHidden === 'function') {
+                this.setKasiyasMajorPattern3RushActorsHidden(m, gameState, true);
+            }
+            if (typeof this.updateKasiyasOniMarkPulse === 'function') this.updateKasiyasOniMarkPulse(gameState, false);
+            this.startCalledBossObjectActionForPatternAction(m, action, gameState);
+            boss.actionHitFired = true;
+            return;
+        }
+
+        // MOVE/WARNING/ATK 액션에 Call_Object_Action_ID가 있으면 본체 액션과 분신 오브젝트 액션을 동기 실행한다.
+        // 교차 발도처럼 본체/분신이 동시에 이동·전조·공격해야 하는 구간에 사용한다.
+        if (String(action.Call_Object_Action_ID || '').trim()) {
+            this.startCalledBossObjectActionForPatternAction(m, action, gameState);
+        }
+
+        if (activePatternSourceId === '231008' && type === 'WARNING' && String(action.Random_Action_Group || '').includes('BOSS_RUSH')) {
+            if (typeof this.updateKasiyasOniMarkPulse === 'function') this.updateKasiyasOniMarkPulse(gameState, true);
+        } else if (activePatternSourceId === '231008' && type !== 'WARNING') {
+            if (typeof this.updateKasiyasOniMarkPulse === 'function') this.updateKasiyasOniMarkPulse(gameState, false);
+        }
+
+        // RUSH 계열은 공격 시작 시점에 전조에서 확정한 경로를 먼저 가져온다.
+        // 이전에는 일반 공격 이펙트를 먼저 띄운 뒤 경로를 확정해서,
+        // 전조선과 실제 돌진/참격 이펙트 방향이 어긋나 보일 수 있었다.
+        if (moveType === 'RUSH') {
+            const moveDir = String(action.Action_Move_Direction || action.Move_Direction || '').trim().toUpperCase();
+            const normalizedMoveDir = (typeof this.normalizeBossFixedMapPlaceType === 'function') ? this.normalizeBossFixedMapPlaceType(moveDir) : moveDir;
+            let path = boss.previewDashPath || null;
+            if (isM3RandomRushAction) {
+                // 전조에서 Random_Action_Group별로 확정해 둔 경로만 사용한다.
+                // 여기서 새 랜덤 경로를 다시 뽑으면 전조선/화살표와 실제 돌진이 어긋난다.
+                path = (typeof this.getKasiyasMajorPattern3RushSlotPath === 'function')
+                    ? (this.getKasiyasMajorPattern3RushSlotPath(m, action, 'BOSS') || path)
+                    : path;
+                const invalidSidePath = !path || !path.randomSideRush || (parseFloat(path.length) || 0) < 90;
+                if (invalidSidePath && typeof this.ensureKasiyasMajorPattern3RushSlotPath === 'function') {
+                    path = this.ensureKasiyasMajorPattern3RushSlotPath(m, action, gameState, 'BOSS') || path;
+                }
+            } else {
+                const pathTarget = String(path && path.targetPlaceType || '').trim().toUpperCase();
+                const needFixedTarget = typeof this.isBossFixedMapPlaceType === 'function' && this.isBossFixedMapPlaceType(normalizedMoveDir);
+                const invalidPath = !path || (parseFloat(path.length) || 0) < 8 || (needFixedTarget && pathTarget && pathTarget !== normalizedMoveDir);
+                if (invalidPath) path = (typeof this.computeSafeDashPathForActionDirection === 'function') ? this.computeSafeDashPathForActionDirection(m, action, gameState, { minLength: 90 }) : this.computeDashPathForActionDirection(m, action, gameState);
+            }
+            boss.currentDashPath = path;
+            boss.lastDashPath = path;
+            boss.previewDashPath = null;
+            if (boss.currentDashPath) {
+                m.x = Number.isFinite(parseFloat(boss.currentDashPath.startX)) ? parseFloat(boss.currentDashPath.startX) : m.x;
+                m.y = Number.isFinite(parseFloat(boss.currentDashPath.startY)) ? parseFloat(boss.currentDashPath.startY) : m.y;
+                m.faceDir = (parseFloat(boss.currentDashPath.dirX) || 0) >= 0 ? 1 : -1;
+            }
+            if (isM3RandomRushAction && boss) boss.kasiyasP1M3RushHidden = false;
+
+            // 대형 패턴 3번 돌진은 경로 전체에 공격 이펙트를 미리 깔지 않는다.
+            // 실제 이동 중인 카시야스의 몸/검에 부착형 이펙트를 계속 붙여서,
+            // '돌진하는 본체가 공격'이라는 인상이 나도록 처리한다.
+            m.kasiyasRushBodyVfxTimer = -999;
+        }
+
         if (type === 'ATK') {
-            this.pushBossActionCueEffect(m, action, gameState);
+            // RUSH 공격은 위에서 path 기반 이펙트를 사용한다.
+            // 일반 위치 기준 cue 이펙트를 중복 출력하면 방향이 다르게 보일 수 있으므로 제외한다.
+            if (moveType !== 'RUSH') this.pushBossActionCueEffect(m, action, gameState);
             this.pushBossActiveAttackRangeWarning(m, action, gameState);
         }
 
         if (type === 'MOVE' && moveType === 'DASH') {
             const moveDir = String(action.Action_Move_Direction || '').trim().toUpperCase();
-            if (moveDir === 'PLACE_MAP_CENTER' || moveDir === 'MAP_CENTER') {
-                const target = this.getBossFixedMapPosition(gameState, 'PLACE_MAP_CENTER');
+            if (typeof this.isBossFixedMapPlaceType === 'function' && this.isBossFixedMapPlaceType(moveDir)) {
+                const target = this.getBossFixedMapPosition(gameState, this.normalizeBossFixedMapPlaceType ? this.normalizeBossFixedMapPlaceType(moveDir) : moveDir);
                 const distance = Math.sqrt((target.x - m.x) ** 2 + (target.y - m.y) ** 2);
                 const speed = this.getBossActionMoveSpeed(m, action, boss) || 1000;
                 const explicitDuration = parseFloat(action.Action_Anim_Duration);
@@ -502,9 +748,52 @@ const BossActionSystem = {
                     duration: (!isNaN(explicitDuration) && explicitDuration > 0) ? Math.max(0.05, explicitDuration) : Math.max(0.15, distance / Math.max(1, speed))
                 };
                 m.faceDir = target.x >= m.x ? 1 : -1;
-                // PLACE_MAP_CENTER 이동은 단순 위치 이동이다.
-                // 여기서 이동 잔상/참격 느낌의 이펙트를 띄우면 대형 패턴 개시가 공격처럼 보이므로 출력하지 않는다.
-                // 공격 판정도 이 액션에서는 생성하지 않는다.
+                if (action.VFX_Type || action.Effect_Render_Type) {
+                    gameState.effects.push({
+                        type: 'afterimageDashTrail',
+                        renderType: action.VFX_Type || action.Effect_Render_Type,
+                        x: m.x,
+                        y: m.y,
+                        z: m.z + ((m.d && m.d.bodyZ) || 160) * 0.42,
+                        dir: m.faceDir,
+                        w: Math.max(80, distance * 0.40),
+                        h: 48,
+                        life: 0.20,
+                        maxLife: 0.20,
+                        pathAngle: Math.atan2(target.y - m.y, target.x - m.x)
+                    });
+                }
+                return;
+            }
+
+            if (moveDir === 'PLACE_MAJOR_2_RANDOM' || moveDir === 'EAST_WEST_RANDOM' || moveDir === 'PLACE_MAP_EAST_WEST_RANDOM') {
+                const worldW = Math.max(1, parseFloat(gameState && gameState.WORLD_WIDTH) || 2000);
+                const worldD = Math.max(1, parseFloat(gameState && gameState.WORLD_DEPTH) || 300);
+                const marginX = Math.max(130, worldW * 0.085);
+                const side = Math.random() < 0.5 ? 'WEST' : 'EAST';
+                const target = {
+                    x: side === 'EAST' ? worldW - marginX : marginX,
+                    y: worldD / 2,
+                    slotKey: side
+                };
+                boss.majorPattern2Runtime = boss.majorPattern2Runtime || { objectGroupSelections: {} };
+                boss.majorPattern2Runtime.sideSlot = side;
+
+                const distance = Math.sqrt((target.x - m.x) ** 2 + (target.y - m.y) ** 2);
+                const speed = this.getBossActionMoveSpeed(m, action, boss) || 1000;
+                const explicitDuration = parseFloat(action.Action_Anim_Duration);
+                boss.actionMove = {
+                    type: moveDir,
+                    slotKey: side,
+                    startX: m.x,
+                    startY: m.y,
+                    endX: target.x,
+                    endY: target.y,
+                    duration: (!isNaN(explicitDuration) && explicitDuration > 0)
+                        ? Math.max(0.05, explicitDuration)
+                        : Math.max(0.15, distance / Math.max(1, speed))
+                };
+                m.faceDir = target.x >= m.x ? 1 : -1;
                 return;
             }
 
@@ -557,26 +846,19 @@ const BossActionSystem = {
             }
         }
 
-        // RUSH 계열은 시작 시점에 경로를 먼저 확정한다. 이후 ACTION_START 오브젝트가 이 경로를 복사한다.
-        if (moveType === 'RUSH') {
-            boss.currentDashPath = boss.previewDashPath || this.computeDashPathToMapEdge(m, gameState);
-            boss.lastDashPath = boss.currentDashPath;
-            boss.previewDashPath = null;
-
-            if (action.VFX_Type) {
-                const rushWidth = (parseFloat(action.Hitbox_Size_Y) || (m.d && m.d.bodyY) || 90) * (m.scale || 1);
-                const rushHeight = (parseFloat(action.Hitbox_Size_Z) || (m.d && m.d.bodyZ) || 120) * (m.scale || 1);
-                this.pushPathSlashEffects(boss.currentDashPath, rushWidth, rushHeight, action.VFX_Type || 'EFT_RUSH_ISSEN', gameState);
-            }
-        }
-
         // 돌진 전조는 두꺼운 공격범위가 아니라 얇은 궤도 예고선으로 그릴 수 있게 path만 사용한다.
         if (
             type === 'WARNING_PATH' ||
             (type === 'WARNING' && pathSource === 'PREVIEW_DASH_PATH') ||
             (type === 'WARNING' && vfxType === 'EFT_WARNING_RUSH_LINE')
         ) {
-            boss.previewDashPath = this.computeDashPathToMapEdge(m, gameState);
+            const nextAtk = (typeof this.getBossPatternNextAttackAction === 'function') ? this.getBossPatternNextAttackAction(m) : null;
+            if (isM3RandomRushAction && typeof this.setKasiyasMajorPattern3RushActorsHidden === 'function') {
+                this.setKasiyasMajorPattern3RushActorsHidden(m, gameState, true);
+            }
+            boss.previewDashPath = (isM3RandomRushAction && typeof this.ensureKasiyasMajorPattern3RushSlotPath === 'function')
+                ? this.ensureKasiyasMajorPattern3RushSlotPath(m, action, gameState, 'BOSS')
+                : ((typeof this.computeSafeDashPathForActionDirection === 'function') ? this.computeSafeDashPathForActionDirection(m, nextAtk || action, gameState, { minLength: 90 }) : this.computeDashPathForActionDirection(m, nextAtk || action, gameState));
             const width = parseFloat(action.Hitbox_Size_Y) || (vfxType === 'EFT_WARNING_RUSH_LINE' ? 24 : 110);
             const duration = this.getBossActionDuration(m, action, gameState);
             this.pushPathWarningEffect(boss.previewDashPath, width, duration, action.VFX_Type || action.Warning_Render_Type || 'EFT_WARNING_RUSH_PATH', gameState);
@@ -645,14 +927,32 @@ const BossActionSystem = {
 
         if (moveType === 'RUSH') {
             const boss = m.boss;
-            const path = boss && boss.currentDashPath ? boss.currentDashPath : null;
-            if (!path) return;
+            let path = boss && boss.currentDashPath ? boss.currentDashPath : null;
+            const isM3RandomRushAction = boss && typeof this.isKasiyasMajorPattern3RandomRushAction === 'function' && this.isKasiyasMajorPattern3RandomRushAction(action);
+            if (!path || (parseFloat(path.length) || 0) < 8) {
+                // 전조 경로가 예외적으로 유실되거나 0에 가까운 길이로 만들어져도
+                // 돌진 액션이 포즈/이펙트만 내고 제자리에 멈추지 않도록 공격 액션 갱신 시점에 경로를 재확정한다.
+                path = (isM3RandomRushAction && typeof this.getKasiyasMajorPattern3RushSlotPath === 'function')
+                    ? (this.getKasiyasMajorPattern3RushSlotPath(m, action, 'BOSS') || (typeof this.ensureKasiyasMajorPattern3RushSlotPath === 'function' ? this.ensureKasiyasMajorPattern3RushSlotPath(m, action, gameState, 'BOSS') : null))
+                    : ((typeof this.computeSafeDashPathForActionDirection === 'function') ? this.computeSafeDashPathForActionDirection(m, action, gameState, { minLength: 90 }) : this.computeDashPathForActionDirection(m, action, gameState));
+                if (boss) {
+                    boss.currentDashPath = path;
+                    boss.lastDashPath = path;
+                    boss.previewDashPath = null;
+                    if (isM3RandomRushAction) boss.kasiyasP1M3RushHidden = false;
+                }
+            }
+            if (!path || (parseFloat(path.length) || 0) < 8) return;
 
             const duration = this.getBossActionDuration(m, action, gameState);
             const t = Math.max(0, Math.min(1, m.timer / duration));
             m.x = path.startX + (path.endX - path.startX) * t;
             m.y = path.startY + (path.endY - path.startY) * t;
             m.faceDir = path.dirX >= 0 ? 1 : -1;
+            if (boss && isM3RandomRushAction) boss.kasiyasP1M3RushHidden = t >= 0.995;
+            if (typeof this.pushKasiyasRushBodyEffect === 'function') {
+                this.pushKasiyasRushBodyEffect(m, path, action, gameState, { isClone: false });
+            }
             return;
         }
 

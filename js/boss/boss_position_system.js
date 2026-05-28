@@ -168,6 +168,277 @@ const BossPositionSystem = {
         const dy = (path.endY || 0) - (path.startY || 0);
         return Math.sqrt(dx * dx + dy * dy) || 0;
     },
+    isBossFixedMapPlaceType: function(placeType) {
+        const key = String(placeType || '').trim().toUpperCase();
+        return [
+            'PLACE_MAP_CENTER','MAP_CENTER','CENTER',
+            'PLACE_MAP_EAST','MAP_EAST','EAST','PLACE_MAP_WEST','MAP_WEST','WEST',
+            'PLACE_MAP_NE','MAP_NE','NE','PLACE_MAP_SE','MAP_SE','SE','PLACE_MAP_SW','MAP_SW','SW','PLACE_MAP_NW','MAP_NW','NW',
+            'PLACE_MAP_EDGE_NE','MAP_EDGE_NE','EDGE_NE','PLACE_MAP_EDGE_SE','MAP_EDGE_SE','EDGE_SE','PLACE_MAP_EDGE_SW','MAP_EDGE_SW','EDGE_SW','PLACE_MAP_EDGE_NW','MAP_EDGE_NW','EDGE_NW',
+            'PLACE_MAP_INNER_NE','MAP_INNER_NE','INNER_NE','PLACE_MAP_INNER_SE','MAP_INNER_SE','INNER_SE','PLACE_MAP_INNER_SW','MAP_INNER_SW','INNER_SW','PLACE_MAP_INNER_NW','MAP_INNER_NW','INNER_NW'
+        ].includes(key);
+    },
+    normalizeBossFixedMapPlaceType: function(placeType) {
+        const key = String(placeType || '').trim().toUpperCase();
+        if (key === 'NE' || key === 'MAP_NE') return 'PLACE_MAP_NE';
+        if (key === 'SE' || key === 'MAP_SE') return 'PLACE_MAP_SE';
+        if (key === 'SW' || key === 'MAP_SW') return 'PLACE_MAP_SW';
+        if (key === 'NW' || key === 'MAP_NW') return 'PLACE_MAP_NW';
+        if (key === 'EDGE_NE' || key === 'MAP_EDGE_NE') return 'PLACE_MAP_EDGE_NE';
+        if (key === 'EDGE_SE' || key === 'MAP_EDGE_SE') return 'PLACE_MAP_EDGE_SE';
+        if (key === 'EDGE_SW' || key === 'MAP_EDGE_SW') return 'PLACE_MAP_EDGE_SW';
+        if (key === 'EDGE_NW' || key === 'MAP_EDGE_NW') return 'PLACE_MAP_EDGE_NW';
+        if (key === 'INNER_NE' || key === 'MAP_INNER_NE') return 'PLACE_MAP_INNER_NE';
+        if (key === 'INNER_SE' || key === 'MAP_INNER_SE') return 'PLACE_MAP_INNER_SE';
+        if (key === 'INNER_SW' || key === 'MAP_INNER_SW') return 'PLACE_MAP_INNER_SW';
+        if (key === 'INNER_NW' || key === 'MAP_INNER_NW') return 'PLACE_MAP_INNER_NW';
+        if (key === 'EAST' || key === 'MAP_EAST') return 'PLACE_MAP_EAST';
+        if (key === 'WEST' || key === 'MAP_WEST') return 'PLACE_MAP_WEST';
+        if (key === 'CENTER' || key === 'MAP_CENTER') return 'PLACE_MAP_CENTER';
+        return key;
+    },
+    computeDashPathToFixedMapPosition: function(m, gameState, placeType) {
+        if (!m || !gameState) return null;
+        const target = (typeof this.getBossFixedMapPosition === 'function')
+            ? this.getBossFixedMapPosition(gameState, this.normalizeBossFixedMapPlaceType(placeType))
+            : null;
+        if (!target) return null;
+        const sx = parseFloat(m.x) || 0;
+        const sy = parseFloat(m.y) || 0;
+        const ex = Math.max(0, Math.min(Math.max(1, parseFloat(gameState.WORLD_WIDTH) || 1400), parseFloat(target.x) || sx));
+        const ey = Math.max(0, Math.min(Math.max(1, parseFloat(gameState.WORLD_DEPTH) || 400), parseFloat(target.y) || sy));
+        let dx = ex - sx;
+        let dy = ey - sy;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        dx /= len;
+        dy /= len;
+        if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) dx = m.faceDir === -1 ? -1 : 1;
+        return {
+            startX: sx,
+            startY: sy,
+            startZ: parseFloat(m.z) || 0,
+            endX: ex,
+            endY: ey,
+            endZ: parseFloat(m.z) || 0,
+            dirX: dx,
+            dirY: dy,
+            length: Math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2) || 0,
+            targetPlaceType: this.normalizeBossFixedMapPlaceType(placeType)
+        };
+    },
+
+    isValidBossDashPath: function(path, minLength = 24) {
+        if (!path) return false;
+        const sx = parseFloat(path.startX);
+        const sy = parseFloat(path.startY);
+        const ex = parseFloat(path.endX);
+        const ey = parseFloat(path.endY);
+        const len = parseFloat(path.length);
+        if (![sx, sy, ex, ey].every(Number.isFinite)) return false;
+        const realLen = Math.sqrt((ex - sx) * (ex - sx) + (ey - sy) * (ey - sy));
+        return realLen >= minLength && (!Number.isFinite(len) || len >= minLength * 0.75);
+    },
+
+    computeDashPathToMapEdgeByVector: function(m, gameState, vx, vy) {
+        if (!m || !gameState) return null;
+        const sx = parseFloat(m.x) || 0;
+        const sy = parseFloat(m.y) || 0;
+        const worldW = Math.max(1, parseFloat(gameState.WORLD_WIDTH) || 1400);
+        const worldD = Math.max(1, parseFloat(gameState.WORLD_DEPTH) || 400);
+        let dx = parseFloat(vx) || 0;
+        let dy = parseFloat(vy) || 0;
+        let len = Math.sqrt(dx * dx + dy * dy);
+        if (!isFinite(len) || len < 0.001) {
+            dx = (sx < worldW / 2) ? 1 : -1;
+            dy = 0;
+            len = 1;
+        }
+        dx /= len;
+        dy /= len;
+
+        const candidates = [];
+        if (dx > 0.001) candidates.push((worldW - sx) / dx);
+        else if (dx < -0.001) candidates.push((0 - sx) / dx);
+        if (dy > 0.001) candidates.push((worldD - sy) / dy);
+        else if (dy < -0.001) candidates.push((0 - sy) / dy);
+
+        let t = candidates.filter(v => isFinite(v) && v > 0).sort((a, b) => a - b)[0];
+        if (!isFinite(t) || t <= 0) t = Math.max(worldW, worldD);
+        const ex = Math.max(0, Math.min(worldW, sx + dx * t));
+        const ey = Math.max(0, Math.min(worldD, sy + dy * t));
+        return {
+            startX: sx,
+            startY: sy,
+            startZ: parseFloat(m.z) || 0,
+            endX: ex,
+            endY: ey,
+            endZ: parseFloat(m.z) || 0,
+            dirX: dx,
+            dirY: dy,
+            length: Math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2) || 0
+        };
+    },
+
+
+
+    isKasiyasMajorPattern3RandomRushAction: function(action) {
+        if (!action) return false;
+        const group = String(action.Random_Action_Group || '').trim().toUpperCase();
+        if (group.indexOf('P1_M3_BOSS_RUSH') >= 0 || group.indexOf('P1_M3_CLONE_RUSH') >= 0) return true;
+        const id = String(action.Action_ID || action.Object_Action_ID || '').trim();
+        // 241050은 “본체 및 분신 사라짐” 준비 액션으로 추가되었으므로,
+        // 랜덤 돌진 액션으로 취급하지 않는다.
+        return [
+            '241051','241052','241053','241054','241055','241056',
+            '241057','241058','241059','241060','241061','241062',
+            '261072','261073'
+        ].includes(id);
+    },
+
+    computeKasiyasMajorPattern3SideRushPath: function(actor, action, gameState, options = {}) {
+        if (!actor || !gameState) return null;
+        const worldW = Math.max(1, parseFloat(gameState.WORLD_WIDTH) || 1400);
+        const worldD = Math.max(1, parseFloat(gameState.WORLD_DEPTH) || 400);
+        const marginX = Math.max(28, Math.min(52, worldW * 0.025));
+        const marginY = Math.max(28, Math.min(56, worldD * 0.10));
+        const yMin = marginY;
+        const yMax = Math.max(yMin + 1, worldD - marginY);
+        const p = gameState.player || {};
+        const px = Math.max(marginX + 40, Math.min(worldW - marginX - 40, parseFloat(p.x) || worldW / 2));
+        const py = Math.max(yMin, Math.min(yMax, parseFloat(p.y) || worldD / 2));
+        const forceSide = String(options.side || '').trim().toUpperCase();
+        const side = (forceSide === 'LEFT' || forceSide === 'RIGHT')
+            ? forceSide
+            : (Math.random() < 0.5 ? 'LEFT' : 'RIGHT');
+        const startX = side === 'LEFT' ? marginX : worldW - marginX;
+        const endX = side === 'LEFT' ? worldW - marginX : marginX;
+        const denomToEnd = (endX - px);
+        const denomFromStart = (px - startX);
+
+        let startY = py;
+        let endY = py;
+        let found = false;
+        for (let i = 0; i < 14; i++) {
+            const candidateEndY = yMin + Math.random() * (yMax - yMin);
+            if (Math.abs(denomToEnd) > 0.001) {
+                const candidateStartY = py - (candidateEndY - py) * (denomFromStart / denomToEnd);
+                if (candidateStartY >= yMin && candidateStartY <= yMax) {
+                    startY = candidateStartY;
+                    endY = candidateEndY;
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (!found) {
+            for (let i = 0; i < 14; i++) {
+                const candidateStartY = yMin + Math.random() * (yMax - yMin);
+                if (Math.abs(denomFromStart) > 0.001) {
+                    const ratio = (endX - px) / denomFromStart;
+                    const candidateEndY = py + (py - candidateStartY) * ratio;
+                    if (candidateEndY >= yMin && candidateEndY <= yMax) {
+                        startY = candidateStartY;
+                        endY = candidateEndY;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (!found) {
+            const spread = Math.max(45, (yMax - yMin) * 0.32);
+            startY = Math.max(yMin, Math.min(yMax, py + (Math.random() * 2 - 1) * spread));
+            if (Math.abs(denomFromStart) > 0.001) {
+                const ratio = (endX - px) / denomFromStart;
+                endY = py + (py - startY) * ratio;
+            } else {
+                endY = py;
+            }
+            endY = Math.max(yMin, Math.min(yMax, endY));
+        }
+
+        let dx = endX - startX;
+        let dy = endY - startY;
+        let len = Math.sqrt(dx * dx + dy * dy);
+        if (!isFinite(len) || len < 8) {
+            dx = side === 'LEFT' ? 1 : -1;
+            dy = 0;
+            len = Math.max(1, worldW - marginX * 2);
+        }
+        const dirX = dx / len;
+        const dirY = dy / len;
+        return {
+            startX: startX,
+            startY: startY,
+            startZ: parseFloat(actor.z) || 0,
+            endX: endX,
+            endY: endY,
+            endZ: parseFloat(actor.z) || 0,
+            dirX: dirX,
+            dirY: dirY,
+            length: len,
+            randomSideRush: true,
+            side: side,
+            throughPlayerX: px,
+            throughPlayerY: py,
+            sourceActionId: String(action && (action.Action_ID || action.Object_Action_ID) || '').trim()
+        };
+    },
+
+    computeSafeDashPathForActionDirection: function(m, actionOrDirection, gameState, options = {}) {
+        const minLength = Math.max(8, parseFloat(options.minLength) || 64);
+        const direction = typeof actionOrDirection === 'string'
+            ? actionOrDirection
+            : String(actionOrDirection && (actionOrDirection.Action_Move_Direction || actionOrDirection.Move_Direction || '') || '').trim();
+
+        let path = this.computeDashPathForActionDirection(m, actionOrDirection, gameState);
+        if (this.isValidBossDashPath(path, minLength)) return path;
+
+        // 고정 위치 대상 RUSH는 동일 목표에 이미 서 있으면 짧은 경로가 정상일 수 있으나,
+        // 교차 발도/돌진 공격에서는 제자리 모션만 나오면 안 되므로 반대편/플레이어/중앙 방향 후보로 재시도한다.
+        const sx = parseFloat(m && m.x) || 0;
+        const sy = parseFloat(m && m.y) || 0;
+        const worldW = Math.max(1, parseFloat(gameState && gameState.WORLD_WIDTH) || 1400);
+        const worldD = Math.max(1, parseFloat(gameState && gameState.WORLD_DEPTH) || 400);
+        const p = gameState && gameState.player ? gameState.player : null;
+        const candidates = [];
+
+        if (p) {
+            const pdx = (parseFloat(p.x) || sx) - sx;
+            const pdy = (parseFloat(p.y) || sy) - sy;
+            if (Math.sqrt(pdx * pdx + pdy * pdy) >= 12) candidates.push([pdx, pdy]);
+        }
+
+        const face = (m && m.faceDir === -1) ? -1 : 1;
+        candidates.push([face, 0]);
+        candidates.push([-face, 0]);
+        candidates.push([worldW / 2 - sx, worldD / 2 - sy]);
+        candidates.push([(sx < worldW / 2) ? 1 : -1, 0]);
+        candidates.push([0, (sy < worldD / 2) ? 1 : -1]);
+        candidates.push([0, (sy < worldD / 2) ? -1 : 1]);
+
+        // 고정 대상이 지정된 경우, 대상 좌표에서 반대편으로 가는 실패 보정도 후보에 넣는다.
+        if (this.isBossFixedMapPlaceType(direction)) {
+            const target = this.getBossFixedMapPosition(gameState, this.normalizeBossFixedMapPlaceType(direction));
+            if (target) candidates.unshift([(parseFloat(target.x) || sx) - sx, (parseFloat(target.y) || sy) - sy]);
+        }
+
+        for (const c of candidates) {
+            const next = this.computeDashPathToMapEdgeByVector(m, gameState, c[0], c[1]);
+            if (this.isValidBossDashPath(next, minLength)) return next;
+        }
+
+        return path;
+    },
+    computeDashPathForActionDirection: function(m, actionOrDirection, gameState) {
+        const direction = typeof actionOrDirection === 'string'
+            ? actionOrDirection
+            : String(actionOrDirection && (actionOrDirection.Action_Move_Direction || actionOrDirection.Move_Direction || '') || '').trim();
+        if (this.isBossFixedMapPlaceType(direction)) {
+            return this.computeDashPathToFixedMapPosition(m, gameState, direction);
+        }
+        return this.computeDashPathToMapEdge(m, gameState);
+    },
     computeDashPathToMapEdge: function(m, gameState) {
         const sx = parseFloat(m.x) || 0;
         const sy = parseFloat(m.y) || 0;
@@ -275,7 +546,11 @@ const BossPositionSystem = {
     getBossPatternNextAttackAction: function(m, startIndex = null) {
         const boss = m && m.boss ? m.boss : null;
         const pattern = boss && boss.activePattern ? boss.activePattern : null;
-        const actions = pattern && Array.isArray(pattern.Runtime_Actions) ? pattern.Runtime_Actions : [];
+        // 랜덤 액션 그룹은 boss.runtimeActions에서 이미 셔플된 순서로 실행된다.
+        // 전조가 원본 Runtime_Actions를 참조하면 다른 그룹의 ATK를 next로 잡아 전조/돌진 경로가 어긋날 수 있다.
+        const actions = boss && Array.isArray(boss.runtimeActions) && boss.runtimeActions.length
+            ? boss.runtimeActions
+            : (pattern && Array.isArray(pattern.Runtime_Actions) ? pattern.Runtime_Actions : []);
         const start = startIndex === null ? ((boss && boss.currentActionIndex != null ? boss.currentActionIndex : -1) + 1) : startIndex;
         for (let i = start; i < actions.length; i++) {
             const action = actions[i];

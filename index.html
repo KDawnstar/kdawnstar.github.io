@@ -219,7 +219,109 @@
     flex-direction: column;
 }
 
-#bossAIPanel.boss-ai-panel {
+#bossAIPanel
+
+/* 카시야스 연습 모드 패널 */
+.boss-practice-panel {
+    width: 320px;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(9,12,20,0.90), rgba(4,7,12,0.84));
+    border: 1px solid rgba(255,216,100,0.22);
+    box-shadow: 0 10px 24px rgba(0,0,0,0.36), inset 0 0 12px rgba(255,216,100,0.035);
+    backdrop-filter: blur(4px);
+    color: rgba(255,255,255,0.88);
+    pointer-events: auto;
+}
+
+.boss-practice-panel .practice-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+    color: #f4d36a;
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 0.2px;
+}
+
+.boss-practice-panel .practice-status {
+    font-size: 10px;
+    font-weight: 900;
+    color: #8ff0b0;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(46,204,113,0.14);
+    border: 1px solid rgba(46,204,113,0.24);
+}
+
+.boss-practice-panel .practice-help {
+    margin-bottom: 9px;
+    color: rgba(255,255,255,0.58);
+    font-size: 10px;
+    line-height: 1.35;
+}
+
+.boss-practice-panel .practice-group-title {
+    margin: 9px 0 5px;
+    color: #7fc6ff;
+    font-size: 11px;
+    font-weight: 900;
+}
+
+.boss-practice-panel .practice-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+}
+
+.boss-practice-panel .practice-btn {
+    min-height: 28px;
+    padding: 5px 7px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.075);
+    color: rgba(255,255,255,0.88);
+    font-size: 10px;
+    font-weight: 800;
+    text-align: left;
+    cursor: pointer;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.boss-practice-panel .practice-btn:hover {
+    background: rgba(255,216,100,0.16);
+    border-color: rgba(255,216,100,0.28);
+    color: #ffe8a6;
+}
+
+.boss-practice-panel .practice-btn.control {
+    text-align: center;
+    color: #ffd86b;
+    border-color: rgba(255,216,100,0.24);
+}
+
+.boss-practice-panel .practice-btn.danger {
+    color: #ffb8b8;
+    border-color: rgba(231,76,60,0.28);
+    background: rgba(231,76,60,0.12);
+}
+
+.boss-practice-panel .practice-btn.disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+    color: rgba(255,255,255,0.38);
+}
+
+.boss-practice-panel .practice-btn.disabled:hover {
+    background: rgba(255,255,255,0.075);
+    border-color: rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.38);
+}
+
+.boss-ai-panel {
     flex: 1 1 auto;
     max-height: none;
     width: 100%;
@@ -418,7 +520,7 @@
     gap: 5px;
     width: 320px;
     z-index: 10;
-    pointer-events: none;
+    pointer-events: auto;
 }
 
 .boss-ai-panel {
@@ -1952,7 +2054,6 @@ button,
                     <div class="control-guide-card">
                         <div class="control-guide-title">디버그</div>
                         <div class="control-row"><span class="keycap debug">V</span><span>3D 히트박스 표시</span></div>
-                        <div class="control-row"><span class="keycap debug">T</span><span>테스트 모드 전환</span></div>
                         <div class="control-row"><span class="keycap debug">R</span><span>사망 시 부활</span></div>
                     </div>
                 </div>

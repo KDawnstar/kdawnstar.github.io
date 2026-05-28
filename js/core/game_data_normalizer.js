@@ -273,6 +273,7 @@ function normalizeBossPatternRuntimeRow(row) {
     const newRow = { ...row };
     newRow.Pattern_ID = pickRuntimeValue(row.Pattern_ID, row.Dev_Name);
     newRow.Pattern_Set_ID = pickRuntimeValue(row.Pattern_Set_ID, row.Pattern_Set);
+    newRow.Pattern_Action_Source_ID = pickRuntimeValue(row.Pattern_Action_Source_ID, row.Action_Source_Pattern_ID, row.Pattern_Source_ID);
     return newRow;
 }
 
@@ -373,7 +374,11 @@ function buildBossRuntimeTables(phaseData, patternData, actionData, objectData, 
         if (!patternId) return;
 
         // 우선 Boss_Pattern_Action_info의 Pattern_ID + Action_Order 구조를 사용한다.
-        pattern.Runtime_Actions = actionsByPattern[patternId] ? [...actionsByPattern[patternId]] : [];
+        // Pattern_Action_Source_ID가 있으면 선택/쿨타임은 현재 Pattern_ID를 사용하되,
+        // 실제 액션 목록은 source 패턴의 액션을 재사용한다.
+        const actionSourceId = String(pattern.Pattern_Action_Source_ID || '').trim() || patternId;
+        pattern.Runtime_Action_Source_ID = actionSourceId;
+        pattern.Runtime_Actions = actionsByPattern[actionSourceId] ? actionsByPattern[actionSourceId].map(action => ({ ...action, Runtime_Requested_Pattern_ID: patternId, Runtime_Action_Source_ID: actionSourceId })) : [];
 
         // 구버전 호환: Pattern_1st_Action_ID 계열만 있는 경우에도 실행 가능하게 유지한다.
         if (pattern.Runtime_Actions.length <= 0) {

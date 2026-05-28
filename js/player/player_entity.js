@@ -25,6 +25,7 @@ const PlayerManager = {
             dashCooldownTimer: 0, maxDashCd: 1.0, dashTimer: 0, dashSpeedX: 0, dashSpeedY: 0, ghostTimer: 0, bubbleCooldown: 0,
             isRunning: false, runDirection: null, runSpeedRate: 1.5, movePrevKeys: { LEFT: false, RIGHT: false, UP: false, DOWN: false }, lastMoveTapDir: null, lastMoveTapTimer: 0,
             guardTimer: 0, maxGuardTimer: 0, guardCooldownTimer: 0, maxGuardCooldown: 0, guardSuccessTimer: 0, guardDirection: 'CASTER_FRONT', guardDefenceType: 'SUPER_ARMOR', guardForcedRecover: false,
+            defaultGuardReduceRate: Math.max(0, parseFloat(pd.Default_Guard_Reduce_Rate) || 1),
             maxFightingSpirit: Math.max(1, parseFloat(pd.Max_Fighting_Spirit_Gauge) || 100), fightingSpirit: 0,
             atkGetFightingSpirit: Math.max(0, parseFloat(pd.ATK_Get_Fighting_Spirit) || 0),
             atkGetFightingSpiritCooldown: Math.max(0, parseFloat(pd.ATK_Get_Fighting_Spirit_Cooltime) || 0), fightingSpiritAtkGainCooldownTimer: 0,
@@ -33,6 +34,8 @@ const PlayerManager = {
             fightingSpiritDmgBuffRate: Math.max(0, parseFloat(pd.Fighting_Spirit_DMG_Buff_Rate) || 0),
             fightingSpiritMoveSpeedBuffRate: Math.max(0, parseFloat(pd.Fighting_Spirit_Move_Speed_Buff_Rate) || 0),
             fightingSpiritRewardLocks: {},
+            kasiyasApostleEnergies: [], kasiyasApostleGuardBuffs: [], kasiyasApostleEnergyGetLockTimer: 0, kasiyasApostleEnergyFlashTimer: 0,
+            kasiyasOniMark: null, kasiyasTemperedBladeReady: false, kasiyasTemperedBladeFlashTimer: 0,
             skillCooldowns: {}, freezeTimer: 0, maxFreezeTimer: 0, mashReduced: 0
         };
         gameState.actions = (actionData || []).map(a => ({
@@ -158,6 +161,45 @@ const PlayerManager = {
         return signedDx >= 0;
     },
 
+    isPracticeModeHpInvincible: function(gameState) {
+        return !!(gameState && gameState.bossPractice && gameState.bossPractice.enabled);
+    },
+
+    getKasiyasApostleGuardReduceBonus: function(player, guardInfo) {
+        if (!player || !guardInfo) return 0;
+        const guardResult = String(guardInfo.guardResult || '').trim().toUpperCase();
+        if (guardResult !== 'DAMAGE_REDUCE') return 0;
+
+        const buffs = Array.isArray(player.kasiyasApostleGuardBuffs) ? player.kasiyasApostleGuardBuffs : [];
+        let total = 0;
+        buffs.forEach(buff => {
+            if (!buff) return;
+            const type = String(buff.type || buff.buffType || '').trim().toUpperCase();
+            if (type !== 'UPGRADE_GUARD_REDUCE_RATE') return;
+            const value = parseFloat(buff.value);
+            if (!isNaN(value) && value > 0) total += value;
+        });
+        return Math.max(0, total);
+    },
+
+    isKasiyasTemperedBladeCrossGuardActive: function(player, guardInfo, gameState) {
+        if (!player || !guardInfo) return false;
+        const cond = String(guardInfo.guardSpecialResultOccurrenceCond || '').trim().toUpperCase();
+        if (cond !== 'ATK_GUARD_GRANT_TEMPERED_BLADE_GUARD') return false;
+        if (player.kasiyasTemperedBladeReady) return true;
+        const buff = player.kasiyasOniMarkGuardBuff || null;
+        if (buff && String(buff.type || buff.buffType || '').trim().toUpperCase() === 'GRANT_TEMPERED_BLADE_GUARD') return true;
+
+        // 본체/분신 교차 발도가 같은 타이밍에 들어올 때, 첫 판정에서 연단된 칼날이 소모되어도
+        // 같은 교차 발도 안의 나머지 판정은 모두 받아낸 것으로 처리한다.
+        const bosses = gameState && Array.isArray(gameState.monsters) ? gameState.monsters : [];
+        for (const m of bosses) {
+            const rt = m && m.boss && m.boss.majorPattern3Runtime ? m.boss.majorPattern3Runtime : null;
+            if (rt && (rt.pendingCrossSlashGroggy || rt.crossSlashSpecialResolved)) return true;
+        }
+        return false;
+    },
+
     takeDamage: function(gameState, finalDmg, srcX, srcY, sType, sDur, sProb, guardInfo = null) {
         let p = gameState.player; if (p.state === 'Die') return;
 
@@ -169,10 +211,15 @@ const PlayerManager = {
             const guardResult = String(guardInfo && guardInfo.guardResult || '').trim().toUpperCase();
             const reduceRateRaw = parseFloat(guardInfo && guardInfo.guardDmgReduceRate);
             const reduceRate = !isNaN(reduceRateRaw) && reduceRateRaw >= 0 ? reduceRateRaw : 0;
+            const apostleGuardBonus = this.getKasiyasApostleGuardReduceBonus(p, guardInfo);
+            const temperedCrossGuard = this.isKasiyasTemperedBladeCrossGuardActive(p, guardInfo, gameState);
+            const finalReduceRate = temperedCrossGuard ? 0 : Math.max(0, reduceRate - apostleGuardBonus);
             let guardDamage = 0;
             if (guardResult === 'DAMAGE_REDUCE') {
-                guardDamage = Math.max(1, ((finalDmg || 1) * reduceRate) - p.def);
-                if (!gameState.isTestMode) p.hp -= guardDamage;
+                guardDamage = finalReduceRate <= 0
+                    ? 0
+                    : Math.max(1, ((finalDmg || 1) * finalReduceRate) - p.def);
+                if (guardDamage > 0 && !this.isPracticeModeHpInvincible(gameState) && !gameState.isTestMode) p.hp -= guardDamage;
             }
 
             const guardSpirit = Math.max(0, parseFloat(guardInfo && guardInfo.guardGetFightingSpirit) || 0);
@@ -196,15 +243,17 @@ const PlayerManager = {
                 x: p.x,
                 y: p.y,
                 z: p.z + p.bodyZ + 42,
-                text: guardResult === 'DAMAGE_REDUCE' ? `GUARD ${guardDamage.toFixed(0)}` : 'GUARD',
-                color: guardResult === 'DAMAGE_REDUCE' ? '#ffd166' : '#8fd3ff',
+                text: guardResult === 'DAMAGE_REDUCE'
+                    ? (temperedCrossGuard ? '연단 가드' : (apostleGuardBonus > 0 ? `기운 가드 ${guardDamage.toFixed(0)}` : `GUARD ${guardDamage.toFixed(0)}`))
+                    : 'GUARD',
+                color: guardResult === 'DAMAGE_REDUCE' ? (temperedCrossGuard ? '#fff2a3' : (apostleGuardBonus > 0 ? '#ffe45c' : '#ffd166')) : '#8fd3ff',
                 size: '26px',
                 timer: 0.65,
                 isBubble: false
             });
             gameState.effects.push({
                 type: 'guard',
-                renderType: guardResult === 'DAMAGE_REDUCE' ? 'EFT_GUARD_REDUCE' : 'EFT_GUARD_SUCCESS',
+                renderType: guardResult === 'DAMAGE_REDUCE' ? (temperedCrossGuard ? 'EFT_TEMPERED_BLADE_CROSS_GUARD' : (apostleGuardBonus > 0 ? 'EFT_APOSTLE_GUARD_REDUCE' : 'EFT_GUARD_REDUCE')) : 'EFT_GUARD_SUCCESS',
                 x: p.x,
                 y: p.y,
                 z: p.z + p.bodyZ * 0.52,
@@ -214,18 +263,23 @@ const PlayerManager = {
                 life: 0.32,
                 maxLife: 0.32
             });
-            return { guarded: true, guardResult: guardResult, damage: guardDamage };
+            return {
+                guarded: true,
+                guardResult: guardResult,
+                damage: guardDamage,
+                baseGuardDmgReduceRate: reduceRate,
+                guardDmgReduceRate: finalReduceRate,
+                apostleGuardBonus: apostleGuardBonus
+            };
         }
         
         // 방어력 단순 뺄셈 공식 적용 (최소 피해량 1 보장)
         let actualDmg = Math.max(1, (finalDmg || 1) - p.def);
         
-        // 🎯 [여기서부터 테스트 모드 스위치 적용]
-        // gameState.isTestMode가 아닐 때(즉, 테스트 모드가 꺼져있을 때)만 체력을 깎습니다!
-        if (!gameState.isTestMode) {
+        // 연습 모드에서는 패턴 판정은 유지하되 HP 감소만 막는다.
+        if (!this.isPracticeModeHpInvincible(gameState) && !gameState.isTestMode) {
             p.hp -= actualDmg; 
         }
-        // 🎯 [여기까지]
 
         this.loseFightingSpirit(gameState, p.hitLoseFightingSpirit || 0);
 
@@ -326,6 +380,12 @@ update: function(deltaTime, keys, gameState) {
         if (player.guardSuccessTimer > 0) player.guardSuccessTimer = Math.max(0, player.guardSuccessTimer - deltaTime);
         if (player.fightingSpiritAtkGainCooldownTimer > 0) player.fightingSpiritAtkGainCooldownTimer = Math.max(0, player.fightingSpiritAtkGainCooldownTimer - deltaTime);
         if (player.fightingSpiritHitLoseCooldownTimer > 0) player.fightingSpiritHitLoseCooldownTimer = Math.max(0, player.fightingSpiritHitLoseCooldownTimer - deltaTime);
+        if (player.kasiyasApostleEnergyGetLockTimer > 0) player.kasiyasApostleEnergyGetLockTimer = Math.max(0, player.kasiyasApostleEnergyGetLockTimer - deltaTime);
+        if (player.kasiyasApostleEnergyFlashTimer > 0) player.kasiyasApostleEnergyFlashTimer = Math.max(0, player.kasiyasApostleEnergyFlashTimer - deltaTime);
+        if (player.kasiyasTemperedBladeFlashTimer > 0) player.kasiyasTemperedBladeFlashTimer = Math.max(0, player.kasiyasTemperedBladeFlashTimer - deltaTime);
+        if (player.kasiyasOniMark && player.kasiyasOniMark.flashTimer > 0) {
+            player.kasiyasOniMark.flashTimer = Math.max(0, player.kasiyasOniMark.flashTimer - deltaTime);
+        }
         if (player.fightingSpiritRewardLocks) {
             for (const key of Object.keys(player.fightingSpiritRewardLocks)) {
                 player.fightingSpiritRewardLocks[key] = Math.max(0, (parseFloat(player.fightingSpiritRewardLocks[key]) || 0) - deltaTime);

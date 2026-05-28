@@ -126,8 +126,14 @@ const gameState = {
     jumpKeyEngine: 'KeyC',
     dashKeyEngine: 'KeyZ',
 
-    // 기존 테스트 모드(T키)
+    // 내부 스폰 호환용 플래그. 별도 키 입력/화면 UI에서는 사용하지 않는다.
     isTestMode: false,
+
+    // 카시야스 패턴 연습 모드(F9)
+    bossPractice: {
+        enabled: false,
+        lastPatternId: null
+    },
 
     // 새 게임 진행 모드
     gameMode: 'BOSS', // 'BOSS', 'STAGE', 'FREE_SPAWN'
@@ -645,25 +651,15 @@ window.addEventListener('keydown', e => {
 
     if (e.code === 'KeyR') PlayerManager.revive(gameState);
     if (e.code === 'KeyV') gameState.isDebugView = !gameState.isDebugView;
+    if (e.code === 'F9') {
+        e.preventDefault();
+        setBossPracticeModeEnabled(!gameState.bossPractice.enabled);
+        return;
+    }
 
-    // 기존 테스트 모드 유지
-    if (e.code === 'KeyT') {
-        gameState.isTestMode = !gameState.isTestMode;
-        let tStatus = gameState.isTestMode ? "ON" : "OFF";
-        let tColor = gameState.isTestMode ? "#2ecc71" : "#e74c3c";
-        if (gameState.player && gameState.player.active) {
-            gameState.floatingTexts.push({
-                x: gameState.player.x,
-                y: gameState.player.y,
-                z: gameState.player.z + gameState.player.bodyZ + 60,
-                text: `🛠️ 테스트 모드 ${tStatus}`,
-                color: tColor,
-                size: "24px",
-                timer: 1.5,
-                isBubble: true
-            });
-        }
-        buildUIButtons();
+    if (handleBossPracticeKeyInput(e)) {
+        e.preventDefault();
+        return;
     }
 
     // 보스전 전용 버전에서는 일반 스테이지/자유소환 전환을 막는다.
@@ -1043,7 +1039,7 @@ function buildUIButtons() {
             <div class="control-guide-card">
                 <div class="control-guide-title">디버그</div>
                 <div class="control-row"><span class="keycap debug">V</span><span>히트박스 표시</span></div>
-                <div class="control-row"><span class="keycap debug">T</span><span>테스트 모드</span></div>
+                <div class="control-row"><span class="keycap debug">F9</span><span>카시야스 연습 모드</span></div>
                 <div class="control-row"><span class="keycap debug">R</span><span>사망 시 부활</span></div>
             </div>
         `;
@@ -1052,9 +1048,7 @@ function buildUIButtons() {
     if (controls) controls.innerHTML = '';
 
     if (gameState.gameMode === 'BOSS') {
-        if (!document.getElementById('bossAIPanel') && controls) {
-            controls.innerHTML = `<div id="bossAIPanel" class="boss-ai-panel"></div>`;
-        }
+        renderBossPracticePanel(controls);
         return;
     }
 
@@ -1187,6 +1181,315 @@ function buildUIButtons() {
         controls.appendChild(row);
     }
 }
+
+
+function getKasiyasPracticeBoss() {
+    const stageBoss = gameState.monsters.find(m => m && m.active && m.isStageBoss && m.boss);
+    if (stageBoss) return stageBoss;
+    const battleBoss = gameState.bossBattle && gameState.bossBattle.boss;
+    if (battleBoss && battleBoss.active && battleBoss.boss) return battleBoss;
+    return null;
+}
+
+function getBossPracticePatternList() {
+    return [
+        { group: 'basic', id: '231001', label: '기본 1 · 3연격' },
+        { group: 'basic', id: '231002', label: '기본 2 · 천귀살' },
+        { group: 'basic', id: '231003', label: '기본 3 · 잔상' },
+        { group: 'basic', id: '231004', label: '기본 4 · 횡베기' },
+        { group: 'basic', id: '231005', label: '기본 5 · 체술' },
+        { group: 'major', id: '231006', label: '대형 1 · 분신 난무' },
+        { group: 'major', id: '231007', label: '대형 2 · 검 흡수' },
+        { group: 'major', id: '231008', label: '대형 3 · 낙인' }
+    ];
+}
+
+function isBossPracticePatternReady(patternId) {
+    const pattern = gameState.DB_BOSS_PATTERN ? gameState.DB_BOSS_PATTERN[String(patternId || '').trim()] : null;
+    return !!(pattern && Array.isArray(pattern.Runtime_Actions) && pattern.Runtime_Actions.length > 0);
+}
+
+function resetBossPracticeRuntimeState(options = {}) {
+    const bossMonster = getKasiyasPracticeBoss();
+    if (!bossMonster || !bossMonster.boss) return null;
+
+    const boss = bossMonster.boss;
+
+    gameState.bossAttackObjects = [];
+    gameState.hitboxes = [];
+    gameState.projectiles = [];
+    gameState.auras = [];
+    gameState.effects = [];
+    gameState.screenHitFlash = null;
+    gameState.bossPatternDialogue = null;
+
+    if (gameState.player) {
+        gameState.player.kasiyasApostleEnergies = [];
+        gameState.player.kasiyasApostleGuardBuffs = [];
+        gameState.player.kasiyasApostleEnergyFlashTimer = 0;
+        gameState.player.kasiyasApostleEnergyGetLockTimer = 0;
+        gameState.player.kasiyasOniMark = null;
+        gameState.player.kasiyasTemperedBladeReady = false;
+        gameState.player.kasiyasTemperedBladeFlashTimer = 0;
+    }
+
+    const debug = MonsterManager.ensureBossDebug(gameState);
+    debug.currentAction = null;
+    debug.currentObjectAction = null;
+
+    boss.activePattern = null;
+    boss.currentActionIndex = -1;
+    boss.currentLoopIndex = 0;
+    boss.loopCount = 1;
+    boss.action = null;
+    boss.actionHitFired = false;
+    boss.actionHitsDone = 0;
+    boss.actionCycleTimer = 0;
+    boss.previewDashPath = null;
+    boss.currentDashPath = null;
+    boss.actionMove = null;
+    boss.pattern4Runtime = null;
+    boss.majorPattern1Runtime = null;
+    boss.majorPattern2Runtime = null;
+    boss.majorPattern3Runtime = null;
+    boss.nextDiagonalOwnerCorner = null;
+    boss.nextDiagonalCloneCorner = null;
+    boss.parryWindowActive = false;
+    boss.parryCueTimer = 0;
+    boss.groggyTimer = 0;
+    boss.groggyPoseType = null;
+    boss.groggyMaxTime = 0;
+    boss.noPatternWaitTimer = 0;
+
+    bossMonster.state = 'IDLE';
+    bossMonster.timer = 0;
+    bossMonster.hasFired = false;
+    bossMonster.kbVx = 0;
+    bossMonster.kbVy = 0;
+    bossMonster.active = true;
+    if (bossMonster.hp <= 0 && options.reviveBoss !== false) {
+        bossMonster.hp = Math.max(1, bossMonster.maxHp || 1);
+        bossMonster.isDeadProcessed = false;
+        bossMonster.deadTimer = 0;
+    }
+
+    if (options.resetPosition) {
+        resetBossPracticePositions(false);
+    }
+
+    return bossMonster;
+}
+
+function resetBossPracticePositions(showNotice = true) {
+    const bossMonster = getKasiyasPracticeBoss();
+    const stageDepth = gameState.currentStage ? getStageDepth(gameState.currentStage) : gameState.WORLD_DEPTH;
+    const centerX = Math.max(220, Math.min(gameState.WORLD_WIDTH - 220, gameState.WORLD_WIDTH * 0.55));
+    const centerY = Math.max(60, Math.min(stageDepth - 40, stageDepth * 0.50));
+
+    if (bossMonster) {
+        bossMonster.x = centerX;
+        bossMonster.y = centerY;
+        bossMonster.z = 0;
+        bossMonster.vx = 0;
+        bossMonster.vy = 0;
+        bossMonster.kbVx = 0;
+        bossMonster.kbVy = 0;
+        bossMonster.faceDir = -1;
+        bossMonster.state = 'IDLE';
+        bossMonster.timer = 0;
+    }
+
+    const p = gameState.player;
+    if (p && p.active) {
+        p.x = Math.max(80, Math.min(gameState.WORLD_WIDTH - 80, centerX - 360));
+        p.y = Math.max(40, Math.min(stageDepth - 30, centerY + 70));
+        p.z = 0;
+        p.vx = 0;
+        p.vy = 0;
+        p.vz = 0;
+        p.kbVx = 0;
+        p.kbVy = 0;
+    }
+
+    if (showNotice) pushSystemNotice('연습 모드 위치 초기화', '#7fc6ff', 1.0);
+}
+
+function restartBossBattleAfterPracticeMode() {
+    const stageId = gameState.currentStageId;
+    resetBossPracticeRuntimeState({ resetPosition: false, reviveBoss: true });
+    gameState.bossPractice.enabled = false;
+    gameState.bossPractice.lastPatternId = null;
+
+    if (stageId) {
+        loadBossStage(stageId);
+    } else {
+        buildUIButtons();
+    }
+
+    pushSystemNotice('🧪 연습 모드 OFF · 전투 재시작', '#ffb8b8', 1.4);
+}
+
+function setBossPracticeModeEnabled(enabled) {
+    const nextEnabled = !!enabled;
+    const wasEnabled = !!gameState.bossPractice.enabled;
+
+    if (!nextEnabled && wasEnabled) {
+        restartBossBattleAfterPracticeMode();
+        return;
+    }
+
+    gameState.bossPractice.enabled = nextEnabled;
+    if (gameState.bossPractice.enabled) {
+        resetBossPracticeRuntimeState({ resetPosition: false });
+        pushSystemNotice('🧪 카시야스 연습 모드 ON', '#8ff0b0', 1.4);
+    }
+    buildUIButtons();
+}
+
+function handleBossPracticeKeyInput(e) {
+    if (!gameState.bossPractice || !gameState.bossPractice.enabled) return false;
+
+    const keyMap = {
+        Digit1: '231001', Numpad1: '231001',
+        Digit2: '231002', Numpad2: '231002',
+        Digit3: '231003', Numpad3: '231003',
+        Digit4: '231004', Numpad4: '231004',
+        Digit5: '231005', Numpad5: '231005',
+        Digit6: '231006', Numpad6: '231006',
+        Digit7: '231007', Numpad7: '231007',
+        Digit8: '231008', Numpad8: '231008'
+    };
+
+    if (keyMap[e.code]) {
+        forceStartBossPracticePattern(keyMap[e.code]);
+        return true;
+    }
+
+    if (e.code === 'Escape') {
+        stopBossPracticePattern();
+        return true;
+    }
+
+    return false;
+}
+
+function handleBossPracticePanelClick(e) {
+    const target = e.target && e.target.closest ? e.target.closest('[data-practice-pattern], [data-practice-control]') : null;
+    if (!target) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const patternId = target.getAttribute('data-practice-pattern');
+    if (patternId) {
+        forceStartBossPracticePattern(patternId);
+        return;
+    }
+
+    const control = target.getAttribute('data-practice-control');
+    if (control === 'stop') stopBossPracticePattern();
+    else if (control === 'reset-position') resetBossPracticeAllPositions();
+    else if (control === 'off') setBossPracticeModeEnabled(false);
+}
+
+function forceStartBossPracticePattern(patternId) {
+    const id = String(patternId || '').trim();
+    if (!id) return;
+
+    if (!gameState.bossPractice.enabled) {
+        gameState.bossPractice.enabled = true;
+    }
+
+    const bossMonster = resetBossPracticeRuntimeState({ resetPosition: false });
+    if (!bossMonster) {
+        pushSystemNotice('연습 모드: 보스를 찾을 수 없음', '#e74c3c', 1.3);
+        buildUIButtons();
+        return;
+    }
+
+    const pattern = gameState.DB_BOSS_PATTERN ? gameState.DB_BOSS_PATTERN[id] : null;
+    if (!pattern || !Array.isArray(pattern.Runtime_Actions) || pattern.Runtime_Actions.length <= 0) {
+        pushSystemNotice('연습 모드: 아직 실행할 수 없는 패턴', '#95a5a6', 1.2);
+        buildUIButtons();
+        return;
+    }
+
+    if (bossMonster.boss && bossMonster.boss.patternCooldowns) {
+        bossMonster.boss.patternCooldowns[id] = 0;
+    }
+
+    gameState.bossPractice.lastPatternId = id;
+    MonsterManager.startBossPattern(bossMonster, pattern, gameState);
+    pushSystemNotice(`연습 실행: ${pattern.Pattern_Name || pattern.Dev_Name || id}`, '#f4d36a', 1.2);
+    buildUIButtons();
+}
+
+function stopBossPracticePattern() {
+    resetBossPracticeRuntimeState({ resetPosition: false });
+    pushSystemNotice('연습 모드: 현재 패턴 중단', '#ffd86b', 1.0);
+    buildUIButtons();
+}
+
+function resetBossPracticeAllPositions() {
+    resetBossPracticeRuntimeState({ resetPosition: true });
+    buildUIButtons();
+}
+
+function renderBossPracticePanel(container) {
+    if (!container) return;
+
+    if (!gameState.bossPractice.enabled) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const list = getBossPracticePatternList();
+    const basic = list.filter(item => item.group === 'basic');
+    const major = list.filter(item => item.group === 'major');
+
+    const makeButton = (item) => {
+        const ready = isBossPracticePatternReady(item.id) && !item.disabledText;
+        const label = escapeDebugHtml(item.label || item.id);
+        if (!ready) {
+            const suffix = item.disabledText ? ` <span style="opacity:0.65;">(${escapeDebugHtml(item.disabledText)})</span>` : ' <span style="opacity:0.65;">(미구현)</span>';
+            return `<button type="button" class="practice-btn disabled" disabled>${label}${suffix}</button>`;
+        }
+        return `<button type="button" class="practice-btn" data-practice-pattern="${escapeDebugHtml(item.id)}">${label}</button>`;
+    };
+
+    container.innerHTML = `
+        <div class="boss-practice-panel">
+            <div class="practice-title">
+                <span>🧪 카시야스 연습 모드</span>
+                <span class="practice-status">ON</span>
+            </div>
+            <div class="practice-help">
+                F9로 ON/OFF. 패턴 버튼을 누르면 현재 상태를 정리한 뒤 해당 패턴만 실행합니다.
+            </div>
+            <div class="practice-group-title">기본 패턴</div>
+            <div class="practice-grid">
+                ${basic.map(makeButton).join('')}
+            </div>
+            <div class="practice-group-title">대형 패턴</div>
+            <div class="practice-grid">
+                ${major.map(makeButton).join('')}
+            </div>
+            <div class="practice-group-title">제어</div>
+            <div class="practice-grid">
+                <button type="button" class="practice-btn control" data-practice-control="stop">현재 패턴 중단</button>
+                <button type="button" class="practice-btn control" data-practice-control="reset-position">위치 초기화</button>
+                <button type="button" class="practice-btn danger" data-practice-control="off">연습 모드 OFF</button>
+            </div>
+        </div>
+    `;
+}
+
+document.addEventListener('click', handleBossPracticePanelClick, true);
+
+window.setBossPracticeModeEnabled = setBossPracticeModeEnabled;
+window.forceStartBossPracticePattern = forceStartBossPracticePattern;
+window.stopBossPracticePattern = stopBossPracticePattern;
+window.resetBossPracticeAllPositions = resetBossPracticeAllPositions;
 
 window.toggleAutoSpawn = function() {
     gameState.isAutoSpawn = !gameState.isAutoSpawn;
@@ -1768,37 +2071,88 @@ function updateHUD() {
         let showBossCastGauge = false;
         if (activeBossForCast && activeBossForCast.boss && activeBossForCast.boss.action) {
             const castAction = activeBossForCast.boss.action;
+            const bossForCast = activeBossForCast.boss;
             const pose = String(castAction.Action_Pose_Type || '').trim().toUpperCase();
             const effect = String(castAction.VFX_Type || castAction.Effect_Render_Type || '').trim().toUpperCase();
             const actionName = String(castAction.Action_Name || '').trim();
+            const actionType = String(castAction.Action_Type || '').trim().toUpperCase();
+            const actionsForCast = (bossForCast.activePattern && Array.isArray(bossForCast.activePattern.Runtime_Actions)) ? bossForCast.activePattern.Runtime_Actions : [];
+            const currentActionIndex = parseInt(bossForCast.currentActionIndex, 10);
+            const getActionDurationForGauge = (act, fallback = 1) => {
+                let duration = parseFloat(act && act.Action_Anim_Duration);
+                try {
+                    if (typeof MonsterManager !== 'undefined' && MonsterManager.getBossActionDuration) {
+                        const d = MonsterManager.getBossActionDuration(activeBossForCast, act, gameState);
+                        if (isFinite(d) && d > 0) duration = d;
+                    }
+                } catch (e) {}
+                return (!isNaN(duration) && duration > 0) ? duration : fallback;
+            };
+            const getHitStartForGauge = (act, fallback = 0) => {
+                let hitStart = parseFloat(act && act.Hitbox_Start_Time);
+                try {
+                    if (typeof MonsterManager !== 'undefined' && MonsterManager.getBossActionHitWindow) {
+                        const hw = MonsterManager.getBossActionHitWindow(activeBossForCast, act);
+                        if (hw && isFinite(hw.start) && hw.start >= 0) hitStart = hw.start;
+                    }
+                } catch (e) {}
+                return (!isNaN(hitStart) && hitStart >= 0) ? hitStart : fallback;
+            };
+            const applyBossCastGauge = (ratio, remain, activeText, triggerText) => {
+                const safeRatio = clamp(ratio, 0, 100);
+                showBossCastGauge = true;
+                if (bossCastGauge) {
+                    bossCastGauge.classList.remove('hidden');
+                    bossCastGauge.classList.toggle('danger', safeRatio >= 96);
+                }
+                if (bossCastGaugeFill) bossCastGaugeFill.style.width = safeRatio + '%';
+                if (bossCastGaugeText) {
+                    bossCastGaugeText.innerText = safeRatio >= 100
+                        ? triggerText
+                        : `${activeText} ${Math.max(0, remain).toFixed(1)}s`;
+                }
+            };
+
+            // 대형 패턴 2번 최종 참격은 241044 대기부터 241045의 실제 공격 판정 발생까지 이어서 표시한다.
+            const isFinalSlashCharge = effect === 'EFT_KASIYAS_P1_M2_FINAL_SLASH_CHARGE'
+                || actionName.indexOf('강화 참격 대기') >= 0;
+            const isFinalSlashAtk = effect === 'EFT_KASIYAS_P1_M2_FINAL_SLASH'
+                || pose === 'POSE_KASIYAS_P1_M2_FINAL_SLASH'
+                || (actionType === 'ATK' && actionName.indexOf('강화 참격') >= 0);
+            if (isFinalSlashCharge || isFinalSlashAtk) {
+                const timer = Math.max(0, parseFloat(activeBossForCast.timer) || 0);
+                let chargeDuration = 0;
+                let hitStart = getHitStartForGauge(castAction, 0.3);
+
+                if (isFinalSlashCharge) {
+                    const nextAction = isFinite(currentActionIndex) ? actionsForCast[currentActionIndex + 1] : null;
+                    chargeDuration = getActionDurationForGauge(castAction, 2);
+                    hitStart = getHitStartForGauge(nextAction, 0.3);
+                    const total = Math.max(0.01, chargeDuration + hitStart);
+                    applyBossCastGauge((timer / total) * 100, total - timer, '사도의 참격 준비', '⚠ 사도의 참격 발동');
+                } else {
+                    const prevAction = isFinite(currentActionIndex) ? actionsForCast[currentActionIndex - 1] : null;
+                    chargeDuration = getActionDurationForGauge(prevAction, 2);
+                    hitStart = getHitStartForGauge(castAction, 0.3);
+                    if (timer <= hitStart + 0.02) {
+                        const total = Math.max(0.01, chargeDuration + hitStart);
+                        const elapsed = chargeDuration + timer;
+                        applyBossCastGauge((elapsed / total) * 100, total - elapsed, '사도의 참격 준비', '⚠ 사도의 참격 발동');
+                    }
+                }
+            }
+
             // 강화 내려베기 게이지는 반드시 강화 내려베기 액션에서만 표시한다.
             // Action_ID는 데이터 테이블에 액션이 추가될 때 밀릴 수 있으므로 사용하지 않는다.
             const isHeavySlashCast = pose === 'POSE_KASIYAS_CHARGE_SLASH_DOWN'
                 || effect === 'EFT_KASIYAS_CHARGE_SLASH_DOWN'
                 || actionName.indexOf('강화 내려베기') >= 0;
-            if (isHeavySlashCast) {
-                let hitStart = parseFloat(castAction.Hitbox_Start_Time);
-                try {
-                    if (typeof MonsterManager !== 'undefined' && MonsterManager.getBossActionHitWindow) {
-                        const hw = MonsterManager.getBossActionHitWindow(activeBossForCast, castAction);
-                        if (hw && isFinite(hw.start) && hw.start > 0) hitStart = hw.start;
-                    }
-                } catch (e) {}
+            if (!showBossCastGauge && isHeavySlashCast) {
+                let hitStart = getHitStartForGauge(castAction, parseFloat(castAction.Action_Anim_Duration) || 1);
                 if (!isFinite(hitStart) || hitStart <= 0) hitStart = parseFloat(castAction.Action_Anim_Duration) || 1;
                 const timer = Math.max(0, parseFloat(activeBossForCast.timer) || 0);
-                const ratio = clamp((timer / Math.max(0.01, hitStart)) * 100, 0, 100);
                 const remain = Math.max(0, hitStart - timer);
-                showBossCastGauge = true;
-                if (bossCastGauge) {
-                    bossCastGauge.classList.remove('hidden');
-                    bossCastGauge.classList.toggle('danger', ratio >= 96);
-                }
-                if (bossCastGaugeFill) bossCastGaugeFill.style.width = ratio + '%';
-                if (bossCastGaugeText) {
-                    bossCastGaugeText.innerText = ratio >= 100
-                        ? '⚠ 강화 내려베기 발동'
-                        : `강화 내려베기 시전 ${remain.toFixed(1)}s`;
-                }
+                applyBossCastGauge((timer / Math.max(0.01, hitStart)) * 100, remain, '강화 내려베기 시전', '⚠ 강화 내려베기 발동');
             }
         }
         if (!showBossCastGauge && bossCastGauge) {
@@ -1834,7 +2188,7 @@ function updateHUD() {
 
             let html = `<b style="color:#7fc6ff;">[Player]</b> Pos X:${Math.round(p.x)} Y:${Math.round(p.y)} Z:${Math.round(p.z)} | HP:${Math.max(0, p.hp).toFixed(0)}/${p.maxHp}<br>`;
             html += `<b style="color:#2ecc71;">[Control]</b> Stance:${p.stance} | Run:${runText} | Guard:${guardText}<br>`;
-            html += `<b style="color:#f1c40f;">[Battle]</b> Mode: Boss Battle | Debug View:${gameState.isDebugView ? 'ON' : 'OFF'} | Test:${gameState.isTestMode ? 'ON' : 'OFF'}<br>`;
+            html += `<b style="color:#f1c40f;">[Battle]</b> Mode: Boss Battle | Debug View:${gameState.isDebugView ? 'ON' : 'OFF'} | Practice:${gameState.bossPractice && gameState.bossPractice.enabled ? 'ON' : 'OFF'}<br>`;
 
             if (bossTarget) {
                 const hpRate = Math.max(0, (bossTarget.hp || 0) / Math.max(1, bossTarget.maxHp || 1));

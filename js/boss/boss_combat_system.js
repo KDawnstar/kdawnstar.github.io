@@ -75,6 +75,404 @@ const BossCombatSystem = {
             this.pushBossParryCueEffect(m, action, gameState);
         }
     },
+    hasTwoSameKasiyasApostleEnergies: function(player) {
+        const energies = Array.isArray(player && player.kasiyasApostleEnergies)
+            ? player.kasiyasApostleEnergies.filter(Boolean)
+            : [];
+        if (energies.length < 2) return false;
+        return String(energies[0] || '').trim().toUpperCase() === String(energies[1] || '').trim().toUpperCase();
+    },
+
+    queueKasiyasMajorPattern3CrossGuardResolve: function(m, action, gameState, result) {
+        const boss = m && m.boss ? m.boss : null;
+        if (!boss || !gameState || !action) return false;
+        boss.majorPattern3Runtime = boss.majorPattern3Runtime || {};
+        const rt = boss.majorPattern3Runtime;
+        if (rt.crossSlashSpecialResolved || rt.pendingCrossSlashGroggy) return false;
+        rt.crossSlashSpecialResolved = true;
+        rt.pendingCrossSlashGroggy = {
+            action: action,
+            result: result || {},
+            timer: 0,
+            flashDone: false
+        };
+        this.consumeTemperedBladeGuard(gameState.player);
+
+        const p = gameState.player || {};
+        gameState.effects.push({
+            type: 'hitSpark',
+            renderType: 'EFT_TEMPERED_BLADE_CROSS_GUARD',
+            x: p.x || 0,
+            y: p.y || 0,
+            z: (p.z || 0) + ((p.bodyZ || 100) * 0.70),
+            w: Math.max(170, (p.bodyX || 60) * (p.scale || 1) * 3.0),
+            h: Math.max(180, (p.bodyZ || 100) * (p.scale || 1) * 1.55),
+            life: 0.62,
+            maxLife: 0.62,
+            burstScale: 2.1,
+            color: 'rgba(255,246,170,0.98)',
+            accentColor: 'rgba(126,226,255,0.88)'
+        });
+        if (gameState.screenHitFlash) {
+            gameState.screenHitFlash.life = Math.max(gameState.screenHitFlash.life || 0, 0.18);
+            gameState.screenHitFlash.maxLife = Math.max(gameState.screenHitFlash.maxLife || 0, 0.18);
+            gameState.screenHitFlash.mode = 'white';
+            gameState.screenHitFlash.strength = Math.max(gameState.screenHitFlash.strength || 0, 0.72);
+        } else {
+            gameState.screenHitFlash = { life: 0.18, maxLife: 0.18, strength: 0.72, mode: 'white' };
+        }
+        gameState.floatingTexts.push({
+            x: p.x || 0,
+            y: p.y || 0,
+            z: (p.z || 0) + (p.bodyZ || 100) + 84,
+            text: '연단된 칼날!',
+            color: '#fff2a3',
+            size: '28px',
+            timer: 0.85
+        });
+        return true;
+    },
+
+    resolveKasiyasMajorPattern3PendingCrossGroggy: function(m, gameState) {
+        const boss = m && m.boss ? m.boss : null;
+        const rt = boss && boss.majorPattern3Runtime ? boss.majorPattern3Runtime : null;
+        const pending = rt && rt.pendingCrossSlashGroggy ? rt.pendingCrossSlashGroggy : null;
+        if (!pending || pending.resolved) return false;
+        pending.resolved = true;
+
+        const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
+        const p = gameState && gameState.player ? gameState.player : null;
+        if (gameState) {
+            gameState.screenHitFlash = { life: 0.42, maxLife: 0.42, strength: 0.95, mode: 'white' };
+            gameState.effects.push({
+                type: 'hitSpark',
+                renderType: 'EFT_TEMPERED_BLADE_CROSS_BREAK',
+                x: p ? p.x : m.x,
+                y: p ? p.y : m.y,
+                z: (p ? p.z + (p.bodyZ || 100) * 0.76 : m.z + bodyZ * 0.70),
+                w: 360,
+                h: 260,
+                life: 0.78,
+                maxLife: 0.78,
+                burstScale: 2.8,
+                color: 'rgba(255,250,210,0.98)',
+                accentColor: 'rgba(255,220,92,0.96)'
+            });
+            gameState.effects.push({
+                type: 'hitSpark',
+                renderType: 'EFT_APOSTLE_GUARD_BREAK',
+                x: m.x,
+                y: m.y,
+                z: m.z + bodyZ * 0.70,
+                dir: m.faceDir || 1,
+                w: ((m.d && m.d.bodyX) || 80) * (m.scale || 1) * 2.4,
+                h: bodyZ,
+                burstScale: 2.1,
+                life: 0.58,
+                maxLife: 0.58,
+                color: 'rgba(255,232,95,0.98)',
+                accentColor: 'rgba(255,90,64,0.96)'
+            });
+            if (Array.isArray(gameState.bossAttackObjects)) {
+                gameState.bossAttackObjects.forEach(obj => {
+                    if (!obj || obj.removed) return;
+                    const objectId = String(obj.data && (obj.data.Object_ID || obj.data.Attack_Object_ID) || '').trim();
+                    const objectType = String(obj.data && obj.data.Object_Type || '').trim().toUpperCase();
+                    if (objectId === '251018' || objectType === 'KASIYAS_CLONE') {
+                        gameState.effects.push({
+                            type: 'hitSpark',
+                            renderType: 'EFT_CLONE_DISAPPEAR',
+                            x: obj.x,
+                            y: obj.y,
+                            z: obj.z + ((obj.d && obj.d.bodyZ) || 150) * 0.55,
+                            w: ((obj.d && obj.d.bodyX) || 80) * (obj.scale || 1) * 1.7,
+                            h: ((obj.d && obj.d.bodyZ) || 150) * (obj.scale || 1),
+                            life: 0.28,
+                            maxLife: 0.28
+                        });
+                    }
+                });
+            }
+        }
+        return this.enterBossGroggyFromGuardSpecial(m, pending.action || {}, gameState, pending.result || {});
+    },
+
+    enterBossGroggyFromGuardSpecial: function(m, action, gameState, result) {
+        const boss = m && m.boss ? m.boss : null;
+        if (!boss || !action || !gameState) return false;
+
+        const groggyTime = Math.max(0.2, parseFloat(action.Groggy_Time) || 2);
+        const groggyPose = String(action.Groggy_Pose_Type || 'POSE_KASIYAS_P1_GROGGY').trim() || 'POSE_KASIYAS_P1_GROGGY';
+        const pattern = boss.activePattern;
+
+        if (pattern) {
+            const patternId = String(pattern.Pattern_ID || '').trim();
+            boss.patternCooldowns[patternId] = parseFloat(pattern.Pattern_Cooldown) || 1;
+            this.pushBossDebugLog(
+                gameState,
+                'SPECIAL_GUARD',
+                `${patternId} ${this.getBossDebugName(pattern)}`,
+                `same apostle energy / groggy ${groggyTime.toFixed(1)}s`
+            );
+        }
+
+        if (typeof this.clearKasiyasMajorPattern2Objects === 'function') {
+            this.clearKasiyasMajorPattern2Objects(gameState, { removeActors: true });
+        } else if (typeof BossObjectSystem !== 'undefined' && BossObjectSystem.clearKasiyasMajorPattern2Objects) {
+            BossObjectSystem.clearKasiyasMajorPattern2Objects(gameState, { removeActors: true });
+        }
+        if (typeof this.clearKasiyasMajorPattern3Runtime === 'function') {
+            this.clearKasiyasMajorPattern3Runtime(gameState, { removeActors: true, clearMark: true });
+        } else if (typeof BossObjectSystem !== 'undefined' && BossObjectSystem.clearKasiyasMajorPattern3Runtime) {
+            BossObjectSystem.clearKasiyasMajorPattern3Runtime(gameState, { removeActors: true, clearMark: true });
+        }
+
+        boss.activePattern = null;
+        boss.currentActionIndex = -1;
+        boss.currentLoopIndex = 0;
+        boss.loopCount = 1;
+        boss.action = null;
+        boss.actionHitFired = false;
+        boss.actionHitsDone = 0;
+        boss.actionCycleTimer = 0;
+        boss.previewDashPath = null;
+        boss.currentDashPath = null;
+        boss.actionMove = null;
+        boss.parryWindowActive = false;
+        boss.parryCueTimer = 0;
+        boss.majorPattern2Runtime = null;
+        boss.groggyTimer = groggyTime;
+        boss.groggyMaxTime = groggyTime;
+        boss.groggyPoseType = groggyPose;
+        const groggyHitRate = parseFloat(action.Groggy_Hit_DMG_Rate);
+        boss.groggyHitDmgRate = (!isNaN(groggyHitRate) && groggyHitRate >= 0) ? groggyHitRate : null;
+        boss.noPatternWaitTimer = Math.max(boss.noPatternWaitTimer || 0, groggyTime);
+
+        m.state = 'GROGGY';
+        m.timer = 0;
+        m.hasFired = false;
+        m.kbVx = 0;
+        m.kbVy = 0;
+
+        this.ensureBossDebug(gameState).currentAction = null;
+        this.ensureBossDebug(gameState).currentObjectAction = null;
+
+        const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
+        gameState.effects.push({
+            type: 'hitSpark',
+            renderType: 'EFT_APOSTLE_GUARD_BREAK',
+            x: m.x,
+            y: m.y,
+            z: m.z + bodyZ * 0.70,
+            dir: m.faceDir || 1,
+            w: ((m.d && m.d.bodyX) || 80) * (m.scale || 1) * 2.0,
+            h: bodyZ,
+            burstScale: 2.3,
+            life: 0.48,
+            maxLife: 0.48,
+            color: 'rgba(255,232,95,0.98)',
+            accentColor: 'rgba(255,90,64,0.96)'
+        });
+        gameState.floatingTexts.push({
+            x: m.x,
+            y: m.y,
+            z: m.z + bodyZ + 34,
+            text: '완전 파훼!',
+            color: '#ffe45c',
+            size: '30px',
+            timer: 1.0
+        });
+        gameState.floatingTexts.push({
+            x: m.x,
+            y: m.y,
+            z: m.z + bodyZ + 6,
+            text: '카시야스 그로기',
+            color: '#ffb84a',
+            size: '22px',
+            timer: 1.0
+        });
+        try { pushSystemNotice('완전 파훼! 카시야스 그로기', '#ffe45c', 1.0); } catch(e) {}
+        return true;
+    },
+
+    playerHasTemperedBladeGuard: function(player) {
+        if (!player) return false;
+        if (player.kasiyasTemperedBladeReady) return true;
+        const buff = player.kasiyasOniMarkGuardBuff || null;
+        return !!(buff && String(buff.type || '').trim().toUpperCase() === 'GRANT_TEMPERED_BLADE_GUARD');
+    },
+
+    consumeTemperedBladeGuard: function(player) {
+        if (!player) return;
+        player.kasiyasTemperedBladeReady = false;
+        player.kasiyasTemperedBladeFlashTimer = 0;
+        if (player.kasiyasOniMarkGuardBuff && player.kasiyasOniMarkGuardBuff.oneShot) {
+            player.kasiyasOniMarkGuardBuff = null;
+        }
+    },
+
+    tryApplyBossGuardSpecialResult: function(m, action, guardResult, gameState) {
+        if (!m || !action || !guardResult || !guardResult.guarded || !gameState) return false;
+        const boss = m && m.boss ? m.boss : null;
+        const specialType = String(action.Guard_Special_Result_Type || '').trim().toUpperCase();
+        const cond = String(action.Guard_Special_Result_Occurrence_Cond || '').trim().toUpperCase();
+        if (specialType !== 'BOSS_GROGGY' && specialType !== 'CLONE_OWNER_GROGGY') return false;
+
+        if (cond === 'ATK_GUARD_TWO_SAME_APOSTLE_ENERGY') {
+            if (!this.hasTwoSameKasiyasApostleEnergies(gameState.player)) return false;
+            return this.enterBossGroggyFromGuardSpecial(m, action, gameState, guardResult);
+        }
+
+        if (cond === 'ATK_GUARD_GRANT_TEMPERED_BLADE_GUARD') {
+            if (!this.playerHasTemperedBladeGuard(gameState.player)) return false;
+            if (boss && boss.majorPattern3Runtime && (boss.majorPattern3Runtime.crossSlashSpecialResolved || boss.majorPattern3Runtime.pendingCrossSlashGroggy)) return false;
+            return this.queueKasiyasMajorPattern3CrossGuardResolve(m, action, gameState, guardResult);
+        }
+
+        return false;
+    },
+
+
+    updateKasiyasOniMarkPulse: function(gameState, pulse) {
+        const mark = gameState && gameState.player ? gameState.player.kasiyasOniMark : null;
+        if (!mark || !mark.active) return;
+        mark.pulse = !!pulse;
+        if (pulse) mark.flashTimer = Math.max(parseFloat(mark.flashTimer) || 0, 0.35);
+    },
+
+    applyKasiyasOniMarkAttackResult: function(gameState, sourceKind, attackData, result, attacker) {
+        const p = gameState && gameState.player ? gameState.player : null;
+        const mark = p && p.kasiyasOniMark ? p.kasiyasOniMark : null;
+        if (!mark || !mark.active || !result) return;
+        const kind = String(sourceKind || '').trim().toUpperCase();
+        const guarded = !!result.guarded;
+        if (guarded) {
+            if (kind === 'CLONE') mark.cloneGuardCount = (parseInt(mark.cloneGuardCount) || 0) + 1;
+            else mark.bossGuardCount = (parseInt(mark.bossGuardCount) || 0) + 1;
+            mark.flashTimer = Math.max(parseFloat(mark.flashTimer) || 0, 0.45);
+            gameState.floatingTexts.push({
+                x: p.x,
+                y: p.y,
+                z: p.z + (p.bodyZ || 100) + 72,
+                text: `낙인 가드 ${mark.bossGuardCount || 0}/${mark.requireBossGuard || 2} · ${mark.cloneGuardCount || 0}/${mark.requireCloneGuard || 2}`,
+                color: kind === 'CLONE' ? '#ffb0ff' : '#ff665c',
+                size: '18px',
+                timer: 0.65
+            });
+            if ((mark.bossGuardCount || 0) >= (mark.requireBossGuard || 2) && (mark.cloneGuardCount || 0) >= (mark.requireCloneGuard || 2)) {
+                mark.active = false;
+                p.kasiyasTemperedBladeReady = true;
+                p.kasiyasTemperedBladeFlashTimer = 1.0;
+                const buffType = String(mark.removeEffectType || '').trim().toUpperCase();
+                const buffValue = Math.max(0, parseFloat(mark.removeEffectValue) || 0);
+                if (buffType && buffValue > 0) {
+                    p.kasiyasOniMarkGuardBuff = { type: buffType, value: buffValue, oneShot: true };
+                }
+                gameState.effects.push({
+                    type: 'guard',
+                    renderType: 'EFT_KASIYAS_ONI_MARK_BURST',
+                    x: p.x,
+                    y: p.y,
+                    z: p.z + (p.bodyZ || 100) * 0.75,
+                    w: Math.max(130, (p.bodyX || 60) * (p.scale || 1) * 2.0),
+                    h: Math.max(130, (p.bodyZ || 100) * (p.scale || 1) * 1.2),
+                    life: 0.45,
+                    maxLife: 0.45
+                });
+                gameState.effects.push({
+                    type: 'hitSpark',
+                    renderType: 'EFT_KASIYAS_TEMPERED_BLADE_READY',
+                    x: p.x,
+                    y: p.y,
+                    z: p.z + (p.bodyZ || 100) * 0.70,
+                    w: Math.max(150, (p.bodyX || 60) * (p.scale || 1) * 2.6),
+                    h: Math.max(160, (p.bodyZ || 100) * (p.scale || 1) * 1.35),
+                    life: 0.70,
+                    maxLife: 0.70,
+                    burstScale: 1.6,
+                    color: 'rgba(255,232,104,0.98)',
+                    accentColor: 'rgba(170,238,255,0.86)'
+                });
+                gameState.floatingTexts.push({
+                    x: p.x,
+                    y: p.y,
+                    z: p.z + (p.bodyZ || 100) + 98,
+                    text: '낙인 해제!',
+                    color: '#ffe45c',
+                    size: '26px',
+                    timer: 0.9
+                });
+                try { pushSystemNotice('낙인 해제! 연단된 칼날 준비', '#ffe45c', 1.0); } catch(e) {}
+            }
+            return;
+        }
+
+        mark.stack = (parseInt(mark.stack) || 0) + 1;
+        mark.flashTimer = Math.max(parseFloat(mark.flashTimer) || 0, 0.75);
+        gameState.floatingTexts.push({
+            x: p.x,
+            y: p.y,
+            z: p.z + (p.bodyZ || 100) + 70,
+            text: `낙인 ${mark.stack}/${mark.maxStack || 3}`,
+            color: '#ff4646',
+            size: '22px',
+            timer: 0.75
+        });
+        if ((mark.stack || 0) >= (mark.maxStack || 3)) {
+            const owner = attacker && attacker.owner ? attacker.owner : attacker;
+            const atk = owner && owner.d ? (parseFloat(owner.d.atk) || 50) : 50;
+            const dmgRate = Math.max(1, parseFloat(mark.burstDamageRate) || 5);
+            const damage = Math.max(1, atk * dmgRate - (parseFloat(p.def) || 0));
+            if (!(typeof PlayerManager !== 'undefined' && PlayerManager.isPracticeModeHpInvincible ? PlayerManager.isPracticeModeHpInvincible(gameState) : false) && !gameState.isTestMode) p.hp = Math.max(0, (parseFloat(p.hp) || 0) - damage);
+            if (typeof PlayerManager !== 'undefined' && PlayerManager.loseFightingSpirit) PlayerManager.loseFightingSpirit(gameState, p.fightingSpirit || 0);
+            gameState.effects.push({
+                type: 'hitSpark',
+                renderType: 'EFT_KASIYAS_ONI_MARK_BURST',
+                x: p.x,
+                y: p.y,
+                z: p.z + (p.bodyZ || 100) * 0.72,
+                w: 170,
+                h: 170,
+                life: 0.48,
+                maxLife: 0.48,
+                color: 'rgba(255,32,44,0.96)',
+                accentColor: 'rgba(36,0,0,0.92)'
+            });
+            gameState.effects.push({
+                type: 'hitSpark',
+                renderType: 'EFT_KASIYAS_ONI_MARK_SLASH_WOUNDS',
+                x: p.x,
+                y: p.y,
+                z: p.z + (p.bodyZ || 100) * 0.48,
+                w: Math.max(120, (p.bodyX || 60) * (p.scale || 1) * 2.2),
+                h: Math.max(150, (p.bodyZ || 100) * (p.scale || 1) * 1.25),
+                life: 0.78,
+                maxLife: 0.78,
+                burstScale: 1.45,
+                color: 'rgba(255,42,46,0.96)',
+                accentColor: 'rgba(20,0,0,0.96)'
+            });
+            p.state = 'Hit';
+            p.atkTimer = Math.max(parseFloat(p.atkTimer) || 0, Math.max(0.65, (parseFloat(p.hitDur) || 0.25) * 2.6));
+            p.isRunning = false;
+            p.runDirection = null;
+            p.guardTimer = 0;
+            p.kbVx = 0;
+            p.kbVy = 0;
+            gameState.screenHitFlash = { life: 0.30, maxLife: 0.30, strength: 0.92, mode: 'red' };
+            gameState.floatingTexts.push({
+                x: p.x,
+                y: p.y,
+                z: p.z + (p.bodyZ || 100) + 92,
+                text: '낙인 폭발',
+                color: '#ff3030',
+                size: '28px',
+                timer: 1.0
+            });
+            p.kasiyasOniMark = null;
+        }
+    },
+
     enterBossGroggyFromParry: function(m, action, gameState) {
         const boss = m && m.boss ? m.boss : null;
         if (!boss || !action) return;
@@ -111,6 +509,8 @@ const BossCombatSystem = {
         boss.groggyTimer = groggyTime;
         boss.groggyMaxTime = groggyTime;
         boss.groggyPoseType = groggyPose;
+        const groggyHitRate = parseFloat(action.Groggy_Hit_DMG_Rate);
+        boss.groggyHitDmgRate = (!isNaN(groggyHitRate) && groggyHitRate >= 0) ? groggyHitRate : null;
         boss.noPatternWaitTimer = Math.max(boss.noPatternWaitTimer || 0, groggyTime);
 
         m.state = 'GROGGY';
@@ -162,11 +562,47 @@ const BossCombatSystem = {
         this.enterBossGroggyFromParry(m, action, gameState);
         return true;
     },
+    getBossExplicitActionDamageRate: function(action) {
+        if (!action) return null;
+        const raw = action.Action_Hit_DMG_Rate;
+        if (raw === null || raw === undefined || raw === '') return null;
+        const rate = parseFloat(raw);
+        return (!isNaN(rate) && rate >= 0) ? rate : null;
+    },
+    getBossDefaultDamageRate: function(m) {
+        const rate = parseFloat(m && m.d && m.d.defaultHitDmgRate);
+        return (!isNaN(rate) && rate >= 0) ? rate : 1;
+    },
+    getBossReceivedDamageRate: function(m) {
+        const boss = m && m.boss ? m.boss : null;
+        if (!boss) return this.getBossDefaultDamageRate(m);
+
+        if ((parseFloat(boss.groggyTimer) || 0) > 0) {
+            const groggyRate = parseFloat(boss.groggyHitDmgRate);
+            if (!isNaN(groggyRate) && groggyRate >= 0) return groggyRate;
+            return this.getBossDefaultDamageRate(m);
+        }
+
+        const action = boss.action || null;
+        const explicitRate = this.getBossExplicitActionDamageRate(action);
+        if (explicitRate !== null) return explicitRate;
+
+        const defenceType = String(action && action.Action_Defence_Type || '').trim().toUpperCase();
+        if (defenceType === 'INVINCIBLE') return 0;
+
+        return this.getBossDefaultDamageRate(m);
+    },
     takeDamage: function(m, baseDmg, gameState) {
         const boss = m && m.boss ? m.boss : null;
         const action = boss && boss.action ? boss.action : null;
+        const explicitActionRate = this.getBossExplicitActionDamageRate(action);
         const defenceType = String(action && action.Action_Defence_Type || '').trim().toUpperCase();
-        if (defenceType === 'INVINCIBLE') {
+
+        if (this.tryResolveBossParryByPlayerHit && this.tryResolveBossParryByPlayerHit(m, gameState)) {
+            return;
+        }
+
+        if (defenceType === 'INVINCIBLE' && explicitActionRate === null) {
             const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
             gameState.floatingTexts.push({
                 x: m.x,
@@ -180,15 +616,26 @@ const BossCombatSystem = {
             return;
         }
 
-        if (this.tryResolveBossParryByPlayerHit && this.tryResolveBossParryByPlayerHit(m, gameState)) {
+        let scaledDmg = calcScaledDamage(gameState.player.level, m.d.level, baseDmg);
+        let finalDmg = Math.max(1, scaledDmg - m.d.def);
+        const receivedRate = this.getBossReceivedDamageRate(m);
+        finalDmg = receivedRate <= 0 ? 0 : Math.max(1, finalDmg * receivedRate);
+        if (finalDmg <= 0) {
+            const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
+            gameState.floatingTexts.push({
+                x: m.x,
+                y: m.y,
+                z: m.z + bodyZ + 18,
+                text: '피해 0%',
+                color: '#c7d7ff',
+                size: '22px',
+                timer: 0.45
+            });
             return;
         }
-
-        let scaledDmg = calcScaledDamage(gameState.player.level, m.d.level, baseDmg);
-        let finalDmg = Math.max(1, scaledDmg - m.d.def); 
         m.hp -= finalDmg;
         
-        gameState.floatingTexts.push({x: m.x, y: m.y, z: m.z + (m.d.bodyZ * m.scale) + 20, text: `${finalDmg.toFixed(0)}`, color: "#fff", size: "36px", timer: 1.0});
+        gameState.floatingTexts.push({x: m.x, y: m.y, z: m.z + (m.d.bodyZ * m.scale) + 20, text: `${finalDmg.toFixed(0)}`, color: receivedRate < 1 ? "#d7ecff" : "#fff", size: "36px", timer: 1.0});
         gameState.effects.push({ type: 'hitSpark', renderType: 'EFT_HIT', x: m.x, y: m.y, z: m.z + m.d.bodyZ*m.scale/2, life: 0.15, maxLife: 0.15 });
 
         gameState.targetUI.monster = m; gameState.targetUI.timer = 3.0;
@@ -356,6 +803,8 @@ const BossCombatSystem = {
             guardResult: data.Guard_Result_Type || '',
             guardDmgReduceRate: parseFloat(data.Guard_DMG_Reduce_Rate),
             guardGetFightingSpirit: Math.max(0, parseFloat(data.Guard_Get_Fighting_Spirit) || 0),
+            guardSpecialResultType: String(data.Guard_Special_Result_Type || '').trim().toUpperCase(),
+            guardSpecialResultOccurrenceCond: String(data.Guard_Special_Result_Occurrence_Cond || '').trim().toUpperCase(),
             guardDirectionType: String(data.Guard_Direction_Type || data.Guard_Direction_Check_Type || '').trim().toUpperCase(),
             guardRewardKey: rewardKey ? `${rewardKey}` : '',
             guardRewardLockTime: hitCount > 1 ? duration + 0.35 : 0.45,
@@ -421,7 +870,9 @@ const BossCombatSystem = {
             this.pushPathSlashEffects(path, width, height, action.VFX_Type || 'EFT_KASIYAS_RUSH_SLASH', gameState);
             if (this.isPlayerInsidePathHitbox(path, width, height, gameState)) {
                 const result = PlayerManager.takeDamage(gameState, calcScaledDamage(m.d.level, p.level, baseDmg), m.x, m.y, null, 0, 0, this.buildGuardInfoFromAttackData(action)) || {};
+                this.applyKasiyasOniMarkAttackResult(gameState, 'BOSS', action, result, m);
                 this.trySpawnBossGuardSuccessObject(m, action, gameState, result, m.x, m.y);
+                this.tryApplyBossGuardSpecialResult(m, action, result, gameState);
                 return true;
             }
             return false;
@@ -429,15 +880,36 @@ const BossCombatSystem = {
 
         if (hitboxType === 'HITBOX_BODY_COLLISION') {
             const scale = m.scale || 1;
-            const atkW = (parseFloat(action.Hitbox_Size_X) || m.d.bodyX || 80) * scale;
-            const atkD = (parseFloat(action.Hitbox_Size_Y) || m.d.bodyY || 60) * scale;
-            const atkH = (parseFloat(action.Hitbox_Size_Z) || m.d.bodyZ || 160) * scale;
-            const atkX = m.x + (parseFloat(action.Hitbox_Offset_X) || 0) * scale * (m.faceDir === -1 ? -1 : 1);
-            const atkY = m.y + (parseFloat(action.Hitbox_Offset_Y) || 0) * scale;
-            const atkZ = m.z + (parseFloat(action.Hitbox_Offset_Z) || 0) * scale;
-            const hitbox = { x: atkX, y: atkY, z: atkZ, w: atkW, d: atkD, h: atkH };
-            gameState.hitboxes.push({ ...hitbox, life: 0.08 });
-            if (this.isPlayerInsideBoxHitbox(hitbox, gameState)) {
+            const bodyW = ((m.d && parseFloat(m.d.bodyX)) || 80) * scale;
+            const bodyD = ((m.d && parseFloat(m.d.bodyY)) || 60) * scale;
+            const bodyH = ((m.d && parseFloat(m.d.bodyZ)) || 160) * scale;
+            const bodyHitbox = { x: m.x, y: m.y, z: m.z, w: bodyW, d: bodyD, h: bodyH };
+
+            const rawSizeX = parseFloat(action.Hitbox_Size_X);
+            const rawSizeY = parseFloat(action.Hitbox_Size_Y);
+            const rawSizeZ = parseFloat(action.Hitbox_Size_Z);
+            const hasExtraHitbox = (!isNaN(rawSizeX) && rawSizeX > 0) || (!isNaN(rawSizeY) && rawSizeY > 0) || (!isNaN(rawSizeZ) && rawSizeZ > 0);
+            const extraW = Math.max(1, (!isNaN(rawSizeX) && rawSizeX > 0 ? rawSizeX : ((m.d && parseFloat(m.d.bodyX)) || 80))) * scale;
+            const extraD = Math.max(1, (!isNaN(rawSizeY) && rawSizeY > 0 ? rawSizeY : ((m.d && parseFloat(m.d.bodyY)) || 60))) * scale;
+            const extraH = Math.max(1, (!isNaN(rawSizeZ) && rawSizeZ > 0 ? rawSizeZ : ((m.d && parseFloat(m.d.bodyZ)) || 160))) * scale;
+            const offX = (parseFloat(action.Hitbox_Offset_X) || 0) * scale * (m.faceDir === -1 ? -1 : 1);
+            const offY = (parseFloat(action.Hitbox_Offset_Y) || 0) * scale;
+            const offZ = (parseFloat(action.Hitbox_Offset_Z) || 0) * scale;
+            const extraHitbox = { x: m.x + offX, y: m.y + offY, z: m.z + offZ, w: extraW, d: extraD, h: extraH };
+
+            gameState.hitboxes.push({ ...bodyHitbox, life: 0.08, bodyCollision: true });
+            if (hasExtraHitbox) gameState.hitboxes.push({ ...extraHitbox, life: 0.08, attachedExtraHitbox: true });
+
+            const bodyHit = this.isPlayerInsideBoxHitbox(bodyHitbox, gameState);
+            const extraHit = hasExtraHitbox && this.isPlayerInsideBoxHitbox(extraHitbox, gameState);
+            if (bodyHit || extraHit) {
+                const hitbox = extraHit ? extraHitbox : bodyHitbox;
+                const atkX = hitbox.x;
+                const atkY = hitbox.y;
+                const atkZ = hitbox.z;
+                const atkW = hitbox.w;
+                const atkD = hitbox.d;
+                const atkH = hitbox.h;
                 if (action.VFX_Type) {
                     const upperVfx = String(action.VFX_Type || '').toUpperCase();
                     gameState.effects.push({
@@ -457,7 +929,9 @@ const BossCombatSystem = {
                         accentColor: 'rgba(28,0,0,0.90)'
                     });
                 }
-                PlayerManager.takeDamage(gameState, calcScaledDamage(m.d.level, p.level, baseDmg), atkX, atkY, null, 0, 0, this.buildGuardInfoFromAttackData(action));
+                const result = PlayerManager.takeDamage(gameState, calcScaledDamage(m.d.level, p.level, baseDmg), atkX, atkY, null, 0, 0, this.buildGuardInfoFromAttackData(action)) || {};
+                this.applyKasiyasOniMarkAttackResult(gameState, 'BOSS', action, result, m);
+                this.tryApplyBossGuardSpecialResult(m, action, result, gameState);
                 return true;
             }
             return false;
@@ -469,7 +943,9 @@ const BossCombatSystem = {
             this.pushBossPatternActionEffect(m, action, hitbox.x, hitbox.y, hitbox.z, hitbox.w, hitbox.d, hitbox.h, gameState);
             if (this.isPlayerInsideCircleHitbox(hitbox, gameState)) {
                 const result = PlayerManager.takeDamage(gameState, calcScaledDamage(m.d.level, p.level, baseDmg), hitbox.x, hitbox.y, null, 0, 0, this.buildGuardInfoFromAttackData(action)) || {};
+                this.applyKasiyasOniMarkAttackResult(gameState, 'BOSS', action, result, m);
                 this.trySpawnBossGuardSuccessObject(m, action, gameState, result, hitbox.x, hitbox.y);
+                this.tryApplyBossGuardSpecialResult(m, action, result, gameState);
                 return true;
             }
             return false;
@@ -493,21 +969,40 @@ const BossCombatSystem = {
 
         if (this.isPlayerInsideBoxHitbox(hitbox, gameState)) {
             const result = PlayerManager.takeDamage(gameState, calcScaledDamage(m.d.level, p.level, baseDmg), atkX, atkY, null, 0, 0, this.buildGuardInfoFromAttackData(action)) || {};
+            this.applyKasiyasOniMarkAttackResult(gameState, 'BOSS', action, result, m);
             this.trySpawnBossGuardSuccessObject(m, action, gameState, result, atkX, atkY);
+            this.tryApplyBossGuardSpecialResult(m, action, result, gameState);
             return true;
         }
         return false;
     },
     getBossObjectActionHitbox: function(obj, action) {
+        const boxes = this.getBossObjectActionHitboxes(obj, action);
+        return boxes.extra || boxes.body || boxes.primary;
+    },
+
+    getBossObjectActionHitboxes: function(obj, action) {
         const scale = obj.scale || 1;
-        const w = (parseFloat(action.Hitbox_Size_X) || 100) * scale;
-        const d = (parseFloat(action.Hitbox_Size_Y) || 60) * scale;
-        const h = (parseFloat(action.Hitbox_Size_Z) || 80) * scale;
+        const hitboxType = String(action && action.Hitbox_Type || '').trim().toUpperCase();
+        const bodyWRaw = obj && obj.d ? (parseFloat(obj.d.bodyX) || 80) : 80;
+        const bodyDRaw = obj && obj.d ? (parseFloat(obj.d.bodyY) || 60) : 60;
+        const bodyHRaw = obj && obj.d ? (parseFloat(obj.d.bodyZ) || 160) : 160;
+        const body = { x: obj.x, y: obj.y, z: obj.z, w: bodyWRaw * scale, d: bodyDRaw * scale, h: bodyHRaw * scale };
+
+        const rawX = parseFloat(action.Hitbox_Size_X);
+        const rawY = parseFloat(action.Hitbox_Size_Y);
+        const rawZ = parseFloat(action.Hitbox_Size_Z);
+        const hasExtra = hitboxType === 'HITBOX_BODY_COLLISION' && ((!isNaN(rawX) && rawX > 0) || (!isNaN(rawY) && rawY > 0) || (!isNaN(rawZ) && rawZ > 0));
+        const defaultW = hitboxType === 'HITBOX_BODY_COLLISION' ? bodyWRaw : 100;
+        const defaultD = hitboxType === 'HITBOX_BODY_COLLISION' ? bodyDRaw : 60;
+        const defaultH = hitboxType === 'HITBOX_BODY_COLLISION' ? bodyHRaw : 80;
+        const w = (parseFloat(action.Hitbox_Size_X) || defaultW) * scale;
+        const d = (parseFloat(action.Hitbox_Size_Y) || defaultD) * scale;
+        const h = (parseFloat(action.Hitbox_Size_Z) || defaultH) * scale;
         const offX = (parseFloat(action.Hitbox_Offset_X) || 0) * scale;
         const offY = (parseFloat(action.Hitbox_Offset_Y) || 0) * scale;
         const offZ = (parseFloat(action.Hitbox_Offset_Z) || 0) * scale;
-
-        return {
+        const primary = {
             x: obj.x + offX * (obj.faceDir === -1 ? -1 : 1),
             y: obj.y + offY,
             z: obj.z + offZ,
@@ -515,21 +1010,43 @@ const BossCombatSystem = {
             d: d,
             h: h
         };
+        return hitboxType === 'HITBOX_BODY_COLLISION'
+            ? { body, extra: hasExtra ? primary : null, primary: hasExtra ? primary : body }
+            : { body: null, extra: null, primary };
     },
     fireBossObjectActionHit: function(obj, action, gameState) {
         const p = gameState.player;
         if (!p || !p.active || p.hp <= 0 || obj.actionCancelled) return false;
 
         const hitboxType = String(action.Hitbox_Type || '').trim().toUpperCase();
-        if (hitboxType !== 'HITBOX_BOX' && hitboxType !== 'HITBOX_CIRCLE') return false;
+        if (hitboxType !== 'HITBOX_BOX' && hitboxType !== 'HITBOX_CIRCLE' && hitboxType !== 'HITBOX_BODY_COLLISION') return false;
 
-        const hitbox = this.getBossObjectActionHitbox(obj, action);
-        gameState.hitboxes.push({ ...hitbox, type: hitboxType === 'HITBOX_CIRCLE' ? 'circle' : undefined, life: 0.12 });
-        this.pushBossObjectActionEffect(obj, action, hitbox, gameState);
+        const hitboxes = this.getBossObjectActionHitboxes(obj, action);
+        const hitbox = hitboxes.primary;
+        const objectIdForHit = String(obj.data && (obj.data.Object_ID || obj.data.Attack_Object_ID) || '').trim();
+        const actionIdForHit = String(action.Object_Action_ID || '').trim();
+        const debugBoxes = hitboxType === 'HITBOX_BODY_COLLISION'
+            ? [hitboxes.body, hitboxes.extra].filter(Boolean)
+            : [hitbox];
+        debugBoxes.forEach((box, idx) => gameState.hitboxes.push({
+            ...box,
+            type: hitboxType === 'HITBOX_CIRCLE' ? 'circle' : undefined,
+            life: 0.12,
+            sourceObject: obj,
+            sourceObjectId: objectIdForHit,
+            sourceActionId: actionIdForHit,
+            cancelOnGuard: true,
+            bodyCollision: hitboxType === 'HITBOX_BODY_COLLISION' && idx === 0,
+            attachedExtraHitbox: hitboxType === 'HITBOX_BODY_COLLISION' && idx > 0
+        }));
+        this.pushBossObjectActionEffect(obj, action, hitboxes.extra || hitbox, gameState);
 
+        const bodyHit = hitboxType === 'HITBOX_BODY_COLLISION' && hitboxes.body && this.isPlayerInsideBoxHitbox(hitboxes.body, gameState);
+        const extraHit = hitboxType === 'HITBOX_BODY_COLLISION' && hitboxes.extra && this.isPlayerInsideBoxHitbox(hitboxes.extra, gameState);
         const isHit = hitboxType === 'HITBOX_CIRCLE'
             ? this.isPlayerInsideCircleHitbox(hitbox, gameState)
-            : this.isPlayerInsideBoxHitbox(hitbox, gameState);
+            : (hitboxType === 'HITBOX_BODY_COLLISION' ? (bodyHit || extraHit) : this.isPlayerInsideBoxHitbox(hitbox, gameState));
+        const damageHitbox = extraHit ? hitboxes.extra : (bodyHit ? hitboxes.body : hitbox);
 
         if (isHit) {
             const owner = obj.owner;
@@ -545,14 +1062,16 @@ const BossCombatSystem = {
                 const result = PlayerManager.takeDamage(
                     gameState,
                     calcScaledDamage(owner.d.level, gameState.player.level, baseDmg),
-                    hitbox.x,
-                    hitbox.y,
+                    damageHitbox.x,
+                    damageHitbox.y,
                     null,
                     0,
                     0,
                     this.buildGuardInfoFromAttackData(action)
                 ) || {};
 
+                this.applyKasiyasOniMarkAttackResult(gameState, 'CLONE', action, result, obj);
+                this.tryApplyBossGuardSpecialResult(owner, action, result, gameState);
                 const guardResult = String(action.Guard_Result_Type || '').trim().toUpperCase();
                 if (result.guarded && guardResult === 'ATK_CANCEL') {
                     obj.actionCancelled = true;
@@ -562,13 +1081,25 @@ const BossCombatSystem = {
                     // 현재 공격의 잔여 다단히트만 끊는다. 액션 시간은 유지해서 본체/분신 타이밍을 보존한다.
                     obj.opacity = Math.min(parseFloat(obj.opacity) || 0.8, 0.50);
 
-                    // ATK_CANCEL로 분신 난무가 끊겼다면, 남은 판정뿐 아니라
-                    // 해당 분신의 공격 범위 표시도 즉시 제거한다.
+                    // ATK_CANCEL로 분신 난무가 끊겼다면, 첫 타격/중간 타격 여부와 관계없이
+                    // 해당 분신이 남긴 남은 판정, 범위 표시, 짧은 검격 이펙트를 즉시 제거한다.
+                    const objectId = String(obj.data && (obj.data.Object_ID || obj.data.Attack_Object_ID) || '').trim();
+                    const actionId = String(action.Object_Action_ID || '').trim();
+                    if (Array.isArray(gameState.hitboxes)) {
+                        gameState.hitboxes = gameState.hitboxes.filter(hb => {
+                            if (!hb || !hb.cancelOnGuard) return true;
+                            if (hb.sourceObject === obj) return false;
+                            if (actionId && String(hb.sourceActionId || '').trim() === actionId) return false;
+                            if (objectId && String(hb.sourceObjectId || '').trim() === objectId) return false;
+                            return true;
+                        });
+                    }
                     if (Array.isArray(gameState.effects)) {
-                        const objectId = String(obj.data && (obj.data.Object_ID || obj.data.Attack_Object_ID) || '').trim();
-                        const actionId = String(action.Object_Action_ID || '').trim();
                         gameState.effects = gameState.effects.filter(eff => {
-                            if (!eff || eff.type !== 'warning' || !eff.activeAttackRange) return true;
+                            if (!eff) return true;
+                            const removableWarning = eff.type === 'warning' && eff.activeAttackRange;
+                            const removableAttackFx = !!eff.cancelOnGuard;
+                            if (!removableWarning && !removableAttackFx) return true;
                             if (eff.sourceObject === obj) return false;
                             if (actionId && String(eff.sourceActionId || '').trim() === actionId) return false;
                             if (objectId && String(eff.sourceObjectId || '').trim() === objectId) return false;
