@@ -90,6 +90,7 @@ const gameState = {
     bossAttackObjects: [],
     floatingTexts: [],
     screenHitFlash: null,
+    phaseTransition: null,
 
     targetUI: { monster: null, timer: 0 },
     bossDebug: {
@@ -237,6 +238,12 @@ function clearCurrentStageEntities() {
     gameState.activeWarp = null;
     gameState.isStageCleared = false;
     gameState.bossBattle = null;
+    gameState.phaseTransition = null;
+    if (gameState.camera) {
+        gameState.camera.zoom = 1;
+        gameState.camera.focusX = null;
+        gameState.camera.focusY = null;
+    }
 }
 
 function spawnStageMonsterAt(monsterId, x, y, isBoss = false) {
@@ -656,6 +663,11 @@ window.addEventListener('keydown', e => {
         setBossPracticeModeEnabled(!gameState.bossPractice.enabled);
         return;
     }
+    if (e.code === 'F10') {
+        e.preventDefault();
+        triggerBossPhaseTransitionDebug();
+        return;
+    }
 
     if (handleBossPracticeKeyInput(e)) {
         e.preventDefault();
@@ -705,11 +717,16 @@ function gameLoop(timestamp) {
 
         updateBossBattleLayoutScale();
 
-        PlayerManager.update(deltaTime, gameState.keys, gameState);
+        const phaseTransitionActive = !!(gameState.phaseTransition && gameState.phaseTransition.active);
+        if (!phaseTransitionActive) {
+            PlayerManager.update(deltaTime, gameState.keys, gameState);
+        }
         MonsterManager.update(deltaTime, gameState);
         updateEnvironment(deltaTime);
-        updateStageFlow();
-        updateStageWarp();
+        if (!phaseTransitionActive) {
+            updateStageFlow();
+            updateStageWarp();
+        }
 
         const cameraBaseWidth = (GameRenderer && GameRenderer.canvas ? GameRenderer.canvas.width : 1600);
         const cameraBaseHeight = (GameRenderer && GameRenderer.canvas ? GameRenderer.canvas.height : 900);
@@ -717,13 +734,33 @@ function gameLoop(timestamp) {
         gameState.camera.width = Math.max(1, Math.min(cameraBaseWidth, gameState.WORLD_WIDTH));
         gameState.camera.height = Math.max(1, Math.min(cameraBaseHeight, GameRenderer.GROUND_BASE_Y + gameState.WORLD_DEPTH));
 
+        const transition = gameState.phaseTransition && gameState.phaseTransition.active ? gameState.phaseTransition : null;
+        const focusEntity = transition && transition.boss ? transition.boss : gameState.player;
+        const focusX = focusEntity && Number.isFinite(parseFloat(focusEntity.x)) ? parseFloat(focusEntity.x) : (gameState.player.x || 0);
         gameState.camera.x = Math.max(
             0,
          Math.min(
          Math.max(0, gameState.WORLD_WIDTH - gameState.camera.width),
-         (gameState.player.x || 0) - gameState.camera.width / 2
+         focusX - gameState.camera.width / 2
          )
         );
+
+        if (transition) {
+            const trDuration = Math.max(0.001, parseFloat(transition.duration) || 3.0);
+            const trTimer = Math.max(0, Math.min(trDuration, parseFloat(transition.timer) || 0));
+            const zoomIn = Math.min(1, trTimer / 0.75);
+            const zoomOut = Math.min(1, (trDuration - trTimer) / 0.55);
+            const zoomHold = Math.max(0, Math.min(1, Math.min(zoomIn, zoomOut)));
+            const eased = 1 - Math.pow(1 - zoomHold, 3);
+            gameState.camera.zoom = 1 + 0.34 * eased;
+            gameState.camera.focusX = focusX;
+            const bodyZ = focusEntity && focusEntity.d ? ((focusEntity.d.bodyZ || focusEntity.d.Body_Size_Z || 160) * (focusEntity.scale || 1)) : 120;
+            gameState.camera.focusY = GameRenderer.GROUND_BASE_Y + (focusEntity.y || 0) - Math.max(40, bodyZ * 0.58);
+        } else {
+            gameState.camera.zoom = 1;
+            gameState.camera.focusX = null;
+            gameState.camera.focusY = null;
+        }
 
         GameRenderer.render(gameState);
         updateHUD();
@@ -1040,6 +1077,7 @@ function buildUIButtons() {
                 <div class="control-guide-title">디버그</div>
                 <div class="control-row"><span class="keycap debug">V</span><span>히트박스 표시</span></div>
                 <div class="control-row"><span class="keycap debug">F9</span><span>카시야스 연습 모드</span></div>
+                <div class="control-row"><span class="keycap debug">F10</span><span>HP 0 · 페이즈 전환 테스트</span></div>
                 <div class="control-row"><span class="keycap debug">R</span><span>사망 시 부활</span></div>
             </div>
         `;
@@ -1191,6 +1229,51 @@ function getKasiyasPracticeBoss() {
     return null;
 }
 
+
+function triggerBossPhaseTransitionDebug() {
+    const bossMonster = getKasiyasPracticeBoss();
+    if (!bossMonster || !bossMonster.boss) {
+        pushSystemNotice('전환할 카시야스가 없습니다', '#ffb8b8', 1.2);
+        return false;
+    }
+
+    if (gameState.phaseTransition && gameState.phaseTransition.active) {
+        pushSystemNotice('이미 페이즈 전환 중입니다', '#ffd27f', 1.0);
+        return true;
+    }
+
+    const nextPhase = typeof MonsterManager.getBossNextPhase === 'function'
+        ? MonsterManager.getBossNextPhase(bossMonster.boss.phase, gameState)
+        : null;
+    const transitionType = String(bossMonster.boss.phase && bossMonster.boss.phase.Phase_Transition_Type || '').trim();
+    if (!nextPhase || !transitionType) {
+        pushSystemNotice('다음 페이즈 전환 데이터가 없습니다', '#ffb8b8', 1.4);
+        return false;
+    }
+
+    if (gameState.bossPractice && gameState.bossPractice.enabled) {
+        gameState.bossPractice.enabled = false;
+        gameState.bossPractice.lastPatternId = null;
+        buildUIButtons();
+    }
+
+    bossMonster.hp = 0;
+    bossMonster.isDeadProcessed = false;
+    bossMonster.deadTimer = 0;
+    bossMonster.active = true;
+
+    if (typeof MonsterManager.startBossPhaseTransition === 'function') {
+        const started = MonsterManager.startBossPhaseTransition(bossMonster, gameState);
+        if (started) {
+            pushSystemNotice('F10 · 카시야스 페이즈 전환 테스트', '#ff7777', 1.2);
+            return true;
+        }
+    }
+
+    pushSystemNotice('페이즈 전환 시작에 실패했습니다', '#ffb8b8', 1.4);
+    return false;
+}
+
 function getBossPracticePatternList() {
     return [
         { group: 'basic', id: '231001', label: '기본 1 · 3연격' },
@@ -1222,6 +1305,7 @@ function resetBossPracticeRuntimeState(options = {}) {
     gameState.effects = [];
     gameState.screenHitFlash = null;
     gameState.bossPatternDialogue = null;
+    gameState.phaseTransition = null;
 
     if (gameState.player) {
         gameState.player.kasiyasApostleEnergies = [];

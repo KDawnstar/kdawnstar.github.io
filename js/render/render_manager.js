@@ -129,6 +129,14 @@ const GameRenderer = {
         this.drawBackground(gameState);
 
         ctx.save();
+        const cameraZoom = Math.max(1, parseFloat(camera && camera.zoom) || 1);
+        if (cameraZoom > 1.001) {
+            const focusScreenX = ((camera.focusX !== null && camera.focusX !== undefined) ? camera.focusX : (player.x || 0)) - camera.x;
+            const focusScreenY = (camera.focusY !== null && camera.focusY !== undefined) ? camera.focusY : (this.GROUND_BASE_Y + (player.y || 0) - (player.z || 0));
+            ctx.translate(focusScreenX, focusScreenY);
+            ctx.scale(cameraZoom, cameraZoom);
+            ctx.translate(-focusScreenX, -focusScreenY);
+        }
         ctx.translate(-camera.x, 0);
 
         // WARNING 계열 전조는 캐릭터/보스보다 먼저 그린다.
@@ -247,6 +255,9 @@ const GameRenderer = {
         ctx.restore();
 
         this.drawFloatingTexts(ctx, floatingTexts);
+        if (typeof this.drawBossPhaseTransitionOverlay === 'function') {
+            this.drawBossPhaseTransitionOverlay(ctx, canvas, gameState);
+        }
         if (typeof this.drawBossPatternDialogue === 'function') {
             this.drawBossPatternDialogue(ctx, canvas, gameState);
         }

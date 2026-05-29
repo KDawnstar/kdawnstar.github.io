@@ -9,7 +9,22 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
         const boss = m.boss;
         if (!boss) return false;
 
+        if ((boss.phaseTransition && boss.phaseTransition.active) || (gameState.phaseTransition && gameState.phaseTransition.active && gameState.phaseTransition.boss === m)) {
+            if (typeof this.updateBossPhaseTransition === 'function') {
+                this.updateBossPhaseTransition(m, deltaTime, gameState);
+                return true;
+            }
+        }
+
         if (m.hp <= 0) {
+            const nextPhase = typeof this.getBossNextPhase === 'function' ? this.getBossNextPhase(boss.phase, gameState) : null;
+            if (nextPhase && String(boss.phase && boss.phase.Phase_Transition_Type || '').trim()) {
+                if (typeof this.startBossPhaseTransition === 'function') {
+                    this.startBossPhaseTransition(m, gameState);
+                    return true;
+                }
+            }
+
             if (!m.isDeadProcessed) {
                 m.isDeadProcessed = true;
                 MonsterAI.changeState(m, 'DIE', gameState);

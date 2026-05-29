@@ -132,40 +132,50 @@ GameRenderer.isOwnerBossArmorEffectActive = function(owner) {
 };
 
 GameRenderer.drawKasiyasArmorOutline = function(ctx, w, h, alpha = 1) {
-    const pulse = 0.5 + Math.sin(Date.now() / 58) * 0.5;
+    const pulse = 0.5 + Math.sin(Date.now() / 72) * 0.5;
     const hot = pulse > 0.50;
-    const main = hot ? `rgba(255,214,74,${0.42 * alpha + pulse * 0.24 * alpha})` : `rgba(255,42,24,${0.42 * alpha + (1 - pulse) * 0.22 * alpha})`;
-    const sub = hot ? `rgba(255,50,22,${0.30 * alpha})` : `rgba(255,205,52,${0.28 * alpha})`;
+    const main = hot
+        ? `rgba(255,208,74,${0.36 * alpha + pulse * 0.20 * alpha})`
+        : `rgba(255,54,34,${0.38 * alpha + (1 - pulse) * 0.18 * alpha})`;
+    const sub = hot ? `rgba(255,72,32,${0.22 * alpha})` : `rgba(255,190,56,${0.20 * alpha})`;
 
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.shadowBlur = 9 + pulse * 8;
-    ctx.shadowColor = hot ? 'rgba(255,214,74,0.72)' : 'rgba(255,42,24,0.72)';
+    ctx.shadowBlur = 8 + pulse * 7;
+    ctx.shadowColor = hot ? 'rgba(255,208,74,0.62)' : 'rgba(255,54,34,0.62)';
 
-    // 원형 오라가 아니라 카시야스 실루엣 바깥을 따라 번쩍이는 외곽선 느낌으로만 표시한다.
+    // 더듬이처럼 위로 튀는 선은 제거하고, 카시야스 신체 실루엣을 따라 감싸는 테두리만 표시한다.
     ctx.strokeStyle = main;
-    ctx.lineWidth = Math.max(3.2, w * 0.045);
+    ctx.lineWidth = Math.max(2.6, w * 0.035);
     ctx.beginPath();
-    ctx.moveTo(-w * 0.46, -h * 0.18);
-    ctx.quadraticCurveTo(-w * 0.58, -h * 0.46, -w * 0.35, -h * 0.78);
-    ctx.quadraticCurveTo(-w * 0.18, -h * 1.12, w * 0.06, -h * 1.10);
-    ctx.quadraticCurveTo(w * 0.42, -h * 1.04, w * 0.50, -h * 0.60);
-    ctx.quadraticCurveTo(w * 0.56, -h * 0.30, w * 0.42, -h * 0.08);
+    // 왼쪽 외곽: 발/하반신 → 어깨 → 갈기/머리
+    ctx.moveTo(-w * 0.36, -h * 0.08);
+    ctx.quadraticCurveTo(-w * 0.48, -h * 0.26, -w * 0.42, -h * 0.46);
+    ctx.quadraticCurveTo(-w * 0.52, -h * 0.68, -w * 0.30, -h * 0.86);
+    ctx.quadraticCurveTo(-w * 0.16, -h * 1.02, w * 0.02, -h * 1.05);
+    // 오른쪽 외곽: 머리 → 어깨/팔 → 하반신
+    ctx.quadraticCurveTo(w * 0.28, -h * 1.02, w * 0.42, -h * 0.82);
+    ctx.quadraticCurveTo(w * 0.52, -h * 0.62, w * 0.44, -h * 0.42);
+    ctx.quadraticCurveTo(w * 0.50, -h * 0.24, w * 0.36, -h * 0.07);
     ctx.stroke();
 
+    // 안쪽 테두리는 상체/팔/하반신 주변에 짧게 붙인다. 길게 튀어나가는 장식선은 사용하지 않는다.
     ctx.strokeStyle = sub;
-    ctx.lineWidth = Math.max(1.8, w * 0.026);
+    ctx.lineWidth = Math.max(1.5, w * 0.020);
+    ctx.shadowBlur = 5 + pulse * 4;
     ctx.beginPath();
-    ctx.moveTo(-w * 0.36, -h * 0.92);
-    ctx.lineTo(-w * 0.58, -h * 1.15);
-    ctx.moveTo(w * 0.22, -h * 0.96);
-    ctx.lineTo(w * 0.38, -h * 1.18);
-    ctx.moveTo(-w * 0.50, -h * 0.50);
-    ctx.quadraticCurveTo(-w * 0.60, -h * 0.32, -w * 0.48, -h * 0.14);
-    ctx.moveTo(w * 0.50, -h * 0.52);
-    ctx.quadraticCurveTo(w * 0.62, -h * 0.30, w * 0.47, -h * 0.10);
+    ctx.moveTo(-w * 0.34, -h * 0.72);
+    ctx.quadraticCurveTo(-w * 0.18, -h * 0.82, w * 0.04, -h * 0.78);
+    ctx.quadraticCurveTo(w * 0.24, -h * 0.82, w * 0.38, -h * 0.70);
+    ctx.moveTo(-w * 0.42, -h * 0.44);
+    ctx.quadraticCurveTo(-w * 0.52, -h * 0.30, -w * 0.40, -h * 0.16);
+    ctx.moveTo(w * 0.42, -h * 0.44);
+    ctx.quadraticCurveTo(w * 0.52, -h * 0.30, w * 0.39, -h * 0.16);
+    ctx.moveTo(-w * 0.26, -h * 0.18);
+    ctx.quadraticCurveTo(-w * 0.10, -h * 0.24, w * 0.10, -h * 0.24);
+    ctx.quadraticCurveTo(w * 0.26, -h * 0.22, w * 0.32, -h * 0.12);
     ctx.stroke();
 
     ctx.restore();
@@ -177,7 +187,17 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
     const h = Math.max(120, params.h || 160);
     const face = params.face === -1 ? -1 : 1;
     const stateKey = String(params.stateKey || '').trim().toUpperCase();
-    const renderType = String(params.renderType || 'RENDER_KASIYAS_P1').trim().toUpperCase();
+    const baseRenderType = String(params.renderType || 'RENDER_KASIYAS_P1').trim().toUpperCase();
+    const transition = m && m.boss && m.boss.phaseTransition && m.boss.phaseTransition.active ? m.boss.phaseTransition : null;
+    const transitionPhase = String(transition && transition.phase || '').trim().toUpperCase();
+    const transitionType = String(transition && transition.type || '').trim().toUpperCase();
+    const transitionTimer = parseFloat(transition && transition.timer) || 0;
+    const isP1ToP2TransitionCutscene = !!transition && transitionPhase === 'CUTSCENE' && transitionType === 'KASIYAS_P1_TO_P2';
+    const transitionGrabProgress = isP1ToP2TransitionCutscene ? Math.max(0, Math.min(1, (transitionTimer - 5.6) / 0.9)) : 0;
+    const transitionUseP2Model = isP1ToP2TransitionCutscene && transitionTimer >= 6.4;
+    const renderType = transitionUseP2Model ? 'RENDER_KASIYAS_P2' : baseRenderType;
+    const isKasiyasPhase2 = renderType === 'RENDER_KASIYAS_P2';
+    const isKasiyasPhase3 = renderType === 'RENDER_KASIYAS_P3';
     const poseType = this.normalizeKasiyasPoseType(String(params.poseType || 'POSE_DEFAULT').trim().toUpperCase());
     const progress = Math.max(0, Math.min(1, params.progress || 0));
     const isDead = stateKey === 'DIE' || stateKey === 'P_DIE';
@@ -342,6 +362,155 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         ctx.restore();
     };
 
+    const drawPhase2SummonedKatana = (handX, handY, angle, length, handleLen = 22, curve = 7) => {
+        // 2페이즈 차원 소환검: 기존 검보다 어둡고, 붉은 기운이 검신을 따라 흐르는 실루엣.
+        const bx = Math.cos(angle);
+        const by = Math.sin(angle);
+        const guardX = handX + bx * 5;
+        const guardY = handY + by * 5;
+        const tipX = handX + bx * length;
+        const tipY = handY + by * length;
+        const handleBackX = handX - bx * handleLen;
+        const handleBackY = handY - by * handleLen;
+
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.globalCompositeOperation = 'source-over';
+
+        // 검은 외곽. 작은 화면에서 두 번째 검이 확실히 읽히도록 기존 검보다 약간 굵게 잡는다.
+        ctx.strokeStyle = 'rgba(0,0,0,0.92)';
+        ctx.lineWidth = 8.4;
+        ctx.beginPath();
+        ctx.moveTo(guardX, guardY);
+        ctx.quadraticCurveTo(handX + bx * length * 0.52 - by * curve, handY + by * length * 0.52 + bx * curve, tipX, tipY);
+        ctx.stroke();
+
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = 'rgba(220,0,0,0.72)';
+        ctx.strokeStyle = 'rgba(150,8,16,0.92)';
+        ctx.lineWidth = 4.8;
+        ctx.beginPath();
+        ctx.moveTo(guardX, guardY);
+        ctx.quadraticCurveTo(handX + bx * length * 0.52 - by * (curve * 0.75), handY + by * length * 0.52 + bx * (curve * 0.75), tipX, tipY);
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(255,92,72,0.78)';
+        ctx.lineWidth = 1.7;
+        ctx.beginPath();
+        ctx.moveTo(guardX - by * 1.4, guardY + bx * 1.4);
+        ctx.quadraticCurveTo(handX + bx * length * 0.50 - by * (curve * 0.34), handY + by * length * 0.50 + bx * (curve * 0.34), tipX - bx * 4, tipY - by * 4);
+        ctx.stroke();
+
+        // 칼날을 따라 흐르는 작은 붉은 기운.
+        ctx.strokeStyle = 'rgba(255,30,24,0.28)';
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        ctx.moveTo(guardX - by * 4, guardY + bx * 4);
+        ctx.quadraticCurveTo(handX + bx * length * 0.42 - by * (curve + 5), handY + by * length * 0.42 + bx * (curve + 5), tipX - bx * 14, tipY - by * 14);
+        ctx.stroke();
+
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = line;
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.moveTo(handleBackX, handleBackY);
+        ctx.lineTo(handX + bx * 9, handY + by * 9);
+        ctx.stroke();
+        ctx.strokeStyle = '#3a1715';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(handleBackX, handleBackY);
+        ctx.lineTo(handX + bx * 9, handY + by * 9);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#a02018';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(handX - by * 9, handY + bx * 9);
+        ctx.lineTo(handX + by * 9, handY - bx * 9);
+        ctx.stroke();
+        ctx.restore();
+    };
+
+    const drawKasiyasPhase2AuraBack = () => {
+        // 2페이즈 기본 오라: 첨부 예시처럼 몸 주변에서 아래→위로 일렁이는 검붉은 기운.
+        const t = Date.now() / 300;
+        const pulse = 0.5 + Math.sin(Date.now() / 180) * 0.5;
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha *= 0.86;
+
+        // 발밑에서 퍼지는 어두운 붉은 연무
+        const groundGrad = ctx.createRadialGradient(0, -h * 0.08, w * 0.12, 0, -h * 0.08, w * 0.88);
+        groundGrad.addColorStop(0, `rgba(255,54,34,${0.10 + pulse * 0.035})`);
+        groundGrad.addColorStop(0.36, `rgba(132,0,0,${0.16 + pulse * 0.040})`);
+        groundGrad.addColorStop(0.74, `rgba(22,0,0,${0.18})`);
+        groundGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = groundGrad;
+        ctx.beginPath();
+        ctx.ellipse(0, -h * 0.06, w * 0.80, h * 0.16, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 몸 뒤쪽에 넓게 깔리는 어두운 오라
+        const bodyGrad = ctx.createRadialGradient(0, -h * 0.54, w * 0.16, 0, -h * 0.54, Math.max(w * 0.84, h * 0.52));
+        bodyGrad.addColorStop(0, `rgba(255,58,40,${0.055 + pulse * 0.030})`);
+        bodyGrad.addColorStop(0.44, `rgba(146,0,0,${0.115 + pulse * 0.025})`);
+        bodyGrad.addColorStop(0.78, `rgba(42,0,0,${0.13})`);
+        bodyGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = bodyGrad;
+        ctx.beginPath();
+        ctx.ellipse(0, -h * 0.53, w * 0.74, h * 0.48, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 위로 흐르는 일렁임. 일정한 직선이 아니라 좌우로 흔들리는 파형 곡선으로 표현한다.
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        for (let i = 0; i < 12; i++) {
+            const r = i / 11;
+            const side = i % 2 === 0 ? -1 : 1;
+            const baseX = -w * 0.56 + r * w * 1.12;
+            const sway = Math.sin(t * 1.8 + i * 0.91) * w * 0.035;
+            const x0 = baseX + sway;
+            const y0 = -h * (0.12 + (i % 3) * 0.030);
+            const y1 = -h * (0.50 + (i % 5) * 0.080) - Math.sin(t + i) * h * 0.035;
+            const midY = (y0 + y1) * 0.50;
+            const strong = i % 3 === 0;
+            ctx.shadowBlur = strong ? 9 : 5;
+            ctx.shadowColor = strong ? 'rgba(255,40,28,0.46)' : 'rgba(120,0,0,0.36)';
+            ctx.strokeStyle = strong
+                ? `rgba(255,54,38,${0.18 + pulse * 0.10})`
+                : `rgba(92,0,0,${0.18 + pulse * 0.06})`;
+            ctx.lineWidth = Math.max(1.1, w * (strong ? 0.020 : 0.014));
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.bezierCurveTo(
+                x0 + side * w * 0.10, midY + h * 0.09,
+                x0 - side * w * 0.08, midY - h * 0.07,
+                x0 + Math.sin(t * 1.3 + i) * w * 0.045,
+                y1
+            );
+            ctx.stroke();
+        }
+
+        // 몸 윤곽 주변의 약한 맥동 테두리
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = 'rgba(255,48,36,0.42)';
+        ctx.strokeStyle = `rgba(255,58,44,${0.16 + pulse * 0.10})`;
+        ctx.lineWidth = Math.max(2.0, w * 0.026);
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.46, -h * 0.16);
+        ctx.quadraticCurveTo(-w * 0.56, -h * 0.48, -w * 0.28, -h * 0.82);
+        ctx.quadraticCurveTo(0, -h * 1.04, w * 0.30, -h * 0.82);
+        ctx.quadraticCurveTo(w * 0.56, -h * 0.48, w * 0.44, -h * 0.16);
+        ctx.stroke();
+
+        ctx.restore();
+    };
+
     const drawMane = (cx, cy, r) => {
         // 뒤로 퍼지는 거대한 노란 갈기. 복잡한 머리카락 디테일 대신 과장된 뾰족 실루엣을 우선한다.
         const spikes = [
@@ -392,6 +561,10 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
     ctx.beginPath();
     ctx.ellipse(0, -h * 0.02, w * 0.50, h * 0.055, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    if (isKasiyasPhase2) {
+        drawKasiyasPhase2AuraBack();
+    }
 
     // 다리와 발. 맨발 느낌을 작게 남기고 위에 갑주판을 덮는다.
     drawLimb(-w * 0.16, -h * 0.33, -w * 0.28, -h * 0.04, w * 0.12, skinDark);
@@ -464,10 +637,57 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         ctx.stroke();
     }
 
-    // 뒤쪽 이형 팔: 큰 손과 날카로운 손톱만 읽히게 간결화.
-    drawLimb(-w * 0.27, -h * 0.74, -w * 0.47, -h * 0.58, w * 0.13, skinDark);
-    drawLimb(-w * 0.47, -h * 0.58, -w * 0.39, -h * 0.40, w * 0.13, skinDark);
-    drawClawHand(-w * 0.39, -h * 0.40, w * 0.24, -1);
+    if (isKasiyasPhase2) {
+        // 2페이즈 표시용 붉은 갑주/문양. 과하지 않게 유지하되, 상체가 살짝 측면을 향한 실루엣으로 읽히게 한다.
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = 'rgba(255,58,44,0.34)';
+        ctx.lineWidth = Math.max(1.5, w * 0.026);
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.22, -h * 0.72);
+        ctx.quadraticCurveTo(-w * 0.02, -h * 0.66, w * 0.18, -h * 0.76);
+        ctx.moveTo(-w * 0.10, -h * 0.80);
+        ctx.quadraticCurveTo(w * 0.00, -h * 0.70, w * 0.12, -h * 0.60);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // 뒤쪽 이형 팔. 전환 컷신에서는 모델 자체의 팔이 검 없는 쪽으로 뻗고,
+    // 2페이즈 기본 자세에서는 양손의 검을 좌우로 펼쳐 든다.
+    if (isP1ToP2TransitionCutscene && !transitionUseP2Model) {
+        const extendT = Math.max(0, Math.min(1, (transitionTimer - 1.0) / 1.4));
+        const easedExtend = extendT * extendT * (3 - 2 * extendT);
+        const offShoulderX = -w * 0.26;
+        const offShoulderY = -h * 0.73;
+        const offElbowX = -w * (0.36 + 0.18 * easedExtend);
+        const offElbowY = -h * (0.60 + 0.02 * easedExtend);
+        const offHandX = -w * (0.42 + 0.34 * easedExtend);
+        const offHandY = -h * (0.46 + 0.05 * easedExtend);
+        drawLimb(offShoulderX, offShoulderY, offElbowX, offElbowY, w * 0.12, skinDark);
+        drawLimb(offElbowX, offElbowY, offHandX, offHandY, w * 0.11, skinDark);
+        drawClawHand(offHandX, offHandY, w * 0.16, -1);
+        if (transitionGrabProgress > 0.02) {
+            // 검을 잡은 직후에는 손에 같은 디자인의 검이 잠시 붙어 보이게 한다.
+            drawKatana(offHandX - w * 0.02, offHandY + h * 0.01, 2.46, h * (0.58 + 0.28 * transitionGrabProgress), 20, 5);
+        }
+    } else if (isKasiyasPhase2) {
+        const offShoulderX = -w * 0.26;
+        const offShoulderY = -h * 0.72;
+        const offElbowX = -w * 0.40;
+        const offElbowY = -h * 0.56;
+        const offHandX = -w * 0.42;
+        const offHandY = -h * 0.46;
+        drawLimb(offShoulderX, offShoulderY, offElbowX, offElbowY, w * 0.12, skinDark);
+        drawLimb(offElbowX, offElbowY, offHandX, offHandY, w * 0.11, skinDark);
+        drawClawHand(offHandX, offHandY, w * 0.15, -1);
+        // 보조 검도 정수 파지로 잡고, 칼날은 바깥 아래 방향으로 펼친다.
+        drawKatana(offHandX - w * 0.02, offHandY + h * 0.01, 2.46, h * 0.86, 22, 6);
+    } else {
+        // 1페이즈: 큰 손과 날카로운 손톱만 읽히게 간결화.
+        drawLimb(-w * 0.27, -h * 0.74, -w * 0.47, -h * 0.58, w * 0.13, skinDark);
+        drawLimb(-w * 0.47, -h * 0.58, -w * 0.39, -h * 0.40, w * 0.13, skinDark);
+        drawClawHand(-w * 0.39, -h * 0.40, w * 0.24, -1);
+    }
 
     // 앞 팔과 내장형 일본도: 1페이즈는 한 손에 든 하나의 검만 사용한다.
     // 보조 팔은 위에서 이미 그렸고, 공격 포즈에서 팔을 추가로 복제하지 않는다.
@@ -751,13 +971,25 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         ctx.stroke();
         ctx.restore();
     } else {
-        handX = w * 0.32;
-        handY = -h * 0.52;
-        swordAngle = -0.48;
-        swordLen = h * 0.80;
-        drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.11, skinBase);
-        drawClawHand(handX, handY, w * 0.15, 1);
-        drawKatana(handX, handY, swordAngle, swordLen, 22, 8);
+        if (isKasiyasPhase2) {
+            // 2페이즈 기본 자세: 기존 카시야스 기본 모델 위에 검 두 자루만 자연스럽게 추가한 느낌.
+            // 양손 모두 정수 파지이며, 칼날은 좌우 바깥 아래 방향으로 펼친다.
+            handX = w * 0.40;
+            handY = -h * 0.46;
+            swordAngle = 0.62;
+            swordLen = h * 0.86;
+            drawLimb(shoulderFrontX - w * 0.01, shoulderY + h * 0.02, handX, handY, w * 0.11, skinBase);
+            drawClawHand(handX, handY, w * 0.15, 1);
+            drawKatana(handX, handY, swordAngle, swordLen, 22, 7);
+        } else {
+            handX = w * 0.32;
+            handY = -h * 0.52;
+            swordAngle = -0.48;
+            swordLen = h * 0.80;
+            drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.11, skinBase);
+            drawClawHand(handX, handY, w * 0.15, 1);
+            drawKatana(handX, handY, swordAngle, swordLen, 22, 8);
+        }
     }
 
     // 목/머리/갈기. 갈기는 먼저 큰 실루엣, 그 위에 귀면족 얼굴과 뿔.
@@ -816,15 +1048,43 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
     // 본체/분신 판별 이펙트는 머리 위 전용 마커에서만 표시한다.
     // 얼굴 내부에 별도 선/검흔을 그리면 작은 공격 이펙트처럼 보일 수 있어 기본 안광만 유지한다.
 
-    // P2/P3는 외형 확장을 대비한 얇은 오라만 유지.
+    // P2/P3 페이즈 오라. P2는 원형 고리보다 몸 주변에서 일렁이는 외곽 기운으로 마무리한다.
     if (renderType === 'RENDER_KASIYAS_P2' || renderType === 'RENDER_KASIYAS_P3') {
-        ctx.globalAlpha = renderType === 'RENDER_KASIYAS_P3' ? 0.23 : 0.15;
-        ctx.strokeStyle = renderType === 'RENDER_KASIYAS_P3' ? '#b794ff' : '#ffcf6b';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.ellipse(0, -h * 0.58, w * 0.50, h * 0.35, 0, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        if (renderType === 'RENDER_KASIYAS_P2') {
+            const pulse = 0.5 + Math.sin(Date.now() / 170) * 0.5;
+            ctx.globalAlpha = 0.22 + pulse * 0.08;
+            ctx.strokeStyle = '#ff3f32';
+            ctx.shadowBlur = 9;
+            ctx.shadowColor = 'rgba(255,48,36,0.46)';
+            ctx.lineWidth = Math.max(2.2, w * 0.026);
+            ctx.beginPath();
+            ctx.moveTo(-w * 0.44, -h * 0.16);
+            ctx.quadraticCurveTo(-w * 0.58, -h * 0.48, -w * 0.28, -h * 0.80);
+            ctx.quadraticCurveTo(0, -h * 1.04, w * 0.30, -h * 0.80);
+            ctx.quadraticCurveTo(w * 0.58, -h * 0.48, w * 0.44, -h * 0.16);
+            ctx.stroke();
+
+            ctx.globalAlpha = 0.12 + pulse * 0.05;
+            ctx.strokeStyle = '#8c0000';
+            ctx.lineWidth = Math.max(1.4, w * 0.018);
+            for (let i = 0; i < 5; i++) {
+                const x = -w * 0.36 + i * w * 0.18 + Math.sin(Date.now() / 250 + i) * w * 0.018;
+                ctx.beginPath();
+                ctx.moveTo(x, -h * 0.14);
+                ctx.bezierCurveTo(x - w * 0.04, -h * 0.34, x + w * 0.05, -h * 0.50, x + w * 0.02, -h * 0.72);
+                ctx.stroke();
+            }
+        } else {
+            ctx.globalAlpha = 0.23;
+            ctx.strokeStyle = '#b794ff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.ellipse(0, -h * 0.58, w * 0.50, h * 0.38, 0, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        ctx.restore();
     }
 
     ctx.restore();

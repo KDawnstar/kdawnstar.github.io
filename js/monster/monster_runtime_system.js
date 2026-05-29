@@ -152,6 +152,26 @@ const MonsterManager = {
         return BossPhaseSystem.getBossLatePhaseThreshold.apply(this, arguments);
     },
 
+    getBossNextPhase: function() {
+        return BossPhaseSystem.getBossNextPhase.apply(this, arguments);
+    },
+
+    clearBossPhaseTransitionRuntime: function() {
+        return BossPhaseSystem.clearBossPhaseTransitionRuntime.apply(this, arguments);
+    },
+
+    startBossPhaseTransition: function() {
+        return BossPhaseSystem.startBossPhaseTransition.apply(this, arguments);
+    },
+
+    updateBossPhaseTransition: function() {
+        return BossPhaseSystem.updateBossPhaseTransition.apply(this, arguments);
+    },
+
+    finishBossPhaseTransition: function() {
+        return BossPhaseSystem.finishBossPhaseTransition.apply(this, arguments);
+    },
+
     getPatternLoopCount: function() {
         return BossPatternSystem.getPatternLoopCount.apply(this, arguments);
     },

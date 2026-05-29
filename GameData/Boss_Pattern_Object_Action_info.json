@@ -18,7 +18,7 @@
     "Action_Object_Gaze": "LOOKING_MOVE_DIRECTION",
     "Move_Type": "MOVE_DASH",
     "Move_Direction": "TO_PLAYER_AT_SPAWN",
-    "Move_Speed_Rate": 8,
+    "Move_Speed_Rate": 5,
     "Move_Target_Type": "PLAYER_SNAPSHOT",
     "Move_Stop_Type": "STOP_AT_TARGET",
     "Move_Distance": null,

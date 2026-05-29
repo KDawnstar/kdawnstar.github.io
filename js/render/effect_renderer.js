@@ -503,11 +503,16 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
 
         // 잔류 검격은 돌진 시작과 동시에 경로 전체를 미리 깔지 않는다.
         // warning 구간에는 카시야스가 실제로 돌진하며 지나간 위치까지만 칼날 조각을 누적 표시한다.
-        // delay/active 구간에 들어가면 이미 생성된 전체 궤적이 유지되고, 이후 붉게 변하며 활성화된다.
+        // delay 구간에는 이미 생성된 전체 궤적을 파란 잔류 검격으로 유지한다.
+        // 실제 hit/active 구간에 들어갔을 때만 붉게 맥동하며 피해 판정이 켜진 것을 보여준다.
         const visibleProgress = isCharge || isActive
             ? 1
             : Math.max(0, Math.min(1, warningDur > 0 ? elapsed / warningDur : 1));
         const leadingFadeWidth = 0.14;
+        const hitboxHalfD = pathD * 0.5;
+        const visibleStartX = -pathW * 0.5;
+        const visibleEndX = visibleStartX + pathW * visibleProgress;
+        const visibleW = Math.max(0, visibleEndX - visibleStartX);
 
         ctx.globalAlpha = Math.max(0, Math.min(1, (0.62 + alpha * 0.38)));
         ctx.rotate(renderAngle);
@@ -517,9 +522,9 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         const dormantEdge = 'rgba(10,28,46,0.78)';
         const dormantCore = 'rgba(210,244,255,0.88)';
         const dormantHot = 'rgba(105,205,255,0.72)';
-        const chargeEdge = `rgba(${Math.round(42 + chargeT * 18)},0,0,${0.70 + chargeT * 0.16})`;
-        const chargeCore = `rgba(${Math.round(170 + chargeT * 55)},${Math.round(40 - chargeT * 22)},${Math.round(46 - chargeT * 28)},${0.64 + chargeT * 0.22})`;
-        const chargeHot = `rgba(255,${Math.round(112 - chargeT * 64)},${Math.round(92 - chargeT * 58)},${0.48 + chargeT * 0.30})`;
+        const chargeEdge = `rgba(8,34,58,${0.74 + chargeT * 0.08})`;
+        const chargeCore = `rgba(218,248,255,${0.78 + chargeT * 0.08})`;
+        const chargeHot = `rgba(112,218,255,${0.62 + chargeT * 0.08})`;
         const activeEdge = 'rgba(8,0,0,0.98)';
         const activeCore = `rgba(255,24,22,${0.90 + pulse * 0.08})`;
         const activeHot = `rgba(255,104,78,${0.72 + pulse * 0.18})`;
@@ -529,13 +534,67 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         const hotColor = isActive ? activeHot : (isCharge ? chargeHot : dormantHot);
         const glowColor = isActive
             ? 'rgba(230,0,0,0.78)'
-            : (isCharge ? 'rgba(190,0,0,0.42)' : 'rgba(90,190,255,0.32)');
+            : (isCharge ? 'rgba(104,210,255,0.40)' : 'rgba(90,190,255,0.32)');
 
-        ctx.shadowBlur = isActive ? 20 : (isCharge ? 11 : 8);
+        ctx.shadowBlur = isActive ? 20 : (isCharge ? 9 : 8);
         ctx.shadowColor = glowColor;
 
-        // 천귀살 잔류 검격은 돌진 중에는 흰색/푸른색의 칼날 조각으로 남고,
-        // 딜레이가 끝나며 같은 조각이 붉게 물든 뒤 그 자체가 활성화된다.
+        // 데이터의 Hitbox_Size_Y 값(pathD)을 실제 화면 폭 안내에도 사용한다.
+        // 돌진 중에는 지나간 구간까지만, 충전/활성 구간에서는 전체 경로의 판정 폭을 보여준다.
+        if (visibleW > 1) {
+            const bandAlpha = isActive
+                ? (0.13 + pulse * 0.05)
+                : (isCharge ? 0.055 : 0.035);
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, Math.min(1, bandAlpha * alpha));
+            ctx.shadowBlur = isActive ? 18 : (isCharge ? 6 : 4);
+            ctx.shadowColor = glowColor;
+            const bandGrad = ctx.createLinearGradient(0, -hitboxHalfD, 0, hitboxHalfD);
+            if (isActive) {
+                bandGrad.addColorStop(0, 'rgba(255,34,28,0)');
+                bandGrad.addColorStop(0.18, 'rgba(255,34,28,0.70)');
+                bandGrad.addColorStop(0.50, 'rgba(255,64,44,0.92)');
+                bandGrad.addColorStop(0.82, 'rgba(255,34,28,0.70)');
+                bandGrad.addColorStop(1, 'rgba(255,34,28,0)');
+            } else if (isCharge) {
+                bandGrad.addColorStop(0, 'rgba(80,190,255,0)');
+                bandGrad.addColorStop(0.22, 'rgba(80,190,255,0.44)');
+                bandGrad.addColorStop(0.50, 'rgba(210,244,255,0.64)');
+                bandGrad.addColorStop(0.78, 'rgba(80,190,255,0.44)');
+                bandGrad.addColorStop(1, 'rgba(80,190,255,0)');
+            } else {
+                bandGrad.addColorStop(0, 'rgba(80,190,255,0)');
+                bandGrad.addColorStop(0.20, 'rgba(80,190,255,0.45)');
+                bandGrad.addColorStop(0.50, 'rgba(210,244,255,0.62)');
+                bandGrad.addColorStop(0.80, 'rgba(80,190,255,0.45)');
+                bandGrad.addColorStop(1, 'rgba(80,190,255,0)');
+            }
+            ctx.fillStyle = bandGrad;
+            ctx.fillRect(visibleStartX, -hitboxHalfD, visibleW, pathD);
+            ctx.restore();
+
+            // 판정 폭의 양쪽 끝을 얇은 레일로 표시한다. 실제 path hitbox 폭이 바뀌면 이 선도 같이 바뀐다.
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, Math.min(1, (isActive ? 0.72 : (isCharge ? 0.34 : 0.24)) * alpha));
+            ctx.shadowBlur = isActive ? 16 : (isCharge ? 6 : 5);
+            ctx.shadowColor = glowColor;
+            ctx.strokeStyle = isActive
+                ? 'rgba(255,44,34,0.88)'
+                : (isCharge ? 'rgba(142,226,255,0.62)' : 'rgba(124,220,255,0.58)');
+            ctx.lineWidth = Math.max(1.8, pathD * (isActive ? 0.020 : 0.014));
+            if (!isActive && !isCharge) ctx.setLineDash([Math.max(12, pathD * 0.18), Math.max(8, pathD * 0.11)]);
+            for (const railY of [-hitboxHalfD, hitboxHalfD]) {
+                ctx.beginPath();
+                ctx.moveTo(visibleStartX, railY);
+                ctx.lineTo(visibleStartX + visibleW, railY);
+                ctx.stroke();
+            }
+            ctx.setLineDash([]);
+            ctx.restore();
+        }
+
+        // 천귀살 잔류 검격은 돌진 중/딜레이 중에는 흰색/푸른색의 칼날 조각으로 남고,
+        // 실제 피해 판정이 켜지는 active 구간에만 같은 조각이 붉게 맥동하며 활성화된다.
         // 별도의 큰 폭발선을 추가하지 않아, 생성 단계가 실제 피해 판정처럼 보이지 않도록 한다.
         for (let i = 0; i < count; i++) {
             const t = (i + 0.35) / count;
@@ -545,23 +604,23 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
             const n = noise - Math.floor(noise);
             const noise2 = Math.sin((i + 5) * 78.233 + seed * 0.031) * 17341.9281;
             const n2 = noise2 - Math.floor(noise2);
-            const side = (n * 2 - 1) * pathD * 0.38;
+            const side = (n * 2 - 1) * pathD * 0.47;
             const localX = -pathW / 2 + pathW * t;
             const localY = side;
             const trailAge = isCharge || isActive
                 ? 1
                 : Math.max(0, Math.min(1, (visibleProgress - t + leadingFadeWidth) / leadingFadeWidth));
-            const bladeW = Math.max(42, pathD * (0.54 + (i % 4) * 0.075));
-            const bladeH = Math.max(12, fieldH * (0.070 + (i % 3) * 0.012));
+            const bladeW = Math.max(46, pathD * (0.62 + (i % 4) * 0.085));
+            const bladeH = Math.max(13, fieldH * (0.078 + (i % 3) * 0.014));
             const bladeRot = ((i % 2 === 0) ? -0.36 : 0.36) + (n2 - 0.5) * 0.38;
-            const scalePulse = isActive ? (1.04 + pulse * 0.10) : (isCharge ? 1 + chargeT * 0.10 : 1);
+            const scalePulse = isActive ? (1.04 + pulse * 0.10) : 1;
 
             ctx.save();
             ctx.translate(localX, localY);
             ctx.rotate(bladeRot);
             ctx.scale(scalePulse, scalePulse);
 
-            const bladeAlpha = isActive ? (0.92 + pulse * 0.08) : (isCharge ? 0.62 + chargeT * 0.28 : 0.40 + trailAge * 0.24);
+            const bladeAlpha = isActive ? (0.92 + pulse * 0.08) : (isCharge ? 0.62 : 0.40 + trailAge * 0.24);
             ctx.globalAlpha = Math.max(0, Math.min(1, bladeAlpha * alpha * (isCharge || isActive ? 1 : Math.max(0.28, trailAge))));
 
             // 외곽: 길쭉한 나뭇잎/칼날 파편 실루엣
@@ -590,7 +649,7 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
             ctx.closePath();
             ctx.fill();
 
-            ctx.strokeStyle = isActive ? 'rgba(30,0,0,0.92)' : (isCharge ? 'rgba(60,0,0,0.68)' : 'rgba(5,26,44,0.52)');
+            ctx.strokeStyle = isActive ? 'rgba(30,0,0,0.92)' : (isCharge ? 'rgba(8,38,62,0.60)' : 'rgba(5,26,44,0.52)');
             ctx.lineWidth = Math.max(0.9, bladeH * 0.11);
             ctx.beginPath();
             ctx.moveTo(-bladeW * 0.42, bladeH * 0.04);
@@ -622,6 +681,24 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
             ctx.moveTo(-pathW * 0.46, -pathD * 0.06);
             ctx.quadraticCurveTo(0, pathD * 0.035, pathW * 0.46, -pathD * 0.06);
             ctx.stroke();
+
+            // 가드 불가 잔류 검격의 활성 폭을 한 번 더 강조한다.
+            // pathD 기반으로 상/하단까지 붉은 사선이 닿아, 실제 데이터 판정 폭을 더 직관적으로 보여준다.
+            ctx.globalAlpha = Math.max(0, Math.min(1, (0.28 + (1 - activeT) * 0.22 + pulse * 0.08) * alpha));
+            ctx.shadowBlur = 18;
+            ctx.shadowColor = 'rgba(255,0,0,0.62)';
+            ctx.strokeStyle = 'rgba(255,58,44,0.62)';
+            ctx.lineWidth = Math.max(2.4, pathD * 0.022);
+            for (let i = 0; i < 3; i++) {
+                const x0 = -pathW * 0.40 + i * pathW * 0.31;
+                const x1 = x0 + pathW * 0.20;
+                const y0 = (i % 2 === 0 ? -1 : 1) * hitboxHalfD * 0.82;
+                const y1 = -y0;
+                ctx.beginPath();
+                ctx.moveTo(x0, y0);
+                ctx.lineTo(x1, y1);
+                ctx.stroke();
+            }
         }
 
     } else if (eff.type === 'pathLineSlash') {
@@ -1086,51 +1163,72 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         }
 
         if (isKasiyasStab) {
-            const stabW = Math.max(80, slashW * 1.05);
-            const stabH = Math.max(8, slashH * 0.18);
-            ctx.shadowBlur = 14;
-            ctx.shadowColor = 'rgba(210,0,0,0.74)';
+            // 카시야스 찌르기: 실제 hitbox 길이는 유지하되, 검 끝에만 붙은 얇은 선처럼 보이지 않도록
+            // 전방으로 뻗는 넓은 쐐기형 검압을 함께 그린다.
+            const stabW = Math.max(120, slashW * 1.10);
+            const stabH = Math.max(24, slashH * 0.34, slashD * 0.42);
+            const tipX = stabW * 0.62;
+            const backX = -stabW * 0.50;
+            const shoulderX = stabW * 0.24;
 
-            ctx.fillStyle = `rgba(16,0,0,${0.92 * alpha})`;
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.shadowBlur = 18;
+            ctx.shadowColor = 'rgba(220,0,0,0.78)';
+
+            // 바깥 어둠/검압 면: 검이 지나간 전방 범위를 크게 잡아준다.
+            ctx.fillStyle = `rgba(18,0,0,${0.86 * alpha})`;
             ctx.beginPath();
-            ctx.moveTo(-stabW * 0.52, -stabH * 0.72);
-            ctx.lineTo(stabW * 0.34, -stabH * 1.25);
-            ctx.lineTo(stabW * 0.58, 0);
-            ctx.lineTo(stabW * 0.34, stabH * 1.25);
-            ctx.lineTo(-stabW * 0.52, stabH * 0.72);
+            ctx.moveTo(backX, -stabH * 0.95);
+            ctx.lineTo(shoulderX, -stabH * 1.32);
+            ctx.lineTo(tipX, 0);
+            ctx.lineTo(shoulderX, stabH * 1.32);
+            ctx.lineTo(backX, stabH * 0.95);
             ctx.closePath();
             ctx.fill();
 
-            const grad = ctx.createLinearGradient(-stabW * 0.46, 0, stabW * 0.52, 0);
+            const grad = ctx.createLinearGradient(backX, 0, tipX, 0);
             grad.addColorStop(0, 'rgba(0,0,0,0)');
-            grad.addColorStop(0.34, eff.accentColor || `rgba(70,0,0,${0.78 * alpha})`);
-            grad.addColorStop(0.58, eff.color || `rgba(255,54,48,${0.98 * alpha})`);
-            grad.addColorStop(0.84, `rgba(130,0,0,${0.58 * alpha})`);
-            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            grad.addColorStop(0.20, eff.accentColor || `rgba(70,0,0,${0.62 * alpha})`);
+            grad.addColorStop(0.46, eff.color || `rgba(255,54,48,${0.94 * alpha})`);
+            grad.addColorStop(0.72, `rgba(255,226,190,${0.62 * alpha})`);
+            grad.addColorStop(1, `rgba(255,72,58,${0.10 * alpha})`);
             ctx.fillStyle = grad;
 
+            // 내부 붉은 쐐기. 끝부분을 넓히고 앞쪽 밝기를 올려 전방 찌르기 느낌을 강화한다.
             ctx.beginPath();
-            ctx.moveTo(-stabW * 0.48, -stabH * 0.45);
-            ctx.lineTo(stabW * 0.34, -stabH * 0.95);
-            ctx.lineTo(stabW * 0.52, 0);
-            ctx.lineTo(stabW * 0.34, stabH * 0.95);
-            ctx.lineTo(-stabW * 0.48, stabH * 0.45);
+            ctx.moveTo(backX * 0.94, -stabH * 0.56);
+            ctx.lineTo(shoulderX, -stabH * 0.98);
+            ctx.lineTo(tipX * 0.96, 0);
+            ctx.lineTo(shoulderX, stabH * 0.98);
+            ctx.lineTo(backX * 0.94, stabH * 0.56);
             ctx.closePath();
             ctx.fill();
 
-            ctx.shadowBlur = 0;
-            ctx.strokeStyle = `rgba(36,0,0,${0.92 * alpha})`;
-            ctx.lineWidth = Math.max(3.0, stabH * 0.40);
-            ctx.beginPath();
-            ctx.moveTo(-stabW * 0.38, 0);
-            ctx.lineTo(stabW * 0.50, 0);
-            ctx.stroke();
-
-            ctx.strokeStyle = `rgba(255,112,94,${0.92 * alpha})`;
-            ctx.lineWidth = Math.max(1.5, stabH * 0.16);
+            // 끝점 보강: 검 끝 방향으로 힘이 모이는 밝은 핵.
+            ctx.shadowBlur = 10;
+            ctx.strokeStyle = `rgba(255,238,214,${0.88 * alpha})`;
+            ctx.lineWidth = Math.max(2.4, stabH * 0.14);
             ctx.beginPath();
             ctx.moveTo(-stabW * 0.36, 0);
-            ctx.lineTo(stabW * 0.48, 0);
+            ctx.lineTo(tipX * 0.92, 0);
+            ctx.stroke();
+
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = `rgba(38,0,0,${0.88 * alpha})`;
+            ctx.lineWidth = Math.max(3.4, stabH * 0.22);
+            ctx.beginPath();
+            ctx.moveTo(backX * 0.88, 0);
+            ctx.lineTo(tipX * 0.86, 0);
+            ctx.stroke();
+
+            ctx.strokeStyle = `rgba(255,118,98,${0.90 * alpha})`;
+            ctx.lineWidth = Math.max(1.8, stabH * 0.08);
+            ctx.beginPath();
+            ctx.moveTo(backX * 0.76, -stabH * 0.30);
+            ctx.lineTo(shoulderX * 1.06, -stabH * 0.54);
+            ctx.lineTo(tipX * 0.86, 0);
+            ctx.lineTo(shoulderX * 1.06, stabH * 0.54);
+            ctx.lineTo(backX * 0.76, stabH * 0.30);
             ctx.stroke();
 
             ctx.restore();
@@ -1138,9 +1236,190 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         }
 
         if (isKasiyasDown) {
-            ctx.rotate(0.52);
-        } else if (isKasiyasUp) {
-            ctx.rotate(-0.58);
+            // 카시야스 내려베기: 작은 각진 면이 아니라, 위에서 아래로 크게 떨어지는 완만한 호형 검기로 표현한다.
+            // 판정 데이터는 유지하고, 렌더링만 더 큰 곡선 stroke 중심으로 정리한다.
+            const bladeW = Math.max(220, slashW * 1.34);
+            const bladeH = Math.max(150, slashH * 1.42, slashD * 1.70);
+            const halfW = bladeW * 0.50;
+            const halfH = bladeH * 0.50;
+            const pulse = 1 - alpha;
+
+            // 큰 호가 캐릭터 앞쪽으로 떨어지도록 전체 중심을 약간 위/앞으로 보정한다.
+            const topX = -halfW * 0.46;
+            const topY = -halfH * (0.88 + pulse * 0.04);
+            const c1x = halfW * 0.22;
+            const c1y = -halfH * (0.95 + pulse * 0.03);
+            const c2x = halfW * 0.78;
+            const c2y = -halfH * 0.08;
+            const endX = halfW * 0.22;
+            const endY = halfH * 0.78;
+
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            const drawCurve = (lineWidth, strokeStyle, blur, xOff = 0, yOff = 0, alphaMul = 1) => {
+                ctx.save();
+                ctx.globalAlpha *= alphaMul;
+                ctx.shadowBlur = blur;
+                ctx.shadowColor = 'rgba(225,0,0,0.70)';
+                ctx.strokeStyle = strokeStyle;
+                ctx.lineWidth = lineWidth;
+                ctx.beginPath();
+                ctx.moveTo(topX + xOff, topY + yOff);
+                ctx.bezierCurveTo(c1x + xOff, c1y + yOff, c2x + xOff, c2y + yOff, endX + xOff, endY + yOff);
+                ctx.stroke();
+                ctx.restore();
+            };
+
+            // 1) 먼저 일반 합성으로 검은 외곽 실루엣을 크게 깔아, 다른 카시야스 이펙트와 같은 검은 기운을 유지한다.
+            ctx.globalCompositeOperation = 'source-over';
+            drawCurve(Math.max(34, bladeH * 0.25), `rgba(10,0,0,${0.70 * alpha})`, 18, -halfW * 0.025, halfH * 0.018, 1.0);
+            drawCurve(Math.max(22, bladeH * 0.16), `rgba(42,0,0,${0.70 * alpha})`, 14, 0, 0, 0.90);
+
+            // 하단 충격/검은 연무. 호의 끝부분에 붙여서 내려찍는 느낌을 준다.
+            ctx.save();
+            ctx.globalAlpha *= 0.95;
+            const impactGrad = ctx.createRadialGradient(endX, endY, Math.max(8, bladeH * 0.05), endX, endY, Math.max(46, bladeH * 0.42));
+            impactGrad.addColorStop(0, `rgba(255,78,54,${0.28 * alpha})`);
+            impactGrad.addColorStop(0.36, `rgba(82,0,0,${0.24 * alpha})`);
+            impactGrad.addColorStop(0.70, `rgba(16,0,0,${0.28 * alpha})`);
+            impactGrad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = impactGrad;
+            ctx.beginPath();
+            ctx.ellipse(endX, endY + halfH * 0.06, halfW * 0.48, halfH * 0.20, -0.08, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            // 2) 붉은 본체는 두꺼운 곡선 stroke로만 표현해 각진 면을 줄인다.
+            ctx.globalCompositeOperation = 'lighter';
+            const outerGrad = ctx.createLinearGradient(topX, topY, endX, endY);
+            outerGrad.addColorStop(0.00, `rgba(60,0,0,${0.18 * alpha})`);
+            outerGrad.addColorStop(0.24, `rgba(145,0,0,${0.58 * alpha})`);
+            outerGrad.addColorStop(0.56, eff.color || `rgba(255,48,40,${0.90 * alpha})`);
+            outerGrad.addColorStop(0.82, `rgba(255,92,72,${0.70 * alpha})`);
+            outerGrad.addColorStop(1.00, `rgba(255,210,178,${0.24 * alpha})`);
+            drawCurve(Math.max(20, bladeH * 0.135), outerGrad, 24, 0, 0, 1.0);
+
+            const innerGrad = ctx.createLinearGradient(topX, topY, endX, endY);
+            innerGrad.addColorStop(0.00, 'rgba(0,0,0,0)');
+            innerGrad.addColorStop(0.22, eff.accentColor || `rgba(90,0,0,${0.48 * alpha})`);
+            innerGrad.addColorStop(0.54, `rgba(255,82,62,${0.86 * alpha})`);
+            innerGrad.addColorStop(0.80, `rgba(255,155,112,${0.58 * alpha})`);
+            innerGrad.addColorStop(1.00, `rgba(255,235,205,${0.18 * alpha})`);
+            drawCurve(Math.max(12, bladeH * 0.082), innerGrad, 18, halfW * 0.025, -halfH * 0.008, 1.0);
+
+            // 3) 중심 절단선. 크게 휘는 주 궤적과 동일한 베지어를 사용해 완만한 곡선으로 보이게 한다.
+            const coreGrad = ctx.createLinearGradient(topX, topY, endX, endY);
+            coreGrad.addColorStop(0.00, 'rgba(255,255,255,0)');
+            coreGrad.addColorStop(0.26, `rgba(255,172,132,${0.62 * alpha})`);
+            coreGrad.addColorStop(0.58, `rgba(255,248,220,${0.86 * alpha})`);
+            coreGrad.addColorStop(0.84, `rgba(255,112,88,${0.58 * alpha})`);
+            coreGrad.addColorStop(1.00, 'rgba(255,255,255,0)');
+            drawCurve(Math.max(3.0, bladeH * 0.026), coreGrad, 10, halfW * 0.030, -halfH * 0.020, 1.0);
+
+            // 4) 뒤쪽으로 늦게 따라오는 어두운 잔상 호. 메인 호와 같은 곡선을 쓰되 살짝 바깥으로 빼서 속도감을 준다.
+            drawCurve(Math.max(4.8, bladeH * 0.042), `rgba(120,0,0,${0.34 * alpha})`, 8, -halfW * 0.10, halfH * 0.06, 0.82);
+            drawCurve(Math.max(2.4, bladeH * 0.018), `rgba(255,86,64,${0.28 * alpha})`, 6, -halfW * 0.16, halfH * 0.11, 0.72);
+
+            // 5) 하단 파편은 작게 유지. 호형 궤적이 주인공이 되도록 과한 직선 조각은 줄인다.
+            ctx.shadowBlur = 7;
+            for (let i = 0; i < 6; i++) {
+                const r = i / 5;
+                const sx = endX - halfW * 0.30 + r * halfW * 0.62;
+                const sy = endY + halfH * (0.02 + (i % 2) * 0.035);
+                const len = halfW * (0.08 + (i % 3) * 0.025);
+                ctx.strokeStyle = i === 2 ? `rgba(255,200,158,${0.36 * alpha})` : `rgba(145,0,0,${0.34 * alpha})`;
+                ctx.lineWidth = i === 2 ? 1.7 : 2.4;
+                ctx.beginPath();
+                ctx.moveTo(sx, sy);
+                ctx.lineTo(sx + len, sy - halfH * (0.035 + r * 0.025));
+                ctx.stroke();
+            }
+
+            ctx.restore();
+            return;
+        }
+
+        if (isKasiyasUp) {
+            // 카시야스 올려베기: 찌르기 이펙트와 같은 검붉은 검압 스타일을 유지한다.
+            const bladeW = Math.max(130, slashW * 1.08);
+            const bladeH = Math.max(52, slashH * 0.76, slashD * 1.10);
+            const halfW = bladeW * 0.50;
+            const halfH = bladeH * 0.50;
+            const angle = -0.58;
+            const tipX = bladeW * 0.56;
+            const backX = -bladeW * 0.50;
+            const pulse = 1 - alpha;
+
+            ctx.rotate(angle);
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = 'rgba(220,0,0,0.76)';
+
+            ctx.fillStyle = `rgba(14,0,0,${0.88 * alpha})`;
+            ctx.beginPath();
+            ctx.moveTo(backX, -halfH * 0.36);
+            ctx.bezierCurveTo(-halfW * 0.22, -halfH * (1.03 + pulse * 0.06), tipX * 0.78, -halfH * 0.80, tipX, -halfH * 0.04);
+            ctx.bezierCurveTo(tipX * 0.90, halfH * 0.70, -halfW * 0.08, halfH * (1.02 + pulse * 0.06), backX, halfH * 0.42);
+            ctx.bezierCurveTo(-halfW * 0.28, halfH * 0.22, -halfW * 0.25, -halfH * 0.20, backX, -halfH * 0.36);
+            ctx.closePath();
+            ctx.fill();
+
+            const bladeGrad = ctx.createLinearGradient(backX, 0, tipX, 0);
+            bladeGrad.addColorStop(0, 'rgba(0,0,0,0)');
+            bladeGrad.addColorStop(0.16, eff.accentColor || `rgba(72,0,0,${0.56 * alpha})`);
+            bladeGrad.addColorStop(0.44, eff.color || `rgba(255,54,48,${0.88 * alpha})`);
+            bladeGrad.addColorStop(0.72, `rgba(255,142,108,${0.58 * alpha})`);
+            bladeGrad.addColorStop(1, `rgba(255,72,58,${0.08 * alpha})`);
+            ctx.fillStyle = bladeGrad;
+            ctx.beginPath();
+            ctx.moveTo(backX * 0.94, -halfH * 0.22);
+            ctx.bezierCurveTo(-halfW * 0.14, -halfH * 0.64, tipX * 0.66, -halfH * 0.50, tipX * 0.94, 0);
+            ctx.bezierCurveTo(tipX * 0.68, halfH * 0.50, -halfW * 0.12, halfH * 0.62, backX * 0.94, halfH * 0.24);
+            ctx.bezierCurveTo(-halfW * 0.28, halfH * 0.10, -halfW * 0.28, -halfH * 0.10, backX * 0.94, -halfH * 0.22);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.shadowBlur = 11;
+            ctx.strokeStyle = `rgba(255,238,214,${0.82 * alpha})`;
+            ctx.lineWidth = Math.max(2.2, bladeH * 0.030);
+            ctx.beginPath();
+            ctx.moveTo(backX * 0.70, -halfH * 0.02);
+            ctx.bezierCurveTo(-halfW * 0.18, -halfH * 0.26, halfW * 0.28, -halfH * 0.22, tipX * 0.86, -halfH * 0.02);
+            ctx.stroke();
+
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = `rgba(32,0,0,${0.92 * alpha})`;
+            ctx.lineWidth = Math.max(3.4, bladeH * 0.055);
+            ctx.beginPath();
+            ctx.moveTo(backX * 0.92, halfH * 0.18);
+            ctx.bezierCurveTo(-halfW * 0.04, halfH * 0.52, halfW * 0.42, halfH * 0.28, tipX * 0.82, halfH * 0.04);
+            ctx.stroke();
+
+            ctx.strokeStyle = `rgba(255,110,92,${0.76 * alpha})`;
+            ctx.lineWidth = Math.max(1.5, bladeH * 0.018);
+            ctx.beginPath();
+            ctx.moveTo(backX * 0.78, -halfH * 0.22);
+            ctx.bezierCurveTo(-halfW * 0.12, -halfH * 0.72, halfW * 0.38, -halfH * 0.46, tipX * 0.80, -halfH * 0.06);
+            ctx.stroke();
+
+            ctx.shadowBlur = 7;
+            for (let i = 0; i < 3; i++) {
+                const r = i / 2;
+                const sx = backX * 0.45 + bladeW * (0.25 + r * 0.18);
+                const sy = (-0.22 + i * 0.22) * halfH;
+                ctx.strokeStyle = i === 1 ? `rgba(255,210,176,${0.42 * alpha})` : `rgba(140,0,0,${0.42 * alpha})`;
+                ctx.lineWidth = i === 1 ? 1.6 : 2.2;
+                ctx.beginPath();
+                ctx.moveTo(sx, sy);
+                ctx.lineTo(sx + bladeW * 0.16, sy - halfH * (0.08 - i * 0.03));
+                ctx.stroke();
+            }
+
+            ctx.restore();
+            return;
         }
 
         let grad = ctx.createLinearGradient(-slashW / 2, 0, slashW / 2, 0);

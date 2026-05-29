@@ -302,7 +302,16 @@ GameRenderer.drawTargetUI = function(ctx, canvas, targetUI, gameState = null) {
         const infoW = uiW - portraitSize - 34;
         const hp = readNumber(tm.hp, tm.currentHp, tm.HP, d.hp, d.HP);
         const maxHp = Math.max(1, readNumber(tm.maxHp, tm.maxHP, d.maxHp, d.HP, hp || 1));
-        const hpRatio = Math.max(0, Math.min(1, hp / maxHp));
+        let hpRatio = Math.max(0, Math.min(1, hp / maxHp));
+        const phaseTransitionForHp = gameState && gameState.phaseTransition && gameState.phaseTransition.active && gameState.phaseTransition.boss === tm
+            ? gameState.phaseTransition
+            : null;
+        if (phaseTransitionForHp && String(phaseTransitionForHp.phase || '').toUpperCase() === 'CUTSCENE') {
+            const ptTimer = Math.max(0, parseFloat(phaseTransitionForHp.timer) || 0);
+            const fillT = Math.max(0, Math.min(1, (ptTimer - 6.2) / 2.3));
+            const easedFill = fillT * fillT * (3 - 2 * fillT);
+            hpRatio = easedFill;
+        }
         const patternText = getBossPatternText(tm);
         const receivedDamageText = getBossReceivedDamageRateText(tm);
 
@@ -680,6 +689,341 @@ GameRenderer.drawBossPatternDialogue = function(ctx, canvas, gameState) {
     ctx.strokeText(text, cx, cy + 1);
     ctx.fillStyle = 'rgba(255,245,224,0.98)';
     ctx.fillText(text, cx, cy + 1);
+
+    ctx.restore();
+};
+
+GameRenderer.drawBossPhaseTransitionOverlay = function(ctx, canvas, gameState) {
+    const tr = gameState && gameState.phaseTransition && gameState.phaseTransition.active ? gameState.phaseTransition : null;
+    if (!tr || !canvas) return;
+
+    // HP 0 이후 3시 방향으로 물러나는 준비 이동은 일반 화면에서 보여주고,
+    // 도착 후 CUTSCENE 단계부터 시네마틱 오버레이를 재생한다.
+    const trPhase = String(tr.phase || 'CUTSCENE').toUpperCase();
+    if (trPhase === 'PRE_MOVE') return;
+
+    const boss = tr.boss;
+    const camera = gameState.camera || { x: 0 };
+    const duration = Math.max(0.001, parseFloat(tr.duration) || 10.0);
+    const timer = Math.max(0, Math.min(duration, parseFloat(tr.timer) || 0));
+    const p = Math.max(0, Math.min(1, timer / duration));
+    const fadeIn = Math.min(1, timer / 0.65);
+    const fadeOut = Math.min(1, (duration - timer) / 0.75);
+    const alpha = Math.max(0, Math.min(1, fadeIn, fadeOut));
+    const w = canvas.width;
+    const h = canvas.height;
+    const uiFont = '"Malgun Gothic", "Segoe UI", Arial, sans-serif';
+    const smooth = (v) => {
+        v = Math.max(0, Math.min(1, v));
+        return v * v * (3 - 2 * v);
+    };
+
+    const bx = boss ? ((parseFloat(boss.x) || 0) - (parseFloat(camera.x) || 0)) : w / 2;
+    const bodyZ = boss && boss.d ? (((boss.d.bodyZ || boss.d.Body_Size_Z || 160) * (boss.scale || 1))) : 160;
+    const by = boss ? (this.GROUND_BASE_Y + (parseFloat(boss.y) || 0) - Math.max(80, bodyZ * 0.58)) : h * 0.50;
+    const dir = boss && boss.faceDir === -1 ? -1 : 1;
+    // 기존 검을 든 방향이 아니라, 반대손/빈손 방향에서 포탈이 열리도록 한다.
+    const handDir = -dir;
+
+    // 10초 타임라인: 정지 → 모델의 빈손 뻗기 → 차원 개방 → 일반 검 소환 → 검을 쥠 → 포효/오라 → 상태창 HP 회복 → 기운 약화.
+    const handOpen = smooth((timer - 1.0) / 1.4);
+    const portalOpen = smooth((timer - 2.2) / 1.7);
+    const swordOpen = smooth((timer - 3.8) / 1.9);
+    const gripOpen = smooth((timer - 5.6) / 0.8);
+    const roarOpen = smooth((timer - 5.9) / 1.2);
+    const hpStart = smooth((timer - 6.2) / 2.3);
+    const auraSoft = Math.min(1, Math.max(0, (duration - timer) / 2.0));
+    const pulse = 0.5 + Math.sin(Date.now() / 96) * 0.5;
+
+    const shoulderX = bx + handDir * 20;
+    const shoulderY = by + 52;
+    const handX = shoulderX + handDir * (36 + 66 * handOpen);
+    const handY = shoulderY - 8 - 7 * handOpen;
+    const portalX = handX + handDir * (46 + 18 * portalOpen);
+    const portalY = handY - 2;
+    // 2페이즈 모델이 보이기 시작한 뒤에는 차원문이 서서히 닫힌다.
+    const portalClose = timer >= 6.4 ? Math.max(0, Math.min(1, 1 - ((timer - 6.4) / 1.45))) : 1;
+    const portalDraw = portalOpen * portalClose;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // 시네마틱 레터박스와 붉은 비네트.
+    ctx.fillStyle = 'rgba(0,0,0,0.68)';
+    ctx.fillRect(0, 0, w, 64);
+    ctx.fillRect(0, h - 64, w, 64);
+
+    const vignette = ctx.createRadialGradient(bx, by + 12, 40, bx, by + 12, Math.max(w, h) * 0.74);
+    vignette.addColorStop(0, 'rgba(120,0,0,0.035)');
+    vignette.addColorStop(0.40, 'rgba(34,0,0,0.18)');
+    vignette.addColorStop(1, 'rgba(0,0,0,0.48)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, w, h);
+
+    // 손/팔은 별도 오버레이로 새로 그리지 않는다.
+    // 카시야스 본체 모델의 전환용 포즈가 직접 빈손을 뻗도록 처리한다.
+
+    if (portalDraw > 0) {
+        ctx.save();
+        ctx.translate(portalX, portalY);
+        ctx.scale(handDir, 1);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        const portalH = (132 + pulse * 8) * portalDraw;
+        const portalW = (44 + pulse * 3) * portalDraw;
+        ctx.shadowBlur = 24;
+        ctx.shadowColor = 'rgba(180,0,0,0.82)';
+        ctx.strokeStyle = `rgba(40,0,0,${0.94 * portalDraw})`;
+        ctx.lineWidth = 17;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, portalW, portalH, -0.06, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = `rgba(218,32,22,${0.72 * portalDraw})`;
+        ctx.lineWidth = 5;
+        ctx.setLineDash([16, 9]);
+        ctx.lineDashOffset = -Date.now() / 28;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, portalW * 0.82, portalH * 0.90, -0.06, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const core = ctx.createRadialGradient(0, 0, 2, 0, 0, Math.max(60, portalH * 0.96));
+        core.addColorStop(0, `rgba(255,80,58,${0.15 * portalDraw})`);
+        core.addColorStop(0.55, `rgba(78,0,0,${0.26 * portalDraw})`);
+        core.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = core;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, portalW * 1.36, portalH, -0.06, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 차원 균열에서 카시야스 손 근처까지만 천천히 빠져나오는 두 번째 검.
+        // 2페이즈 모델이 보이기 시작하면 연출용 검은 사라져야 하므로 5.9초 이후 빠르게 감춘다.
+        if (swordOpen > 0 && timer < 6.15) {
+            const out = swordOpen;
+            const swordFade = Math.max(0, Math.min(1, (6.15 - timer) / 0.45));
+            const drawAlpha = out * swordFade;
+            ctx.save();
+            ctx.scale(-1, 1); // 로컬 +X가 카시야스 손 방향이 되도록 반전한다.
+            ctx.rotate(-0.24);
+
+            // 손잡이/가드는 카시야스 손 쪽으로 오되, 검이 손을 지나치지 않도록 길이를 제한한다.
+            const bladeLen = 126;
+            const guardX = 34 + 34 * out;      // 최종 위치가 손 근처를 넘지 않게 제한
+            const tipX = -42 - 10 * (1 - out); // 칼끝은 포탈 내부 쪽에 남김
+            const bladeEndX = guardX - 12;
+
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = 'rgba(160,210,255,0.36)';
+            ctx.strokeStyle = `rgba(0,0,0,${0.88 * drawAlpha})`;
+            ctx.lineWidth = 10.5;
+            ctx.beginPath();
+            ctx.moveTo(tipX - 4, 0);
+            ctx.lineTo(bladeEndX, 0);
+            ctx.stroke();
+
+            ctx.strokeStyle = `rgba(158,197,232,${0.92 * drawAlpha})`;
+            ctx.lineWidth = 5.0;
+            ctx.beginPath();
+            ctx.moveTo(tipX + 5, 0);
+            ctx.lineTo(bladeEndX - 6, 0);
+            ctx.stroke();
+
+            ctx.strokeStyle = `rgba(237,247,255,${0.92 * drawAlpha})`;
+            ctx.lineWidth = 1.7;
+            ctx.beginPath();
+            ctx.moveTo(tipX + 10, -1.4);
+            ctx.lineTo(bladeEndX - 12, -1.4);
+            ctx.stroke();
+
+            ctx.fillStyle = `rgba(237,247,255,${0.58 * drawAlpha})`;
+            ctx.beginPath();
+            ctx.moveTo(tipX - 15, 0);
+            ctx.lineTo(tipX + 6, -6);
+            ctx.lineTo(tipX + 6, 6);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = `rgba(0,0,0,${0.90 * drawAlpha})`;
+            ctx.lineWidth = 8.0;
+            ctx.beginPath();
+            ctx.moveTo(guardX - 5, 0);
+            ctx.lineTo(guardX + 28, 0);
+            ctx.stroke();
+
+            ctx.strokeStyle = `rgba(75,47,35,${0.96 * drawAlpha})`;
+            ctx.lineWidth = 5.0;
+            ctx.beginPath();
+            ctx.moveTo(guardX - 3, 0);
+            ctx.lineTo(guardX + 26, 0);
+            ctx.stroke();
+
+            ctx.strokeStyle = `rgba(211,161,43,${0.96 * drawAlpha})`;
+            ctx.lineWidth = 4.0;
+            ctx.beginPath();
+            ctx.moveTo(guardX - 2, -10);
+            ctx.lineTo(guardX - 2, 10);
+            ctx.stroke();
+            ctx.restore();
+        }
+        ctx.restore();
+    }
+
+    // 검을 쥔 뒤에는 손 근처에 일반 검 실루엣을 잠시 고정해서 소환 완료를 읽게 한다.
+    // 후반부에는 본체 모델이 2페이즈 기본 자세로 전환되므로 이 보조 검은 자연스럽게 사라진다.
+    if (gripOpen > 0 && timer < 6.38) {
+        ctx.save();
+        ctx.translate(handX, handY);
+        ctx.scale(handDir, 1);
+        ctx.rotate(-0.58);
+        ctx.globalCompositeOperation = 'source-over';
+        const g = gripOpen * Math.min(1, (6.38 - timer) / 0.38);
+        ctx.shadowBlur = 7;
+        ctx.shadowColor = 'rgba(160,210,255,0.34)';
+        ctx.strokeStyle = `rgba(0,0,0,${0.88 * g})`;
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.moveTo(-10, 0);
+        ctx.lineTo(138, 0);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(158,197,232,${0.90 * g})`;
+        ctx.lineWidth = 4.8;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(124, 0);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(237,247,255,${0.90 * g})`;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(5, -1.2);
+        ctx.lineTo(114, -1.2);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(75,47,35,${0.96 * g})`;
+        ctx.lineWidth = 5.0;
+        ctx.beginPath();
+        ctx.moveTo(-34, 0);
+        ctx.lineTo(8, 0);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(211,161,43,${0.94 * g})`;
+        ctx.lineWidth = 4.0;
+        ctx.beginPath();
+        ctx.moveTo(-2, -10);
+        ctx.lineTo(-2, 10);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    if (roarOpen > 0) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const roar = Math.min(1, roarOpen) * Math.max(0.20, auraSoft);
+        const waveT = Date.now() / 260;
+        const ar = 132 + pulse * 22 + roarOpen * 36;
+
+        // 원형 폭발보다, 몸 주변에서 아래→위로 맥동하는 기운을 중심으로 표현한다.
+        const baseAura = ctx.createRadialGradient(bx, by + 42, 12, bx, by + 42, ar);
+        baseAura.addColorStop(0, `rgba(255,78,54,${0.10 * roar})`);
+        baseAura.addColorStop(0.36, `rgba(180,0,0,${0.20 * roar})`);
+        baseAura.addColorStop(0.72, `rgba(40,0,0,${0.23 * roar})`);
+        baseAura.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = baseAura;
+        ctx.beginPath();
+        ctx.ellipse(bx, by + 42, ar * 0.68, ar * 0.94, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 발밑 연무
+        const groundAura = ctx.createRadialGradient(bx, by + 104, 12, bx, by + 104, ar * 0.72);
+        groundAura.addColorStop(0, `rgba(255,54,34,${0.12 * roar})`);
+        groundAura.addColorStop(0.44, `rgba(112,0,0,${0.20 * roar})`);
+        groundAura.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = groundAura;
+        ctx.beginPath();
+        ctx.ellipse(bx, by + 104, ar * 0.62, ar * 0.20, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // 몸 주변을 따라 위로 솟는 일렁임. 전환 중에는 기본 오라보다 강하게 맥동한다.
+        for (let i = 0; i < 15; i++) {
+            const r = i / 14;
+            const side = i % 2 === 0 ? -1 : 1;
+            const x0 = bx - ar * 0.48 + r * ar * 0.96 + Math.sin(waveT + i * 0.8) * 7;
+            const y0 = by + 100 - (i % 3) * 5;
+            const y1 = by + 28 - (i % 5) * 18 - Math.sin(waveT * 1.2 + i) * 8;
+            const strong = i % 3 === 0;
+            ctx.shadowBlur = strong ? 14 : 8;
+            ctx.shadowColor = strong ? 'rgba(255,50,34,0.58)' : 'rgba(110,0,0,0.42)';
+            ctx.strokeStyle = strong
+                ? `rgba(255,58,38,${0.18 + 0.20 * roar})`
+                : `rgba(96,0,0,${0.14 + 0.15 * roar})`;
+            ctx.lineWidth = strong ? 3.2 : 2.0;
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.bezierCurveTo(
+                x0 + side * 30, (y0 + y1) * 0.60,
+                x0 - side * 24, (y0 + y1) * 0.40,
+                x0 + Math.sin(waveT + i) * 10,
+                y1
+            );
+            ctx.stroke();
+        }
+
+        // 카시야스 신체 외곽을 따라 맥동하는 테두리
+        ctx.shadowBlur = 16;
+        ctx.shadowColor = 'rgba(255,48,36,0.62)';
+        ctx.strokeStyle = `rgba(255,78,54,${0.22 + 0.22 * roar})`;
+        ctx.lineWidth = 4.0;
+        ctx.beginPath();
+        ctx.moveTo(bx - 58, by + 88);
+        ctx.quadraticCurveTo(bx - 86, by + 22, bx - 40, by - 42);
+        ctx.quadraticCurveTo(bx, by - 88, bx + 42, by - 42);
+        ctx.quadraticCurveTo(bx + 84, by + 22, bx + 58, by + 88);
+        ctx.stroke();
+
+        // 포효 순간의 짧은 압력선은 몸 주변 안쪽에만 작게 사용한다.
+        if (timer >= 5.9 && timer <= 7.3) {
+            const flash = Math.sin((timer - 5.9) * Math.PI * 2.1) * 0.5 + 0.5;
+            ctx.strokeStyle = `rgba(255,210,170,${0.13 * flash * roar})`;
+            ctx.lineWidth = 2.2;
+            for (let i = 0; i < 6; i++) {
+                const x = bx - 44 + i * 18;
+                ctx.beginPath();
+                ctx.moveTo(x, by + 72);
+                ctx.bezierCurveTo(x - 10, by + 34, x + 12, by + 2, x + Math.sin(waveT + i) * 8, by - 38);
+                ctx.stroke();
+            }
+        }
+        ctx.restore();
+    }
+
+    // HP 회복 연출은 별도 게이지를 띄우지 않고, 기존 보스 상태창 HP바를 사용한다.
+
+    const titleAlpha = Math.min(1, Math.max(0, (timer - 5.4) / 0.65)) * Math.min(1, (duration - timer) / 0.85);
+    if (titleAlpha > 0) {
+        ctx.save();
+        ctx.globalAlpha = alpha * titleAlpha;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = `900 30px ${uiFont}`;
+        const text = timer < 7.2 ? '두 번째 검이 뽑혔다' : '카시야스 2페이즈 돌입';
+        ctx.lineWidth = 7;
+        ctx.strokeStyle = 'rgba(0,0,0,0.92)';
+        ctx.strokeText(text, w / 2, 94);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(116,0,0,0.80)';
+        ctx.strokeText(text, w / 2, 94);
+        ctx.fillStyle = 'rgba(255,238,214,0.98)';
+        ctx.fillText(text, w / 2, 94);
+        ctx.restore();
+    }
 
     ctx.restore();
 };
