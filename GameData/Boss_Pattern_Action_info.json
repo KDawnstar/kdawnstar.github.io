@@ -8963,7 +8963,7 @@
     "Guard_Special_Result_Cost_Type": null,
     "Guard_Special_Result_Cost_Value": null,
     "Dodge_Get_Fighting_Spirit": null,
-    "ATK_Make_Hit_Action": true,
+    "ATK_Make_Hit_Action": false,
     "ATK_Make_Knockback": false,
     "Knockback_Can_Guard": null,
     "Knockback_Distance": null,

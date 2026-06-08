@@ -2583,3 +2583,357 @@ GameRenderer.drawKasiyasP3GiantSwordWaveObject = function(ctx, obj) {
 
     ctx.restore();
 };
+
+// 2페이즈 기본 패턴 4번: 차원문 검 낙하 컨트롤러 렌더링.
+// step244에서 미표시 보정을 위해 새로 들어간 과한 보라/붉은 연출을 낮추고,
+// 기존 의도였던 “차원문에서 일본도 형태의 검이 수직으로 낙하”하는 느낌으로 정리한다.
+GameRenderer.drawKasiyasFallingSwordRainObject = function(ctx, obj) {
+    if (!ctx || !obj || !obj.active) return;
+    const data = obj.data || {};
+    const time = (parseFloat(obj.timer) || 0) + Date.now() / 1000;
+    const swords = Array.isArray(obj.swords) ? obj.swords : [];
+    const groundY = this.GROUND_BASE_Y || 400;
+    const hitW = Math.max(22, parseFloat(data.Hitbox_Size_X) || 110);
+    const hitD = Math.max(18, parseFloat(data.Hitbox_Size_Y) || 72);
+    const portalX = Number.isFinite(parseFloat(obj.x)) ? parseFloat(obj.x) : ((this.gameState && this.gameState.WORLD_WIDTH) || 1400) * 0.5;
+    const portalY = Math.max(70, Math.min(160, groundY + (Number.isFinite(parseFloat(obj.y)) ? parseFloat(obj.y) : 30) - 250));
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha *= 0.16 + Math.sin(time * 3.5) * 0.025;
+    ctx.strokeStyle = 'rgba(150,172,210,0.58)';
+    ctx.lineWidth = 2;
+    ctx.shadowBlur = 9;
+    ctx.shadowColor = 'rgba(70,105,170,0.36)';
+    ctx.beginPath();
+    ctx.ellipse(portalX, portalY, 118 + Math.sin(time * 1.9) * 4, 26 + Math.cos(time * 1.6) * 2, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(20,24,38,0.62)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.ellipse(portalX, portalY, 102, 20, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    for (let i = 0; i < swords.length; i++) {
+        const sword = swords[i] || {};
+        const elapsed = Math.max(0, parseFloat(sword.elapsed) || 0);
+        const warningDuration = Math.max(0.08, parseFloat(sword.warningDuration) || parseFloat(obj.warningDuration) || 0.45);
+        const delayTime = Math.max(0, parseFloat(sword.delayTime) || parseFloat(obj.hitboxDelayTime) || 0);
+        const hitDuration = Math.max(0.05, parseFloat(sword.hitDuration) || parseFloat(obj.hitDuration) || 0.14);
+        const impactStart = warningDuration + delayTime;
+        const impactEnd = impactStart + hitDuration;
+        const sx = Number.isFinite(parseFloat(sword.x)) ? parseFloat(sword.x) : portalX;
+        const sy = groundY + (Number.isFinite(parseFloat(sword.y)) ? parseFloat(sword.y) : 200);
+        const seed = parseFloat(sword.seed) || i * 17.13;
+        const fallP = Math.max(0, Math.min(1, elapsed / Math.max(0.001, impactStart)));
+        const activeHit = elapsed >= impactStart && elapsed <= impactEnd;
+        const fade = elapsed > impactEnd ? Math.max(0, 1 - (elapsed - impactEnd) / 0.28) : 1;
+        const warnPulse = 0.5 + Math.sin((elapsed * 14) + seed) * 0.5;
+        const scale = Math.max(0.62, parseFloat(sword.scale) || 1);
+
+        ctx.save();
+        ctx.globalAlpha *= Math.max(0, Math.min(1, fade));
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = activeHit ? 'rgba(255,236,226,0.86)' : `rgba(210,232,255,${0.34 + warnPulse * 0.22})`;
+        ctx.fillStyle = activeHit ? 'rgba(255,76,54,0.12)' : 'rgba(92,132,190,0.08)';
+        ctx.lineWidth = activeHit ? 3 : 1.6;
+        ctx.shadowBlur = activeHit ? 12 : 6;
+        ctx.shadowColor = activeHit ? 'rgba(255,72,52,0.48)' : 'rgba(120,170,230,0.28)';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, hitW * 0.42, hitD * 0.42, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        for (let k = 0; k < 4; k++) {
+            const a = k * Math.PI * 0.5 + seed * 0.013;
+            ctx.beginPath();
+            ctx.moveTo(sx + Math.cos(a) * hitW * 0.20, sy + Math.sin(a) * hitD * 0.18);
+            ctx.lineTo(sx + Math.cos(a) * hitW * 0.48, sy + Math.sin(a) * hitD * 0.42);
+            ctx.stroke();
+        }
+        ctx.restore();
+
+        // 검이 위에서 아래로 낙하한다는 방향이 명확히 보이도록,
+        // 위쪽은 손잡이/가드, 아래쪽은 검끝으로 직접 그린다.
+        const bladeLen = (118 + 24 * scale) * (activeHit ? 1.02 : 1);
+        const tipLocalY = bladeLen * 0.54;
+        const startCenterY = portalY + 24 + Math.sin(seed) * 5;
+        const impactCenterY = sy - tipLocalY;
+        const bladeCenterY = startCenterY + (impactCenterY - startCenterY) * Math.min(1, fallP * 1.08);
+        const bladeAlpha = Math.max(0, Math.min(1, fade * (0.40 + fallP * 0.62)));
+        const sway = Math.sin(time * 1.4 + seed) * 0.018;
+
+        ctx.save();
+        ctx.translate(sx, bladeCenterY);
+        ctx.rotate(sway);
+        ctx.globalAlpha *= bladeAlpha;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.shadowBlur = activeHit ? 12 : 7;
+        ctx.shadowColor = activeHit ? 'rgba(255,220,206,0.42)' : 'rgba(190,215,240,0.26)';
+
+        const bladeTopY = -bladeLen * 0.38;
+        const bladeTipY = bladeLen * 0.54;
+        const bladeHalfTop = Math.max(4, bladeLen * 0.045);
+        const bladeHalfMid = Math.max(3, bladeLen * 0.030);
+        const bladeGrad = ctx.createLinearGradient(0, bladeTopY, 0, bladeTipY);
+        bladeGrad.addColorStop(0.00, 'rgba(66,70,88,0.94)');
+        bladeGrad.addColorStop(0.24, 'rgba(188,200,218,0.95)');
+        bladeGrad.addColorStop(0.64, 'rgba(246,249,253,0.98)');
+        bladeGrad.addColorStop(1.00, 'rgba(36,34,44,0.96)');
+        ctx.fillStyle = bladeGrad;
+        ctx.strokeStyle = 'rgba(14,14,20,0.90)';
+        ctx.lineWidth = Math.max(1.2, bladeLen * 0.012);
+        ctx.beginPath();
+        ctx.moveTo(-bladeHalfTop, bladeTopY);
+        ctx.quadraticCurveTo(-bladeHalfMid * 1.25, bladeLen * 0.10, -bladeLen * 0.010, bladeTipY);
+        ctx.quadraticCurveTo(bladeHalfMid * 1.35, bladeLen * 0.10, bladeHalfTop, bladeTopY);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.42)';
+        ctx.lineWidth = Math.max(0.9, bladeLen * 0.006);
+        ctx.beginPath();
+        ctx.moveTo(-bladeHalfTop * 0.15, bladeTopY + bladeLen * 0.05);
+        ctx.quadraticCurveTo(-bladeLen * 0.010, bladeLen * 0.14, -bladeLen * 0.004, bladeTipY - bladeLen * 0.12);
+        ctx.stroke();
+
+        const guardY = bladeTopY - bladeLen * 0.025;
+        ctx.fillStyle = 'rgba(204,168,78,0.92)';
+        ctx.strokeStyle = 'rgba(62,45,18,0.85)';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.ellipse(0, guardY, bladeLen * 0.115, bladeLen * 0.020, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        const handleTop = guardY - bladeLen * 0.20;
+        const handleBottom = guardY - bladeLen * 0.018;
+        const handleGrad = ctx.createLinearGradient(0, handleTop, 0, handleBottom);
+        handleGrad.addColorStop(0, 'rgba(88,52,32,0.96)');
+        handleGrad.addColorStop(0.5, 'rgba(122,76,44,0.96)');
+        handleGrad.addColorStop(1, 'rgba(54,34,24,0.98)');
+        ctx.fillStyle = handleGrad;
+        ctx.strokeStyle = 'rgba(20,14,10,0.82)';
+        ctx.beginPath();
+        if (typeof this.roundRect === 'function') this.roundRect(ctx, -bladeLen * 0.022, handleTop, bladeLen * 0.044, handleBottom - handleTop, bladeLen * 0.012);
+        else ctx.rect(-bladeLen * 0.022, handleTop, bladeLen * 0.044, handleBottom - handleTop);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(216,176,82,0.94)';
+        ctx.beginPath();
+        ctx.ellipse(0, handleTop - bladeLen * 0.018, bladeLen * 0.034, bladeLen * 0.018, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (activeHit) {
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.strokeStyle = 'rgba(255,230,214,0.68)';
+            ctx.lineWidth = Math.max(2, bladeLen * 0.018);
+            ctx.beginPath();
+            ctx.moveTo(0, bladeTopY + bladeLen * 0.06);
+            ctx.lineTo(0, bladeTipY - bladeLen * 0.05);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+};
+
+GameRenderer.drawKasiyasPathDelayedSlashObject = function(ctx, obj) {
+    if (!ctx || !obj || !obj.active || !obj.path) return;
+    const data = obj.data || {};
+    const path = obj.path || {};
+    const sx = Number.isFinite(parseFloat(path.startX)) ? parseFloat(path.startX) : 0;
+    const sy = (this.GROUND_BASE_Y || 400) + (Number.isFinite(parseFloat(path.startY)) ? parseFloat(path.startY) : 0);
+    const ex = Number.isFinite(parseFloat(path.endX)) ? parseFloat(path.endX) : sx;
+    const ey = (this.GROUND_BASE_Y || 400) + (Number.isFinite(parseFloat(path.endY)) ? parseFloat(path.endY) : 0);
+    const dx = ex - sx;
+    const dy = ey - sy;
+    const len = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+    const angle = Math.atan2(dy, dx);
+    const pathD = Math.max(30, parseFloat(data.Hitbox_Size_Y) || parseFloat(obj.d) || 150);
+    const fieldH = Math.max(80, parseFloat(data.Hitbox_Size_Z) || parseFloat(obj.h) || 150);
+    const timer = Math.max(0, parseFloat(obj.timer) || 0);
+    const warningDur = Math.max(0.05, parseFloat(obj.warningDuration) || parseFloat(data.Warning_Duration) || 0.45);
+    const delayDur = Math.max(0, parseFloat(obj.hitboxDelayTime) || parseFloat(data.Hitbox_Delay_Time) || 0);
+    const hitStart = warningDur + delayDur;
+    const hitDur = Math.max(0.05, parseFloat(obj.hitDuration) || parseFloat(data.Hitbox_Duration) || 0.25);
+    const hitEnd = hitStart + hitDur;
+    const isActive = timer >= hitStart && timer <= hitEnd;
+    const isCharge = !isActive && timer >= warningDur;
+    const chargeT = delayDur > 0 ? Math.max(0, Math.min(1, (timer - warningDur) / delayDur)) : (isActive ? 1 : 0);
+    const activeT = hitDur > 0 ? Math.max(0, Math.min(1, (timer - hitStart) / hitDur)) : 0;
+    const maxLife = Math.max(hitEnd + 0.4, parseFloat(obj.maxLife) || parseFloat(data.Object_Internal_Duration) || 3.5);
+    const fade = timer > hitEnd ? Math.max(0.20, 1 - (timer - hitEnd) / Math.max(0.4, maxLife - hitEnd)) : 1;
+    const alpha = Math.max(0, Math.min(1, fade));
+    const pulse = 0.5 + Math.sin((Date.now() / 70) + timer * 8) * 0.5;
+    const seed = parseFloat(obj.seed) || 71;
+    const count = Math.max(10, Math.min(28, Math.round(len / 58)));
+    const visibleProgress = isCharge || isActive ? 1 : Math.max(0, Math.min(1, warningDur > 0 ? timer / warningDur : 1));
+    const leadingFadeWidth = 0.14;
+    const hitboxHalfD = pathD * 0.5;
+    const visibleLen = len * visibleProgress;
+
+    const dormantEdge = 'rgba(10,28,46,0.78)';
+    const dormantCore = 'rgba(210,244,255,0.88)';
+    const dormantHot = 'rgba(105,205,255,0.72)';
+    const chargeEdge = `rgba(8,34,58,${0.74 + chargeT * 0.08})`;
+    const chargeCore = `rgba(218,248,255,${0.78 + chargeT * 0.08})`;
+    const chargeHot = `rgba(112,218,255,${0.62 + chargeT * 0.08})`;
+    const activeEdge = 'rgba(8,0,0,0.98)';
+    const activeCore = `rgba(255,24,22,${0.90 + pulse * 0.08})`;
+    const activeHot = `rgba(255,104,78,${0.72 + pulse * 0.18})`;
+    const edgeColor = isActive ? activeEdge : (isCharge ? chargeEdge : dormantEdge);
+    const coreColor = isActive ? activeCore : (isCharge ? chargeCore : dormantCore);
+    const hotColor = isActive ? activeHot : (isCharge ? chargeHot : dormantHot);
+    const glowColor = isActive ? 'rgba(230,0,0,0.78)' : (isCharge ? 'rgba(104,210,255,0.40)' : 'rgba(90,190,255,0.32)');
+
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(angle);
+    ctx.globalAlpha *= alpha;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.shadowBlur = isActive ? 20 : (isCharge ? 9 : 8);
+    ctx.shadowColor = glowColor;
+
+    if (visibleLen > 1) {
+        const bandAlpha = isActive ? (0.13 + pulse * 0.05) : (isCharge ? 0.055 : 0.035);
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(1, bandAlpha * alpha));
+        ctx.shadowBlur = isActive ? 18 : (isCharge ? 6 : 4);
+        ctx.shadowColor = glowColor;
+        const bandGrad = ctx.createLinearGradient(0, -hitboxHalfD, 0, hitboxHalfD);
+        if (isActive) {
+            bandGrad.addColorStop(0, 'rgba(255,34,28,0)');
+            bandGrad.addColorStop(0.18, 'rgba(255,34,28,0.70)');
+            bandGrad.addColorStop(0.50, 'rgba(255,64,44,0.92)');
+            bandGrad.addColorStop(0.82, 'rgba(255,34,28,0.70)');
+            bandGrad.addColorStop(1, 'rgba(255,34,28,0)');
+        } else if (isCharge) {
+            bandGrad.addColorStop(0, 'rgba(80,190,255,0)');
+            bandGrad.addColorStop(0.22, 'rgba(80,190,255,0.44)');
+            bandGrad.addColorStop(0.50, 'rgba(210,244,255,0.64)');
+            bandGrad.addColorStop(0.78, 'rgba(80,190,255,0.44)');
+            bandGrad.addColorStop(1, 'rgba(80,190,255,0)');
+        } else {
+            bandGrad.addColorStop(0, 'rgba(80,190,255,0)');
+            bandGrad.addColorStop(0.20, 'rgba(80,190,255,0.45)');
+            bandGrad.addColorStop(0.50, 'rgba(210,244,255,0.62)');
+            bandGrad.addColorStop(0.80, 'rgba(80,190,255,0.45)');
+            bandGrad.addColorStop(1, 'rgba(80,190,255,0)');
+        }
+        ctx.fillStyle = bandGrad;
+        ctx.fillRect(0, -hitboxHalfD, visibleLen, pathD);
+        ctx.restore();
+
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(1, (isActive ? 0.72 : (isCharge ? 0.34 : 0.24)) * alpha));
+        ctx.shadowBlur = isActive ? 16 : (isCharge ? 6 : 5);
+        ctx.shadowColor = glowColor;
+        ctx.strokeStyle = isActive ? 'rgba(255,44,34,0.88)' : (isCharge ? 'rgba(142,226,255,0.62)' : 'rgba(124,220,255,0.58)');
+        ctx.lineWidth = Math.max(1.8, pathD * (isActive ? 0.020 : 0.014));
+        if (!isActive && !isCharge) ctx.setLineDash([Math.max(12, pathD * 0.18), Math.max(8, pathD * 0.11)]);
+        for (const railY of [-hitboxHalfD, hitboxHalfD]) {
+            ctx.beginPath();
+            ctx.moveTo(0, railY);
+            ctx.lineTo(visibleLen, railY);
+            ctx.stroke();
+        }
+        ctx.setLineDash([]);
+        ctx.restore();
+    }
+
+    for (let i = 0; i < count; i++) {
+        const t = (i + 0.35) / count;
+        if (t > visibleProgress + 0.012) continue;
+        const noise = Math.sin((i + 1) * 12.9898 + seed * 0.017) * 43758.5453;
+        const n = noise - Math.floor(noise);
+        const noise2 = Math.sin((i + 5) * 78.233 + seed * 0.031) * 17341.9281;
+        const n2 = noise2 - Math.floor(noise2);
+        const side = (n * 2 - 1) * pathD * 0.47;
+        const localX = len * t;
+        const localY = side;
+        const trailAge = isCharge || isActive ? 1 : Math.max(0, Math.min(1, (visibleProgress - t + leadingFadeWidth) / leadingFadeWidth));
+        const bladeW = Math.max(46, pathD * (0.62 + (i % 4) * 0.085));
+        const bladeH = Math.max(13, fieldH * (0.078 + (i % 3) * 0.014));
+        const bladeRot = ((i % 2 === 0) ? -0.36 : 0.36) + (n2 - 0.5) * 0.38;
+        const scalePulse = isActive ? (1.04 + pulse * 0.10) : 1;
+
+        ctx.save();
+        ctx.translate(localX, localY);
+        ctx.rotate(bladeRot);
+        ctx.scale(scalePulse, scalePulse);
+        const bladeAlpha = isActive ? (0.92 + pulse * 0.08) : (isCharge ? 0.62 : 0.40 + trailAge * 0.24);
+        ctx.globalAlpha = Math.max(0, Math.min(1, bladeAlpha * alpha * (isCharge || isActive ? 1 : Math.max(0.28, trailAge))));
+        ctx.fillStyle = edgeColor;
+        ctx.beginPath();
+        ctx.moveTo(-bladeW * 0.52, 0);
+        ctx.quadraticCurveTo(-bladeW * 0.18, -bladeH * 0.72, bladeW * 0.54, -bladeH * 0.18);
+        ctx.quadraticCurveTo(bladeW * 0.64, 0, bladeW * 0.54, bladeH * 0.18);
+        ctx.quadraticCurveTo(-bladeW * 0.18, bladeH * 0.72, -bladeW * 0.52, 0);
+        ctx.closePath();
+        ctx.fill();
+
+        const grad = ctx.createLinearGradient(-bladeW * 0.46, 0, bladeW * 0.48, 0);
+        grad.addColorStop(0, 'rgba(255,255,255,0)');
+        grad.addColorStop(0.16, hotColor);
+        grad.addColorStop(0.52, coreColor);
+        grad.addColorStop(0.86, hotColor);
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(-bladeW * 0.45, 0);
+        ctx.quadraticCurveTo(-bladeW * 0.12, -bladeH * 0.42, bladeW * 0.45, -bladeH * 0.10);
+        ctx.quadraticCurveTo(bladeW * 0.52, 0, bladeW * 0.45, bladeH * 0.10);
+        ctx.quadraticCurveTo(-bladeW * 0.12, bladeH * 0.42, -bladeW * 0.45, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = isActive ? 'rgba(30,0,0,0.92)' : (isCharge ? 'rgba(8,38,62,0.60)' : 'rgba(5,26,44,0.52)');
+        ctx.lineWidth = Math.max(0.9, bladeH * 0.11);
+        ctx.beginPath();
+        ctx.moveTo(-bladeW * 0.42, bladeH * 0.04);
+        ctx.quadraticCurveTo(0, -bladeH * 0.12, bladeW * 0.42, -bladeH * 0.04);
+        ctx.stroke();
+        if (isActive) {
+            ctx.globalAlpha = Math.max(0, Math.min(1, (0.35 + pulse * 0.20) * alpha));
+            ctx.strokeStyle = 'rgba(255,42,32,0.82)';
+            ctx.lineWidth = Math.max(1.1, bladeH * 0.12);
+            ctx.beginPath();
+            ctx.moveTo(-bladeW * 0.36, -bladeH * 0.12);
+            ctx.lineTo(bladeW * 0.34, bladeH * 0.08);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    if (isActive) {
+        ctx.globalAlpha = Math.max(0, Math.min(1, (0.10 + (1 - activeT) * 0.16 + pulse * 0.05) * alpha));
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = 'rgba(230,0,0,0.48)';
+        ctx.strokeStyle = 'rgba(255,36,30,0.38)';
+        ctx.lineWidth = Math.max(1.6, pathD * 0.014);
+        ctx.beginPath();
+        ctx.moveTo(len * 0.04, -pathD * 0.06);
+        ctx.quadraticCurveTo(len * 0.50, pathD * 0.035, len * 0.96, -pathD * 0.06);
+        ctx.stroke();
+        ctx.globalAlpha = Math.max(0, Math.min(1, (0.28 + (1 - activeT) * 0.22 + pulse * 0.08) * alpha));
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = 'rgba(255,0,0,0.62)';
+        ctx.strokeStyle = 'rgba(255,58,44,0.62)';
+        ctx.lineWidth = Math.max(2.4, pathD * 0.022);
+        for (let i = 0; i < 3; i++) {
+            const x0 = len * (0.10 + i * 0.31);
+            const x1 = x0 + len * 0.20;
+            const y0 = (i % 2 === 0 ? -1 : 1) * hitboxHalfD * 0.82;
+            const y1 = -y0;
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x1, y1);
+            ctx.stroke();
+        }
+    }
+    ctx.restore();
+};
+
+

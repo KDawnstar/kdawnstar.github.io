@@ -3250,12 +3250,15 @@ const BossObjectSystem = {
         }
 
         if (objectType === 'TERRAIN_BLOCK') {
-            const terrainW = Math.max(30, parseFloat(data.Terrain_Area_W) || size.w || 250);
-            const terrainH = Math.max(30, parseFloat(data.Terrain_Area_H) || size.d || 100);
+            const hasExplicitTerrainArea = ['Terrain_Area_X', 'Terrain_Area_Y', 'Terrain_Area_W', 'Terrain_Area_H']
+                .every(key => Number.isFinite(parseFloat(data && data[key])));
+            const explicitRect = hasExplicitTerrainArea ? this.getTerrainAreaRect(data, gameState) : null;
+            const terrainW = explicitRect ? explicitRect.w : Math.max(30, parseFloat(data.Terrain_Area_W) || size.w || 250);
+            const terrainH = explicitRect ? explicitRect.h : Math.max(30, parseFloat(data.Terrain_Area_H) || size.d || 100);
             const terrain = {
                 ...common,
                 kind: 'terrain',
-                terrainArea: {
+                terrainArea: explicitRect || {
                     x: Math.max(0, Math.min((parseFloat(gameState.WORLD_WIDTH) || 1400) - terrainW, common.x - terrainW / 2)),
                     y: Math.max(0, Math.min((parseFloat(gameState.WORLD_DEPTH) || 400) - terrainH, common.y - terrainH / 2)),
                     w: terrainW,
@@ -3265,6 +3268,8 @@ const BossObjectSystem = {
             };
             terrain.terrainArea.centerX = terrain.terrainArea.x + terrain.terrainArea.w / 2;
             terrain.terrainArea.centerY = terrain.terrainArea.y + terrain.terrainArea.h / 2;
+            terrain.x = terrain.terrainArea.centerX;
+            terrain.y = terrain.terrainArea.centerY;
             const maxCount = Math.max(1, parseInt(data.Object_Simultaneously_Count) || 3);
             const blocks = gameState.bossAttackObjects.filter(obj => obj && obj.active && obj.kind === 'terrain' && String(obj.objectType || obj.data && obj.data.Object_Type || '').trim().toUpperCase() === 'TERRAIN_BLOCK' && String(obj.renderType || obj.data && obj.data.Object_Render_Type || '').trim().toUpperCase() === 'OBJ_P3_SPACE_BURST_BROKEN_SPACE');
             while (blocks.length >= maxCount) {

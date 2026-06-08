@@ -275,7 +275,9 @@ const BossPositionSystem = {
         if (!isFinite(t) || t <= 0) t = Math.max(worldW, worldD);
         const ex = Math.max(0, Math.min(worldW, sx + dx * t));
         const ey = Math.max(0, Math.min(worldD, sy + dy * t));
-        const targetZ = Number.isFinite(parseFloat(target.z)) ? parseFloat(target.z) : (parseFloat(m.z) || 0);
+        // 맵 끝 돌진은 별도 target 객체가 없으므로 Z 목표를 지면으로 고정한다.
+        // 이전 코드에서 존재하지 않는 target.z를 참조해 1페이즈 기본 2번 등 일반 RUSH 시작 시 런타임 오류가 발생했다.
+        const targetZ = 0;
         return {
             startX: sx,
             startY: sy,
@@ -549,7 +551,9 @@ const BossPositionSystem = {
         const ex = Math.max(0, Math.min(worldW, sx + dx * t));
         const ey = Math.max(0, Math.min(worldD, sy + dy * t));
 
-        const targetZ = Number.isFinite(parseFloat(target.z)) ? parseFloat(target.z) : (parseFloat(m.z) || 0);
+        // 맵 끝 돌진은 별도 target 객체가 없으므로 Z 목표를 지면으로 고정한다.
+        // 이전 코드에서 존재하지 않는 target.z를 참조해 1페이즈 기본 2번 등 일반 RUSH 시작 시 런타임 오류가 발생했다.
+        const targetZ = 0;
         return {
             startX: sx,
             startY: sy,
