@@ -126,9 +126,18 @@ const GameRenderer = {
         const ctx = this.ctx;
         const canvas = this.canvas;
 
+        // 2페이즈 대형 패턴3 차원 방어전은 기존 월드 좌표/깊이 정렬과 완전히 분리된 전용 렌더를 사용한다.
+        if (gameState && gameState.specialMode === 'P2_M3_DIMENSION_DEFENSE' && typeof this.renderP2M3DimensionDefense === 'function') {
+            this.renderP2M3DimensionDefense(gameState);
+            return;
+        }
+
         this.drawBackground(gameState);
 
         ctx.save();
+        const shakeX = Number.isFinite(parseFloat(camera && camera.shakeX)) ? parseFloat(camera.shakeX) : 0;
+        const shakeY = Number.isFinite(parseFloat(camera && camera.shakeY)) ? parseFloat(camera.shakeY) : 0;
+        if (shakeX || shakeY) ctx.translate(shakeX, shakeY);
         const cameraZoom = Math.max(1, parseFloat(camera && camera.zoom) || 1);
         if (cameraZoom > 1.001) {
             const focusScreenX = ((camera.focusX !== null && camera.focusX !== undefined) ? camera.focusX : (player.x || 0)) - camera.x;
@@ -211,13 +220,91 @@ const GameRenderer = {
             }
         }
 
+        // 지형 붕괴/접근 제한 오브젝트는 바닥 지형 레이어에 먼저 그린다.
+        // 기존 렌더 대상(kind=actor/collectible/interactiveSword) 필터에 걸려
+        // 판정은 작동하지만 균열/붕괴/차단 지형이 화면에 보이지 않던 문제를 보정한다.
         for (let obj of (gameState.bossAttackObjects || [])) {
-            if (obj && obj.active && (obj.kind === 'actor' || obj.kind === 'collectible' || obj.kind === 'interactiveSword')) {
+            const objectTypeRaw = String(obj && obj.data && obj.data.Object_Type || obj && obj.objectType || '').trim().toUpperCase();
+            if (obj && obj.active && (obj.kind === 'terrain' || objectTypeRaw.indexOf('TERRAIN_') === 0)) {
+                if (typeof renderer.drawBossPatternObjectEntity === 'function') {
+                    renderer.drawBossPatternObjectEntity(ctx, obj);
+                }
+            }
+        }
+
+        const airborneBossObjects = [];
+        const p3GiantTraceOverlayObjects = [];
+        for (let obj of (gameState.bossAttackObjects || [])) {
+            const objectTypeRaw = String(obj && obj.data && obj.data.Object_Type || obj && obj.objectType || '').trim().toUpperCase();
+            const objectRenderTypeRaw = String(obj && (obj.renderType || obj.data && obj.data.Object_Render_Type) || '').trim().toUpperCase();
+            const isAirborneBossObject = obj && obj.active && (
+                obj.kind === 'dimensionPortal' ||
+                obj.kind === 'fallingSwordRain' ||
+                objectTypeRaw === 'DIMENSION_PORTAL' ||
+                objectTypeRaw === 'FALLING_SWORD_RAIN' ||
+                objectRenderTypeRaw === 'OBJ_DIMENSION_PORTAL' ||
+                objectRenderTypeRaw === 'OBJ_DIMENSION_PORTAL_SWORD_RAIN'
+            );
+            if (isAirborneBossObject) {
+                airborneBossObjects.push(obj);
+                continue;
+            }
+            const isPathBossObject = obj && obj.active && obj.visualLinked && (
+                obj.kind === 'pathDelayed' ||
+                objectRenderTypeRaw === 'OBJ_PATH_ONI_SLASH_BURST'
+            );
+            if (isPathBossObject) {
+                renderables.push({
+                    y: (obj.path ? (Math.max(obj.path.startY || 0, obj.path.endY || 0)) : (obj.y || 0)) + 2,
+                    draw: function() {
+                        if (typeof renderer.drawBossPatternObjectEntity === 'function') {
+                            renderer.drawBossPatternObjectEntity(ctx, obj);
+                        }
+                    }
+                });
+                continue;
+            }
+            const traceKeyRaw = String(obj && (obj.traceKey || obj.data && obj.data.Trace_Path_Key) || '').trim().toUpperCase();
+            const objectIdRaw = String(obj && obj.data && obj.data.Object_ID || obj && obj.objectId || '').trim();
+            const isP3B5ComboTraceObject = obj && obj.active && obj.kind === 'p3GiantSwordTrace' && (
+                objectIdRaw === '253011' ||
+                traceKeyRaw === 'TRACE_PATH_P3_B5_PREVIOUS_ALL' ||
+                traceKeyRaw === 'TRACE_PATH_P3_B5_ALL' ||
+                traceKeyRaw === 'PREVIOUS_ALL'
+            );
+            if (isP3B5ComboTraceObject) {
+                p3GiantTraceOverlayObjects.push(obj);
+                continue;
+            }
+            if (obj && obj.active && (
+                obj.kind === 'actor' ||
+                obj.kind === 'collectible' ||
+                obj.kind === 'interactiveSword' ||
+                obj.kind === 'swordWave' ||
+                obj.kind === 'interactObject' ||
+                obj.kind === 'aimingObject' ||
+                obj.kind === 'p2m2FiredGiantSword' ||
+                obj.kind === 'p3GiantSwordTrace' ||
+                obj.kind === 'p3SpaceDistortion' ||
+                obj.kind === 'p3SpaceBurst' ||
+                obj.kind === 'p3DimensionCrack' ||
+                obj.kind === 'p3DimensionCrackBurst' ||
+                objectRenderTypeRaw.indexOf('P2_M2_BROKEN_GIANT_SWORD') >= 0 ||
+                objectRenderTypeRaw.indexOf('P2_M2_AIMING_GIANT_SWORD') >= 0 ||
+                objectRenderTypeRaw.indexOf('P2_M2_FIRE_GIANT_SWORD') >= 0
+            ) && !(obj.kind === 'terrain' || objectTypeRaw.indexOf('TERRAIN_') === 0)) {
                 renderables.push({
                     y: obj.y,
                     draw: function() {
                         if (typeof renderer.drawBossPatternObjectEntity === 'function') {
-                            renderer.drawBossPatternObjectEntity(ctx, obj);
+                            try {
+                                renderer.drawBossPatternObjectEntity(ctx, obj);
+                            } catch (err) {
+                                if (!obj._renderErrorLogged && typeof console !== 'undefined' && console.warn) {
+                                    obj._renderErrorLogged = true;
+                                    console.warn('[Kasiyas] boss object render failed:', objectRenderTypeRaw || obj.kind, err);
+                                }
+                            }
                         }
                     }
                 });
@@ -244,6 +331,31 @@ const GameRenderer = {
 
         renderables.sort((a, b) => a.y - b.y);
         renderables.forEach(r => r.draw());
+
+        // 3페이즈 기본 패턴 5번의 통합 재타격 검흔(253011)은 기존 잔류 검흔 253007~253009를
+        // 다시 붉게 점멸시키는 역할이다. 일반 y 깊이 정렬에 맡기면 하단에 가까운 원형 횡베기
+        // 잔류 검흔이 253011 위에 다시 그려져 점멸이 가려질 수 있으므로, 검흔 레이어의 마지막에
+        // 별도로 그려 세 경로 모두 동일하게 재활성화되어 보이도록 한다.
+        p3GiantTraceOverlayObjects.forEach(obj => {
+            if (obj && obj.active && typeof renderer.drawBossPatternObjectEntity === 'function') {
+                try {
+                    renderer.drawBossPatternObjectEntity(ctx, obj);
+                } catch (err) {
+                    if (!obj._renderErrorLogged && typeof console !== 'undefined' && console.warn) {
+                        obj._renderErrorLogged = true;
+                        console.warn('[Kasiyas] p3 giant trace overlay render failed:', err);
+                    }
+                }
+            }
+        });
+
+        // 차원문/검 낙하 컨트롤러는 지상 깊이 정렬에 묶이면 보이지 않거나
+        // 캐릭터 뒤에 묻히는 느낌이 강해진다. 공중 패턴 레이어에서 별도로 그린다.
+        airborneBossObjects.forEach(obj => {
+            if (obj && obj.active && typeof renderer.drawBossPatternObjectEntity === 'function') {
+                renderer.drawBossPatternObjectEntity(ctx, obj);
+            }
+        });
         ctx.globalAlpha = 1.0;
 
         this.drawStageWarp(gameState);
@@ -257,6 +369,9 @@ const GameRenderer = {
         this.drawFloatingTexts(ctx, floatingTexts);
         if (typeof this.drawBossPhaseTransitionOverlay === 'function') {
             this.drawBossPhaseTransitionOverlay(ctx, canvas, gameState);
+        }
+        if (typeof this.drawP2M3IntroOverlay === 'function') {
+            this.drawP2M3IntroOverlay(ctx, canvas, gameState);
         }
         if (typeof this.drawBossPatternDialogue === 'function') {
             this.drawBossPatternDialogue(ctx, canvas, gameState);
@@ -280,15 +395,29 @@ const GameRenderer = {
         ctx.save();
         ctx.globalCompositeOperation = 'source-over';
         const mode = String(flash.mode || '').trim().toLowerCase();
-        if (mode === 'white' || mode === 'gold') {
-            const fullAlpha = Math.min(0.62, strength * t * 0.58);
+        if (mode === 'white' || mode === 'gold' || mode === 'fullwhite') {
+            // fullWhite는 완전 파훼 전환용: 갑작스러운 섬광이 아니라 약 1초 동안 서서히 밝아진 뒤,
+            // 그로기 진입 순간에 약한 번쩍임만 주도록 처리한다.
+            let fullAlpha = Math.min(0.62, strength * t * 0.58);
+            let flashPulse = 0;
+            if (mode === 'fullwhite') {
+                const elapsed = Math.max(0, maxLife - life);
+                const rampTime = Math.max(0.05, parseFloat(flash.rampTime) || 1.0);
+                const pulseTime = Math.max(0.04, parseFloat(flash.peakFlashTime) || 0.12);
+                const fadeOutTime = Math.max(0.02, parseFloat(flash.fadeOutTime) || 0.04);
+                const ramp = Math.max(0, Math.min(1, elapsed / rampTime));
+                const smoothRamp = ramp * ramp * (3 - 2 * ramp);
+                flashPulse = elapsed >= rampTime ? Math.max(0, 1 - ((elapsed - rampTime) / pulseTime)) : 0;
+                fullAlpha = Math.min(0.88, 0.76 * smoothRamp + 0.10 * flashPulse);
+                if (life < fadeOutTime) fullAlpha *= Math.max(0, Math.min(1, life / fadeOutTime));
+            }
             ctx.fillStyle = mode === 'gold'
                 ? `rgba(255, 232, 120, ${fullAlpha})`
                 : `rgba(255, 255, 245, ${fullAlpha})`;
             ctx.fillRect(0, 0, w, h);
             const glow = ctx.createRadialGradient(w / 2, h * 0.48, 0, w / 2, h * 0.48, Math.max(w, h) * 0.72);
-            glow.addColorStop(0, `rgba(255, 244, 166, ${Math.min(0.48, fullAlpha * 0.72)})`);
-            glow.addColorStop(0.45, `rgba(255, 206, 84, ${Math.min(0.20, fullAlpha * 0.32)})`);
+            glow.addColorStop(0, `rgba(255, 247, 198, ${Math.min(0.34, fullAlpha * 0.46 + flashPulse * 0.06)})`);
+            glow.addColorStop(0.45, `rgba(205, 238, 255, ${Math.min(0.16, fullAlpha * 0.20)})`);
             glow.addColorStop(1, 'rgba(255, 206, 84, 0)');
             ctx.fillStyle = glow;
             ctx.fillRect(0, 0, w, h);

@@ -252,6 +252,43 @@ const PlayerAction = {
     },
 
     handleInput: function(deltaTime, keys, gameState, player) {
+        // 2페이즈 대형 패턴 2번 거대 검 조준 모드/발사 직후에는
+        // X/Z/Space/C가 기존 공격·대쉬·점프 입력으로 새지 않도록 PlayerAction 입력을 선점 차단한다.
+        const resetP2M2AimPlayerInput = () => {
+            player.isRunning = false;
+            player.runDirection = null;
+            if (player.state === 'Walk' || player.state === 'Run') player.state = 'Idle';
+        };
+        const p2m2Aim = gameState && gameState.p2m2GiantSwordAim;
+        if (gameState) {
+            let consumed = gameState.p2m2GiantSwordInputConsumed || null;
+            let consumedHeld = false;
+            if (consumed) {
+                for (const key of ['KeyX', 'KeyZ', 'Space', 'KeyC', 'ArrowLeft', 'ArrowRight']) {
+                    if (consumed[key]) {
+                        if (keys && keys[key]) consumedHeld = true;
+                        else consumed[key] = false;
+                    }
+                }
+                if (!consumed.KeyX && !consumed.KeyZ && !consumed.Space && !consumed.KeyC && !consumed.ArrowLeft && !consumed.ArrowRight) {
+                    gameState.p2m2GiantSwordInputConsumed = null;
+                }
+            }
+            if ((parseFloat(gameState.p2m2GiantSwordInputBlockTimer) || 0) > 0) {
+                gameState.p2m2GiantSwordInputBlockTimer = Math.max(0, (parseFloat(gameState.p2m2GiantSwordInputBlockTimer) || 0) - deltaTime);
+                resetP2M2AimPlayerInput();
+                return;
+            }
+            if (consumedHeld) {
+                resetP2M2AimPlayerInput();
+                return;
+            }
+        }
+        if (p2m2Aim && p2m2Aim.active !== false) {
+            resetP2M2AimPlayerInput();
+            return;
+        }
+
         let dashAct = gameState.actions.find(a => String(a.Action_Name || '').trim() === '대쉬');
         let jumpAct = gameState.actions.find(a => String(a.Action_Name || '').trim() === '점프');
         let runAct = gameState.actions.find(a => String(a.Action_Type || '').trim() === 'ACT_RUN');
@@ -592,6 +629,17 @@ const PlayerAction = {
                                                 } catch (e) {}
                                             }
                                         }
+                                    }
+
+                                    if (typeof BossObjectSystem !== 'undefined' && BossObjectSystem.tryDamageBossDestructibleObjects) {
+                                        BossObjectSystem.tryDamageBossDestructibleObjects(gameState, {
+                                            x: atkX,
+                                            y: atkY,
+                                            z: atkZ,
+                                            w: atkW,
+                                            d: atkD,
+                                            h: atkH
+                                        }, baseDmg, { type: 'melee', action: act, penetrate: true });
                                     }
                                 }
 

@@ -50,6 +50,9 @@ const BossActionSystem = {
         const worldW = Math.max(1, parseFloat(gameState && gameState.WORLD_WIDTH) || 1400);
         const worldD = Math.max(1, parseFloat(gameState && gameState.WORLD_DEPTH) || 400);
         const sideMarginX = Math.max(90, worldW * 0.08);
+        const lineRushMarginX = Math.max(64, worldW * 0.055);
+        const upperLineY = Math.max(38, Math.min(worldD - 38, worldD * 0.29));
+        const lowerLineY = Math.max(38, Math.min(worldD - 38, worldD * 0.71));
         const innerMarginX = Math.max(150, Math.min(230, worldW * 0.14));
         const innerMarginY = Math.max(62, Math.min(92, worldD * 0.18));
         const edgeMarginX = Math.max(48, Math.min(82, worldW * 0.04));
@@ -60,12 +63,33 @@ const BossActionSystem = {
             PLACE_MAP_CENTER: center,
             MAP_CENTER: center,
             CENTER: center,
+            PLACE_MAP_CENTER_AIR: { x: worldW / 2, y: worldD / 2, z: 250, slotKey: 'CENTER_AIR' },
+            MAP_CENTER_AIR: { x: worldW / 2, y: worldD / 2, z: 250, slotKey: 'CENTER_AIR' },
+            CENTER_AIR: { x: worldW / 2, y: worldD / 2, z: 250, slotKey: 'CENTER_AIR' },
             PLACE_MAP_EAST: { x: worldW - sideMarginX, y: worldD / 2, slotKey: 'EAST' },
             MAP_EAST: { x: worldW - sideMarginX, y: worldD / 2, slotKey: 'EAST' },
             EAST: { x: worldW - sideMarginX, y: worldD / 2, slotKey: 'EAST' },
+            PLACE_MAP_EDGE_EAST: { x: worldW + 34, y: worldD / 2, slotKey: 'EDGE_EAST' },
+            MAP_EDGE_EAST: { x: worldW + 34, y: worldD / 2, slotKey: 'EDGE_EAST' },
+            EDGE_EAST: { x: worldW + 34, y: worldD / 2, slotKey: 'EDGE_EAST' },
+            PLACE_MAP_RIGHT_AIR: { x: worldW - Math.max(130, worldW * 0.105), y: Math.max(34, worldD * 0.12), z: 260, slotKey: 'RIGHT_AIR' },
+            MAP_RIGHT_AIR: { x: worldW - Math.max(130, worldW * 0.105), y: Math.max(34, worldD * 0.12), z: 260, slotKey: 'RIGHT_AIR' },
+            RIGHT_AIR: { x: worldW - Math.max(130, worldW * 0.105), y: Math.max(34, worldD * 0.12), z: 260, slotKey: 'RIGHT_AIR' },
+            PLACE_MAP_LEFT_AIR: { x: Math.max(130, worldW * 0.105), y: Math.max(34, worldD * 0.12), z: 260, slotKey: 'LEFT_AIR' },
+            MAP_LEFT_AIR: { x: Math.max(130, worldW * 0.105), y: Math.max(34, worldD * 0.12), z: 260, slotKey: 'LEFT_AIR' },
+            LEFT_AIR: { x: Math.max(130, worldW * 0.105), y: Math.max(34, worldD * 0.12), z: 260, slotKey: 'LEFT_AIR' },
             PLACE_MAP_WEST: { x: sideMarginX, y: worldD / 2, slotKey: 'WEST' },
             MAP_WEST: { x: sideMarginX, y: worldD / 2, slotKey: 'WEST' },
             WEST: { x: sideMarginX, y: worldD / 2, slotKey: 'WEST' },
+            PLACE_MAP_TOP_CENTER: { x: worldW / 2, y: Math.max(22, Math.min(46, worldD * 0.08)), slotKey: 'TOP_CENTER' },
+            MAP_TOP_CENTER: { x: worldW / 2, y: Math.max(22, Math.min(46, worldD * 0.08)), slotKey: 'TOP_CENTER' },
+            TOP_CENTER: { x: worldW / 2, y: Math.max(22, Math.min(46, worldD * 0.08)), slotKey: 'TOP_CENTER' },
+            PLACE_MAP_TOP_RIGHT: { x: worldW - lineRushMarginX, y: upperLineY, slotKey: 'TOP_RIGHT' },
+            MAP_TOP_RIGHT: { x: worldW - lineRushMarginX, y: upperLineY, slotKey: 'TOP_RIGHT' },
+            TOP_RIGHT: { x: worldW - lineRushMarginX, y: upperLineY, slotKey: 'TOP_RIGHT' },
+            PLACE_MAP_BOTTOM_LEFT: { x: lineRushMarginX, y: lowerLineY, slotKey: 'BOTTOM_LEFT' },
+            MAP_BOTTOM_LEFT: { x: lineRushMarginX, y: lowerLineY, slotKey: 'BOTTOM_LEFT' },
+            BOTTOM_LEFT: { x: lineRushMarginX, y: lowerLineY, slotKey: 'BOTTOM_LEFT' },
 
             // 기존 PLACE_MAP_*는 대형 패턴 3번 교차 발도 기준에 맞춰 맵 끝 모서리 쪽으로 유지한다.
             PLACE_MAP_NE: { x: worldW - edgeMarginX, y: edgeMarginY, slotKey: 'EDGE_NE' },
@@ -268,6 +292,49 @@ const BossActionSystem = {
             life: phase === 'APPEAR' ? 0.30 : 0.24,
             maxLife: phase === 'APPEAR' ? 0.30 : 0.24
         });
+    },
+
+
+    trySpawnBossPatternActionObjectsAtTiming: function(m, action, gameState, timing) {
+        if (!m || !action || !gameState) return false;
+        const boss = m.boss || (m.owner && m.owner.boss) || null;
+        const hasSpawnObject = String(action.Spawn_Object_ID || '').trim();
+        const hasSpawnGroup = String(action.Spawn_Object_Group || '').trim();
+        if (!hasSpawnObject && !hasSpawnGroup) return false;
+
+        const desiredTiming = String(action.Object_Spawn_Timing || 'ACTION_START').trim().toUpperCase() || 'ACTION_START';
+        const targetTiming = String(timing || '').trim().toUpperCase();
+        if (desiredTiming !== targetTiming) return false;
+
+        const flagName = targetTiming === 'ACTION_END' ? 'actionObjectSpawnEndFired' : 'actionObjectSpawnStartFired';
+        if (boss && boss[flagName]) return false;
+
+        this.spawnBossAttackObjectFromAction(m, action, gameState);
+        if (boss) boss[flagName] = true;
+        return true;
+    },
+
+    isKasiyasP2Pattern3JumpWarningAction: function(action) {
+        if (!action) return false;
+        const patternId = String(action.Pattern_ID || '').trim();
+        const pose = String(action.Action_Pose_Type || '').trim().toUpperCase();
+        const name = String(action.Action_Name || '').trim();
+        const moveType = this.normalizeBossActionMoveType ? this.normalizeBossActionMoveType(action.Action_Move_Type) : String(action.Action_Move_Type || '').trim().toUpperCase();
+        const moveDir = String(action.Action_Move_Direction || '').trim().toUpperCase();
+        return patternId === '232003' && moveType === 'JUMP' && (moveDir === 'JUMP_TO_ENEMY' || moveDir === 'JUMP_TO_SAFE_AREA_CENTER' || pose === 'POSE_KASIYAS_P2_JUMP_WITH_DOUBLE_EDGED_SWORD' || name.indexOf('공중 회전 베기 도약') >= 0);
+    },
+
+    isKasiyasP2Pattern3JumpSlashAction: function(action) {
+        if (!action) return false;
+        const patternId = String(action.Pattern_ID || '').trim();
+        const pose = String(action.Action_Pose_Type || '').trim().toUpperCase();
+        const name = String(action.Action_Name || '').trim();
+        const effect = String(action.VFX_Type || action.Effect_Render_Type || '').trim().toUpperCase();
+        return patternId === '232003' && (
+            pose === 'POSE_KASIYAS_P2_DOUBLE_EDGED_SWORD_JUMP_SLASH' ||
+            effect === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_JUMP_SLASH' ||
+            name.indexOf('공중 회전 베기') >= 0
+        );
     },
 
     getBossPatternObjectsByGroup: function(gameState, groupId) {
@@ -509,6 +576,204 @@ const BossActionSystem = {
         });
     },
 
+
+    isBossInlineActionWarningEnabled: function(action) {
+        const type = String(action && action.Action_Type || '').trim().toUpperCase();
+        if (type !== 'ATK') return false;
+        const warningType = String(action && action.Warning_Render_Type || '').trim().toUpperCase();
+        return !!warningType && warningType !== 'NONE' && warningType !== 'NULL';
+    },
+
+    getBossInlineActionWarningWindow: function(m, action, gameState) {
+        const hitWindow = (typeof this.getBossActionHitWindow === 'function') ? this.getBossActionHitWindow(m, action) : { start: parseFloat(action && action.Hitbox_Start_Time) || 0 };
+        const hitStart = Math.max(0, parseFloat(hitWindow && hitWindow.start) || 0);
+        const rawStart = parseFloat(action && action.Warning_Start_Time);
+        const rawEnd = parseFloat(action && action.Warning_End_Time);
+        const start = (!isNaN(rawStart) && rawStart >= 0) ? rawStart : 0;
+        const end = (!isNaN(rawEnd) && rawEnd > start) ? rawEnd : hitStart;
+        return {
+            start: Math.max(0, start),
+            end: Math.max(0, end),
+            hitStart: hitStart
+        };
+    },
+
+    clearBossInlineActionWarning: function(m, action, gameState) {
+        if (!gameState || !Array.isArray(gameState.effects) || !action) return;
+        const actionId = String(action.Action_ID || '').trim();
+        gameState.effects = gameState.effects.filter(e => !(e && e.inlineActionWarning && e.sourceBoss === m && String(e.sourceActionId || '').trim() === actionId));
+    },
+
+    updateBossInlineActionWarning: function(m, action, gameState) {
+        if (!m || !action || !gameState || !Array.isArray(gameState.effects)) return;
+        const actionId = String(action.Action_ID || '').trim();
+        // 매 프레임 위치/시선/히트박스 보정이 바뀔 수 있으므로 이전 프레임의 같은 전조를 제거한 뒤 현재 프레임 기준으로 다시 배치한다.
+        this.clearBossInlineActionWarning(m, action, gameState);
+        if (!this.isBossInlineActionWarningEnabled(action)) return;
+
+        const warningType = String(action.Warning_Render_Type || '').trim().toUpperCase();
+        const win = this.getBossInlineActionWarningWindow(m, action, gameState);
+        const timer = Math.max(0, parseFloat(m.timer) || 0);
+        if (win.end <= win.start || timer < win.start || timer >= win.end) return;
+
+        const hitbox = (typeof this.getBossPatternActionHitbox === 'function') ? this.getBossPatternActionHitbox(m, action) : null;
+        if (!hitbox) return;
+        const hitboxType = String(action.Hitbox_Type || '').trim().toUpperCase();
+        const duration = Math.max(0.06, win.end - timer + 0.02);
+        const progress = Math.max(0, Math.min(1, (timer - win.start) / Math.max(0.001, win.end - win.start)));
+
+        if (warningType === 'WARNING_HITBOX' || warningType === 'EFT_WARNING_HITBOX') {
+            gameState.effects.push({
+                type: 'warning',
+                renderType: 'WARNING_HITBOX',
+                warningRenderType: 'WARNING_HITBOX',
+                inlineActionWarning: true,
+                sourceBoss: m,
+                sourceActionId: actionId,
+                x: hitbox.x,
+                y: hitbox.y,
+                // 전조 표시는 지면 투영만 사용한다. z/h는 정렬용 메타값으로만 보존하고 렌더 크기에는 쓰지 않는다.
+                z: 0,
+                w: Math.max(4, hitbox.w),
+                d: Math.max(4, hitbox.d),
+                h: hitbox.h,
+                hitboxType: hitboxType,
+                warningProgress: progress,
+                life: duration,
+                maxLife: duration
+            });
+            return;
+        }
+    },
+
+    resolveKasiyasP2Pattern3SafeAreaCenter: function(gameState) {
+        const worldW = Math.max(1, parseFloat(gameState && gameState.WORLD_WIDTH) || 1400);
+        const worldD = Math.max(1, parseFloat(gameState && gameState.WORLD_DEPTH) || 400);
+        const normalizeRect = (data) => {
+            if (!data) return null;
+            const x = parseFloat(data.Safe_Area_X);
+            const y = parseFloat(data.Safe_Area_Y);
+            const w = parseFloat(data.Safe_Area_W);
+            const h = parseFloat(data.Safe_Area_H);
+            if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+            return {
+                x: Math.max(0, Math.min(worldW, x)),
+                y: Math.max(0, Math.min(worldD, y)),
+                w: Math.max(1, Math.min(worldW - Math.max(0, x), w)),
+                h: Math.max(1, Math.min(worldD - Math.max(0, y), h))
+            };
+        };
+        const objects = gameState && Array.isArray(gameState.bossAttackObjects) ? gameState.bossAttackObjects : [];
+        for (const obj of objects) {
+            const data = obj && (obj.data || obj);
+            const type = String(obj && (obj.objectType || data.Object_Type) || '').trim().toUpperCase();
+            if (type === 'TERRAIN_COLLAPSE' || type === 'TERRAIN_COLLAPSE_HIT' || type === 'TERRAIN_BLOCK') {
+                const rect = obj.safeArea || normalizeRect(data);
+                if (rect) return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2, rect };
+            }
+        }
+        const db = gameState && gameState.DB_BOSS_PATTERN_OBJECT ? gameState.DB_BOSS_PATTERN_OBJECT : {};
+        for (const key of Object.keys(db)) {
+            const data = db[key];
+            const patternName = String(data && data.Object_Name || '').trim();
+            const type = String(data && data.Object_Type || '').trim().toUpperCase();
+            if ((type === 'TERRAIN_COLLAPSE' || type === 'TERRAIN_COLLAPSE_HIT') && patternName.indexOf('페이즈2_기본패턴3') >= 0) {
+                const rect = normalizeRect(data);
+                if (rect) return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2, rect };
+            }
+        }
+        return { x: Math.max(80, Math.min(worldW - 80, 550)), y: Math.max(40, Math.min(worldD - 40, 200)), rect: { x: 0, y: 100, w: 1100, h: 200 } };
+    },
+
+
+    prepareBossJumpMoveToPlayer: function(m, action, gameState, options = {}) {
+        const boss = m && m.boss ? m.boss : null;
+        const p = gameState && gameState.player ? gameState.player : null;
+        if (!boss || !p || !action) return null;
+
+        const startX = Number.isFinite(parseFloat(m.x)) ? parseFloat(m.x) : 0;
+        const startY = Number.isFinite(parseFloat(m.y)) ? parseFloat(m.y) : 0;
+        const moveDir = String(action.Action_Move_Direction || '').trim().toUpperCase();
+        const rawTargetX = parseFloat(p.x);
+        const rawTargetY = parseFloat(p.y);
+        let targetX = Number.isFinite(rawTargetX) ? rawTargetX : startX;
+        let targetY = Number.isFinite(rawTargetY) ? rawTargetY : startY;
+
+        const worldW = Math.max(1, parseFloat(gameState && gameState.WORLD_WIDTH) || 1400);
+        const worldD = Math.max(1, parseFloat(gameState && gameState.WORLD_DEPTH) || 400);
+        let targetZ = 0;
+        if (moveDir === 'JUMP_TO_SAFE_AREA_CENTER') {
+            const safe = this.resolveKasiyasP2Pattern3SafeAreaCenter ? this.resolveKasiyasP2Pattern3SafeAreaCenter(gameState) : null;
+            if (safe) {
+                targetX = safe.x;
+                targetY = safe.y;
+            } else {
+                targetX = Math.max(80, Math.min(worldW - 80, worldW * 0.392));
+                targetY = Math.max(40, Math.min(worldD - 40, worldD * 0.50));
+            }
+        } else if (typeof this.isBossFixedMapPlaceType === 'function' && this.isBossFixedMapPlaceType(moveDir) && typeof this.getBossFixedMapPosition === 'function') {
+            const fixed = this.getBossFixedMapPosition(gameState, moveDir);
+            if (fixed) {
+                targetX = Number.isFinite(parseFloat(fixed.x)) ? parseFloat(fixed.x) : targetX;
+                targetY = Number.isFinite(parseFloat(fixed.y)) ? parseFloat(fixed.y) : targetY;
+                targetZ = Number.isFinite(parseFloat(fixed.z)) ? parseFloat(fixed.z) : 0;
+            }
+        }
+        const marginX = Math.max(70, ((m.d && parseFloat(m.d.bodyX)) || 80) * (parseFloat(m.scale) || 1) * 0.6);
+        targetX = Math.max(marginX, Math.min(worldW - marginX, targetX));
+        targetY = Math.max(16, Math.min(worldD - 16, targetY));
+
+        const duration = Math.max(0.25, parseFloat(action.Action_Anim_Duration) || 0.75);
+        const jumpHeight = Math.max(95, Math.min(190, Math.sqrt((targetX - startX) ** 2 + (targetY - startY) ** 2) * 0.22));
+        boss.actionMove = {
+            type: 'JUMP',
+            startX,
+            startY,
+            startZ: Number.isFinite(parseFloat(m.z)) ? parseFloat(m.z) : 0,
+            endX: targetX,
+            endY: targetY,
+            endZ: targetZ,
+            duration,
+            jumpHeight: Math.max(jumpHeight, targetZ > 0 ? targetZ * 0.45 : jumpHeight),
+            actionId: String(action.Action_ID || '').trim()
+        };
+        const jumpFaceDir = Math.abs(targetX - startX) > 0.001 ? (targetX >= startX ? 1 : -1) : (m.faceDir === -1 ? -1 : 1);
+        if (Math.abs(targetX - startX) > 0.001) m.faceDir = jumpFaceDir;
+
+        if (this.isKasiyasP2Pattern3JumpWarningAction && this.isKasiyasP2Pattern3JumpWarningAction(action)) {
+            boss.p2p3JumpSlashTarget = {
+                bossX: targetX,
+                bossY: targetY,
+                bossZ: 0,
+                faceDir: jumpFaceDir,
+                warningActionId: String(action.Action_ID || '').trim(),
+                patternId: String(action.Pattern_ID || '').trim()
+            };
+        }
+
+        if (options.pushEffect !== false && action.VFX_Type && gameState && Array.isArray(gameState.effects)) {
+            const bodyZ = ((m.d && m.d.bodyZ) || 160) * (parseFloat(m.scale) || 1);
+            gameState.effects.push({
+                type: 'kasiyasP2JumpTrail',
+                renderType: action.VFX_Type,
+                x: startX,
+                y: startY,
+                z: (parseFloat(m.z) || 0) + bodyZ * 0.50,
+                targetX,
+                targetY,
+                dir: m.faceDir || 1,
+                w: Math.max(180, Math.abs(targetX - startX) * 0.62),
+                h: Math.max(100, bodyZ * 0.90),
+                life: Math.min(duration, 0.45),
+                maxLife: Math.min(duration, 0.45),
+                color: 'rgba(255,58,42,0.74)',
+                accentColor: 'rgba(22,0,0,0.86)'
+            });
+        }
+        return boss.actionMove;
+    },
+
+
     prepareBossDashMoveToPlayer: function(m, action, gameState, options = {}) {
         const boss = m && m.boss ? m.boss : null;
         const p = gameState && gameState.player ? gameState.player : null;
@@ -627,11 +892,133 @@ const BossActionSystem = {
         const isM3RandomRushAction = activePatternSourceId === '231008' && typeof this.isKasiyasMajorPattern3RandomRushAction === 'function' && this.isKasiyasMajorPattern3RandomRushAction(action);
         const actionName = String(action.Action_Name || '').trim();
         const actionId = String(action.Action_ID || '').trim();
+        const defenceType = String(action.Action_Defence_Type || '').trim().toUpperCase();
+        const isFrontDamageImmuneAction = defenceType === 'FRONT_DMG_IMMUNE' || defenceType === 'FRONT_DAMAGE_IMMUNE' || defenceType === 'FRONT_INVINCIBLE';
+        // 전방 면역 기믹을 쓰는 액션에서만 시작 방향을 고정한다.
+        // 2페이즈 기본 5번의 양날검 회전 전진은 260602_1837부터 SUPER_ARMOR + 피해 감소형으로 바뀌었으므로,
+        // 플레이어 추적 중 faceDir이 자연스럽게 갱신되어야 한다.
+        if (isFrontDamageImmuneAction) {
+            boss.doubleEdgeSpinFaceDir = (m.faceDir === -1) ? -1 : 1;
+            boss.doubleEdgeSpinActionId = actionId;
+        } else {
+            boss.doubleEdgeSpinFaceDir = null;
+            boss.doubleEdgeSpinActionId = '';
+        }
         const isM3VanishAction = activePatternSourceId === '231008' && (
             actionId === '241050' ||
             actionName.indexOf('본체 및 분신 사라짐') >= 0 ||
             actionName.indexOf('은신') >= 0
         );
+
+
+        if (type === 'HIDE') {
+            boss.kasiyasP2M2Hidden = true;
+            boss.kasiyasP1M3RushHidden = true;
+            const duration = this.getBossActionDuration(m, action, gameState);
+            const bodyX = ((m.d && m.d.bodyX) || 80) * (m.scale || 1);
+            const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
+            if (Array.isArray(gameState.effects)) {
+                gameState.effects.push({
+                    type: 'afterimageDisappear',
+                    renderType: action.VFX_Type || 'EFT_KASIYAS_P2_HIDE',
+                    x: m.x,
+                    y: m.y,
+                    z: (m.z || 0) + bodyZ * 0.56,
+                    w: bodyX * 1.75,
+                    h: bodyZ * 0.98,
+                    life: Math.max(0.12, Math.min(0.65, duration || 0.35)),
+                    maxLife: Math.max(0.12, Math.min(0.65, duration || 0.35)),
+                    color: 'rgba(255,70,120,0.92)',
+                    accentColor: 'rgba(78,0,96,0.82)'
+                });
+            }
+            this.pushBossDebugLog && this.pushBossDebugLog(gameState, 'HIDE', `${String(action.Action_ID || '').trim()} ${this.getBossDebugName(action)}`, '카시야스 차원 은신');
+            return;
+        }
+
+        // 2페이즈 대형 패턴 2번 최종 포탈 구간.
+        // HIDE 포즈와 WARP 이동은 별도 실루엣 없이 위치만 바꾸며, 포탈 열림 액션에서만 포탈 내부 실루엣을 연출한다.
+        const p2m2Pose = String(action.Action_Pose_Type || '').trim().toUpperCase();
+        const p2m2Vfx = String(action.VFX_Type || action.Effect_Render_Type || '').trim().toUpperCase();
+        if (p2m2Pose === 'POSE_KASIYAS_P2_HIDE') {
+            boss.kasiyasP2M2Hidden = true;
+            boss.kasiyasP1M3RushHidden = true;
+        }
+        if (p2m2Pose === 'POSE_KASIYAS_P2_M2_AIR_SPIN_SLASH') {
+            boss.kasiyasP2M2Hidden = false;
+            boss.kasiyasP1M3RushHidden = false;
+        }
+        if (moveType === 'WARP') {
+            const target = typeof this.getBossFixedMapPosition === 'function' ? this.getBossFixedMapPosition(gameState, action.Action_Move_Direction || action.Action_Position_Group || 'PLACE_MAP_CENTER') : null;
+            if (target) {
+                m.x = Math.max(0, Math.min(Math.max(1, parseFloat(gameState.WORLD_WIDTH) || 1400), parseFloat(target.x) || m.x));
+                m.y = Math.max(0, Math.min(Math.max(1, parseFloat(gameState.WORLD_DEPTH) || 400), parseFloat(target.y) || m.y));
+                m.z = Math.max(0, parseFloat(target.z) || 0);
+                const centerX = (parseFloat(gameState.WORLD_WIDTH) || 1400) / 2;
+                m.faceDir = centerX >= m.x ? 1 : -1;
+                boss.actionMove = { type: 'WARP', startX: m.x, startY: m.y, endX: m.x, endY: m.y, startZ: m.z, endZ: m.z, duration: this.getBossActionDuration(m, action, gameState) };
+            }
+            boss.actionHitFired = true;
+            return;
+        }
+
+
+        if (type === 'REMOVE_ALL_OBJECT' || type === 'CLEAR_PATTERN_TERRAIN_OBJECTS') {
+            const clearPatternId = String(action.Pattern_ID || (boss.activePattern && boss.activePattern.Pattern_ID) || '').trim();
+            if (clearPatternId === '232003' && typeof this.clearKasiyasP2Pattern3Runtime === 'function') {
+                this.clearKasiyasP2Pattern3Runtime(gameState, { clearAllHitboxes: true });
+            } else if (typeof this.clearBossPatternTerrainObjects === 'function') {
+                this.clearBossPatternTerrainObjects(gameState, { patternId: clearPatternId });
+            } else if (gameState && Array.isArray(gameState.bossAttackObjects)) {
+                gameState.bossAttackObjects = gameState.bossAttackObjects.filter(obj => {
+                    const objectType = String(obj && obj.data && obj.data.Object_Type || '').trim().toUpperCase();
+                    return !objectType.startsWith('TERRAIN_');
+                });
+            }
+            boss.actionHitFired = true;
+            boss.actionHitsDone = Math.max(1, parseInt(action.ATK_Hit_Count) || 1);
+            boss.actionCycleTimer = 0;
+            return;
+        }
+
+        // Spawn_Object_ID / Spawn_Object_Group은 CAST 전용이 아니라 모든 패턴 액션에서 사용할 수 있다.
+        // 단, RUSH 액션의 ACTION_START 잔류 검격은 돌진 경로가 먼저 확정된 뒤 생성해야 한다.
+        // 먼저 생성하면 currentDashPath가 이전 경로/빈 경로를 참조해 잔류 검격이 엉뚱한 위치에 깔린다.
+        const actionSpawnTiming = String(action.Object_Spawn_Timing || 'ACTION_START').trim().toUpperCase();
+        const hasActionStartSpawnObject = !!(String(action.Spawn_Object_ID || '').trim() || String(action.Spawn_Object_Group || '').trim());
+        const shouldDeferRushActionStartSpawn = moveType === 'RUSH' && hasActionStartSpawnObject && actionSpawnTiming === 'ACTION_START';
+        const genericActionStartSpawned = shouldDeferRushActionStartSpawn
+            ? false
+            : this.trySpawnBossPatternActionObjectsAtTiming(m, action, gameState, 'ACTION_START');
+
+        if ((type === 'WARNING' || type === 'MOVE') && moveType === 'JUMP') {
+            this.prepareBossJumpMoveToPlayer(m, action, gameState, { pushEffect: true });
+            if (this.isKasiyasP2Pattern3JumpWarningAction && this.isKasiyasP2Pattern3JumpWarningAction(action)) {
+                const atk = this.getBossPatternNextAttackAction ? this.getBossPatternNextAttackAction(m) : null;
+                if (atk && Array.isArray(gameState.effects)) {
+                    const hitbox = this.getBossPatternActionHitbox(m, atk);
+                    const player = gameState.player || {};
+                    const pW = Math.max(0, (parseFloat(player.bodyX) || 0) * (parseFloat(player.scale) || 1));
+                    const pD = Math.max(0, (parseFloat(player.bodyY) || 0) * (parseFloat(player.scale) || 1));
+                    const duration = this.getBossActionDuration(m, action, gameState);
+                    gameState.effects.push({
+                        type: 'warning',
+                        renderType: 'WARNING_HITBOX',
+                        warningRenderType: 'WARNING_HITBOX',
+                        x: hitbox.x,
+                        y: hitbox.y,
+                        z: hitbox.z,
+                        w: hitbox.w + pW,
+                        d: hitbox.d + pD,
+                        h: hitbox.h,
+                        hitboxType: String(atk.Hitbox_Type || 'HITBOX_BOX').trim().toUpperCase(),
+                        displayExpandedByPlayerBody: true,
+                        life: Math.max(0.05, duration),
+                        maxLife: Math.max(0.05, duration)
+                    });
+                }
+            }
+        }
 
         if (isM3VanishAction && typeof this.setKasiyasMajorPattern3RushActorsHidden === 'function') {
             this.setKasiyasMajorPattern3RushActorsHidden(m, gameState, true);
@@ -658,6 +1045,25 @@ const BossActionSystem = {
 
         this.applyBossActionGaze(m, action, gameState);
         this.startBossPatternDialogue(m, action, gameState);
+
+        if (type === 'WAIT' && (vfxType === 'EFT_KASIYAS_P2_CHARGE_ENERGY' || vfxType === 'EFT_KASIYAS_P2_GROUND_PUNCH_CHARGE' || vfxType === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_STANCE' || vfxType === 'EFT_KASIYAS_P2_ONI_STANCE_ENERGY_CHARGE' || vfxType === 'EFT_KASIYAS_P2_ONI_STANCE_FULL_ENERGY' || vfxType === 'EFT_KASIYAS_P2_DOUBLE_SWORD_ANOTHER_ENERGY' || vfxType === 'EFT_KASIYAS_P2_M1_X_SLASH_CHARGE' || vfxType === 'EFT_KASIYAS_P2_M2_WAIT_IN_DIMENSION_PORTAL' || vfxType === 'EFT_KASIYAS_P3_RUSH_SLASH_CHARGE') && typeof this.pushBossCastEffect === 'function') {
+            this.pushBossCastEffect(m, action, gameState);
+            if (vfxType === 'EFT_KASIYAS_P2_ONI_STANCE_FULL_ENERGY') {
+                const nextAtk = (typeof this.getBossPatternNextAttackAction === 'function') ? this.getBossPatternNextAttackAction(m) : null;
+                const nextMoveType = String(nextAtk && (nextAtk.Action_Move_Type || nextAtk.Move_Type) || '').trim().toUpperCase();
+                if (nextAtk && nextMoveType === 'MOVE_RUSH') {
+                    boss.previewDashPath = (typeof this.computeSafeDashPathForActionDirection === 'function')
+                        ? this.computeSafeDashPathForActionDirection(m, nextAtk, gameState, { minLength: 90 })
+                        : this.computeDashPathForActionDirection(m, nextAtk, gameState);
+                    if (boss.previewDashPath) {
+                        const width = 28;
+                        const duration = this.getBossActionDuration(m, action, gameState);
+                        this.pushPathWarningEffect(boss.previewDashPath, width, duration, 'EFT_WARNING_RUSH_LINE', gameState);
+                    }
+                }
+            }
+            boss.actionHitFired = true;
+        }
 
         if (type === 'MOVE_GROUP') {
             this.prepareBossGroupSlotShuffle(m, action, gameState);
@@ -716,8 +1122,46 @@ const BossActionSystem = {
                 m.x = Number.isFinite(parseFloat(boss.currentDashPath.startX)) ? parseFloat(boss.currentDashPath.startX) : m.x;
                 m.y = Number.isFinite(parseFloat(boss.currentDashPath.startY)) ? parseFloat(boss.currentDashPath.startY) : m.y;
                 m.faceDir = (parseFloat(boss.currentDashPath.dirX) || 0) >= 0 ? 1 : -1;
+                const rushVfx = String(action.VFX_Type || action.Effect_Render_Type || '').trim().toUpperCase();
+                if (rushVfx === 'EFT_KASIYAS_P3_HIGH_SPEED_RUSH_SLASH' && Array.isArray(gameState.effects)) {
+                    const pathForFx = boss.currentDashPath;
+                    const sx = Number.isFinite(parseFloat(pathForFx.startX)) ? parseFloat(pathForFx.startX) : m.x;
+                    const sy = Number.isFinite(parseFloat(pathForFx.startY)) ? parseFloat(pathForFx.startY) : m.y;
+                    const ex = Number.isFinite(parseFloat(pathForFx.endX)) ? parseFloat(pathForFx.endX) : sx;
+                    const ey = Number.isFinite(parseFloat(pathForFx.endY)) ? parseFloat(pathForFx.endY) : sy;
+                    const midX = (sx + ex) * 0.5;
+                    const midY = (sy + ey) * 0.5;
+                    const dist = Math.max(1, Math.hypot(ex - sx, ey - sy));
+                    const bodyZ = ((m.d && m.d.bodyZ) || 170) * (m.scale || 1);
+                    gameState.effects.push({
+                        type: 'p3HighSpeedRushTrail',
+                        renderType: 'EFT_KASIYAS_P3_HIGH_SPEED_RUSH_TRAIL',
+                        x: midX,
+                        y: midY,
+                        z: Math.max(50, (parseFloat(m.z) || 0) + bodyZ * 0.46),
+                        startX: sx,
+                        startY: sy,
+                        endX: ex,
+                        endY: ey,
+                        dir: ex >= sx ? 1 : -1,
+                        w: Math.max(220, dist),
+                        d: Math.max(150, parseFloat(action.Hitbox_Size_Y) || 170),
+                        h: Math.max(130, bodyZ * 0.78),
+                        life: 0.42,
+                        maxLife: 0.42,
+                        color: 'rgba(154,76,255,0.42)',
+                        accentColor: 'rgba(14,0,36,0.88)',
+                        hotColor: 'rgba(226,210,255,0.60)'
+                    });
+                }
             }
             if (isM3RandomRushAction && boss) boss.kasiyasP1M3RushHidden = false;
+
+            // 돌진 경로가 확정된 뒤에 ACTION_START 오브젝트를 생성한다.
+            // 1페이즈 기본2와 2페이즈 기본4의 잔류 검격은 이 시점의 currentDashPath를 복사해 사용한다.
+            if (shouldDeferRushActionStartSpawn) {
+                this.trySpawnBossPatternActionObjectsAtTiming(m, action, gameState, 'ACTION_START');
+            }
 
             // 대형 패턴 3번 돌진은 경로 전체에 공격 이펙트를 미리 깔지 않는다.
             // 실제 이동 중인 카시야스의 몸/검에 부착형 이펙트를 계속 붙여서,
@@ -727,9 +1171,72 @@ const BossActionSystem = {
 
         if (type === 'ATK') {
             // RUSH 공격은 위에서 path 기반 이펙트를 사용한다.
-            // 일반 위치 기준 cue 이펙트를 중복 출력하면 방향이 다르게 보일 수 있으므로 제외한다.
-            if (moveType !== 'RUSH') this.pushBossActionCueEffect(m, action, gameState);
-            this.pushBossActiveAttackRangeWarning(m, action, gameState);
+            // 일반 위치 기준 cue/박스형 공격 범위 경고를 중복 출력하면 잔류 검격 시퀀스와 전조가 꼬여 보일 수 있으므로 제외한다.
+            if (moveType !== 'RUSH') {
+                this.pushBossActionCueEffect(m, action, gameState);
+                this.pushBossActiveAttackRangeWarning(m, action, gameState);
+            }
+        }
+
+        if (type === 'MOVE' && moveType === 'WARP') {
+            const moveDir = String(action.Action_Move_Direction || '').trim().toUpperCase();
+            const normalizedPlace = this.normalizeBossFixedMapPlaceType ? this.normalizeBossFixedMapPlaceType(moveDir) : moveDir;
+            if (typeof this.isBossFixedMapPlaceType === 'function' && this.isBossFixedMapPlaceType(normalizedPlace)) {
+                const target = this.getBossFixedMapPosition(gameState, normalizedPlace);
+                const bodyX = ((m.d && m.d.bodyX) || 80) * (m.scale || 1);
+                const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
+                const startX = Number.isFinite(parseFloat(m.x)) ? parseFloat(m.x) : 0;
+                const startY = Number.isFinite(parseFloat(m.y)) ? parseFloat(m.y) : 0;
+                if (typeof this.pushBossNoiseTeleportEffect === 'function') {
+                    this.pushBossNoiseTeleportEffect(gameState, m.x, m.y, m.z + bodyZ * 0.48, bodyX * 1.45, bodyZ * 0.78, action.VFX_Type || action.Effect_Render_Type || 'EFT_KASIYAS_P2_WARP', 'VANISH');
+                }
+                const upperWarpVfx = String(action.VFX_Type || action.Effect_Render_Type || '').trim().toUpperCase();
+                if (upperWarpVfx === 'EFT_KASIYAS_P3_HIGH_SPEED_RUSH_SLASH' && Array.isArray(gameState.effects)) {
+                    const midX = (startX + target.x) * 0.5;
+                    const midY = (startY + target.y) * 0.5;
+                    const dist = Math.max(1, Math.hypot(target.x - startX, target.y - startY));
+                    gameState.effects.push({
+                        type: 'p3HighSpeedRushTrail',
+                        renderType: 'EFT_KASIYAS_P3_HIGH_SPEED_RUSH_TRAIL',
+                        x: midX,
+                        y: midY,
+                        z: Math.max(52, (parseFloat(m.z) || 0) + bodyZ * 0.46),
+                        startX,
+                        startY,
+                        endX: target.x,
+                        endY: target.y,
+                        dir: target.x >= startX ? 1 : -1,
+                        w: Math.max(220, dist),
+                        d: 170,
+                        h: Math.max(140, bodyZ * 0.82),
+                        life: 0.48,
+                        maxLife: 0.48
+                    });
+                }
+                m.x = target.x;
+                m.y = target.y;
+                m.z = 0;
+                if (typeof this.pushBossNoiseTeleportEffect === 'function') {
+                    this.pushBossNoiseTeleportEffect(gameState, m.x, m.y, m.z + bodyZ * 0.48, bodyX * 1.45, bodyZ * 0.78, action.VFX_Type || action.Effect_Render_Type || 'EFT_KASIYAS_P2_WARP', 'APPEAR');
+                }
+                const nextAtk = (typeof this.getBossPatternNextAttackAction === 'function') ? this.getBossPatternNextAttackAction(m) : null;
+                const nextMoveType = this.normalizeBossActionMoveType ? this.normalizeBossActionMoveType(nextAtk && (nextAtk.Action_Move_Type || nextAtk.Move_Type)) : String(nextAtk && (nextAtk.Action_Move_Type || nextAtk.Move_Type) || '').trim().toUpperCase();
+                if (nextAtk && nextMoveType === 'RUSH') {
+                    boss.previewDashPath = (typeof this.computeSafeDashPathForActionDirection === 'function')
+                        ? this.computeSafeDashPathForActionDirection(m, nextAtk, gameState, { minLength: 90 })
+                        : this.computeDashPathForActionDirection(m, nextAtk, gameState);
+                    if (boss.previewDashPath) {
+                        const duration = this.getBossActionDuration(m, action, gameState);
+                        this.pushPathWarningEffect(boss.previewDashPath, 28, duration, 'EFT_WARNING_RUSH_LINE', gameState);
+                        m.faceDir = (parseFloat(boss.previewDashPath.dirX) || 0) >= 0 ? 1 : -1;
+                    }
+                } else {
+                    m.faceDir = target.x >= startX ? 1 : -1;
+                }
+                boss.actionMove = null;
+                boss.actionHitFired = true;
+                return;
+            }
         }
 
         if (type === 'MOVE' && moveType === 'DASH') {
@@ -902,20 +1409,13 @@ const BossActionSystem = {
             }
 
             if (spawnTiming === 'ACTION_END') {
-                boss.actionHitFired = false;
                 return;
             }
 
-            this.spawnBossAttackObjectFromAction(m, action, gameState);
-            boss.actionHitFired = true;
+            if (!genericActionStartSpawned) {
+                this.trySpawnBossPatternActionObjectsAtTiming(m, action, gameState, 'ACTION_START');
+            }
             return;
-        }
-
-        // 공격 액션 시작과 동시에 오브젝트를 생성하는 방식. 천귀살 잔류 검격에 사용한다.
-        const spawnObjectId = String(action.Spawn_Object_ID || '').trim();
-        const spawnTiming = String(action.Object_Spawn_Timing || '').trim().toUpperCase();
-        if (spawnObjectId && spawnTiming === 'ACTION_START') {
-            this.spawnBossAttackObjectFromAction(m, action, gameState);
         }
     },
 
@@ -923,7 +1423,7 @@ const BossActionSystem = {
     updateBossPatternActionMovement: function(m, action, deltaTime, gameState) {
         const moveType = this.normalizeBossActionMoveType(action.Action_Move_Type);
         const actionType = String(action.Action_Type || '').trim().toUpperCase();
-        if (moveType !== 'WALK' && moveType !== 'RUSH' && moveType !== 'DASH' && moveType !== 'MOVE_SHOULDER_ATK' && moveType !== 'NOISE' && actionType !== 'MOVE_GROUP') return;
+        if (moveType !== 'WALK' && moveType !== 'RUSH' && moveType !== 'DASH' && moveType !== 'JUMP' && moveType !== 'MOVE_SHOULDER_ATK' && moveType !== 'NOISE' && actionType !== 'MOVE_GROUP') return;
 
         if (moveType === 'RUSH') {
             const boss = m.boss;
@@ -946,8 +1446,17 @@ const BossActionSystem = {
 
             const duration = this.getBossActionDuration(m, action, gameState);
             const t = Math.max(0, Math.min(1, m.timer / duration));
+            const spinPose = String(action.Action_Pose_Type || '').trim().toUpperCase() === 'POSE_KASIYAS_P2_M2_AIR_SPIN_SLASH';
+            if (spinPose) {
+                path.endZ = 0;
+                if (!Number.isFinite(parseFloat(path.startZ))) path.startZ = parseFloat(m.z) || 0;
+            }
             m.x = path.startX + (path.endX - path.startX) * t;
             m.y = path.startY + (path.endY - path.startY) * t;
+            const sz = Number.isFinite(parseFloat(path.startZ)) ? parseFloat(path.startZ) : (parseFloat(m.z) || 0);
+            const ez = Number.isFinite(parseFloat(path.endZ)) ? parseFloat(path.endZ) : sz;
+            m.z = sz + (ez - sz) * t + (spinPose ? Math.sin(Math.PI * t) * 28 : 0);
+            if (t >= 0.995 && spinPose) m.z = 0;
             m.faceDir = path.dirX >= 0 ? 1 : -1;
             if (boss && isM3RandomRushAction) boss.kasiyasP1M3RushHidden = t >= 0.995;
             if (typeof this.pushKasiyasRushBodyEffect === 'function') {
@@ -971,6 +1480,25 @@ const BossActionSystem = {
             return;
         }
 
+        if (moveType === 'JUMP') {
+            const boss = m.boss;
+            let move = boss && boss.actionMove ? boss.actionMove : null;
+            if (!move) move = this.prepareBossJumpMoveToPlayer(m, action, gameState, { pushEffect: false });
+            if (!move) return;
+            const duration = this.getBossActionDuration(m, action, gameState);
+            const t = Math.max(0, Math.min(1, m.timer / Math.max(0.001, duration)));
+            const ease = t * t * (3 - 2 * t);
+            m.x = move.startX + (move.endX - move.startX) * ease;
+            m.y = move.startY + (move.endY - move.startY) * ease;
+            const arc = Math.sin(Math.PI * t);
+            m.z = (parseFloat(move.startZ) || 0) * (1 - ease) + (parseFloat(move.endZ) || 0) * ease + (parseFloat(move.jumpHeight) || 120) * arc;
+            m.x = Math.max(0, Math.min(gameState.WORLD_WIDTH, m.x));
+            m.y = Math.max(0, Math.min(gameState.WORLD_DEPTH, m.y));
+            if (Math.abs(move.endX - move.startX) > 0.001) m.faceDir = move.endX >= move.startX ? 1 : -1;
+            if (t >= 0.999) m.z = Math.max(0, parseFloat(move.endZ) || 0);
+            return;
+        }
+
         if (moveType === 'DASH') {
             const boss = m.boss;
             let move = boss && boss.actionMove ? boss.actionMove : null;
@@ -990,6 +1518,130 @@ const BossActionSystem = {
             m.x = Math.max(0, Math.min(gameState.WORLD_WIDTH, m.x));
             m.y = Math.max(0, Math.min(gameState.WORLD_DEPTH, m.y));
             m.faceDir = (move.endX - move.startX) >= 0 ? 1 : -1;
+            return;
+        }
+
+        if (moveType === 'WALK') {
+            const duration = Math.max(0.001, this.getBossActionDuration(m, action, gameState));
+            const moveDir = String(action.Action_Move_Direction || '').trim().toUpperCase();
+            const boss = m.boss || null;
+            const player = gameState && gameState.player ? gameState.player : null;
+            const isChaseWalk = (moveDir === 'CHASE_ENEMY' || moveDir === 'TO_PLAYER') && player;
+            const rawMoveDistance = parseFloat(action.Action_Move_Distance);
+            const hasMoveDistance = Number.isFinite(rawMoveDistance) && rawMoveDistance > 0;
+            const rawStopDistance = parseFloat(action.Action_Move_Stop_Distance);
+            const eff = String(action.VFX_Type || '').trim().toUpperCase();
+            const isDoubleEdgeSpin = eff === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_SPIN';
+            const defaultStopDistance = isDoubleEdgeSpin ? 135 : 105;
+            const stopDistance = Number.isFinite(rawStopDistance) && rawStopDistance > 0 ? rawStopDistance : defaultStopDistance;
+
+            if (isChaseWalk && hasMoveDistance) {
+                // 기존 1/2페이즈 기본 연속베기용 MOVE_WALK는 '지속 추격'이 아니라
+                // 액션 시작 시점에 계산한 짧은 거리 보정 이동이다. 매 프레임 플레이어를 추격하면
+                // Action_Move_Speed_Rate=4가 그대로 적용되어 플레이어와 겹치는 문제가 생긴다.
+                let move = boss && boss.actionMove && boss.actionMove.type === 'WALK_LIMITED_CHASE' && boss.actionMove.actionId === String(action.Action_ID || '').trim()
+                    ? boss.actionMove
+                    : null;
+                if (!move) {
+                    const sx = Number.isFinite(parseFloat(m.x)) ? parseFloat(m.x) : 0;
+                    const sy = Number.isFinite(parseFloat(m.y)) ? parseFloat(m.y) : 0;
+                    const px = Number.isFinite(parseFloat(player.x)) ? parseFloat(player.x) : sx;
+                    const py = Number.isFinite(parseFloat(player.y)) ? parseFloat(player.y) : sy;
+                    const dx = px - sx;
+                    const dy = py - sy;
+                    const dist = Math.hypot(dx, dy) || 1;
+                    const allowed = Math.max(0, Math.min(rawMoveDistance, dist - stopDistance));
+                    const dirX = Math.abs(dx) > 0.001 ? dx / dist : (m.faceDir === -1 ? -1 : 1);
+                    const dirY = Math.abs(dy) > 0.001 ? dy / dist : 0;
+                    move = {
+                        type: 'WALK_LIMITED_CHASE',
+                        actionId: String(action.Action_ID || '').trim(),
+                        startX: sx,
+                        startY: sy,
+                        endX: Math.max(0, Math.min(gameState.WORLD_WIDTH, sx + dirX * allowed)),
+                        endY: Math.max(0, Math.min(gameState.WORLD_DEPTH, sy + dirY * allowed)),
+                        duration: duration
+                    };
+                    if (boss) boss.actionMove = move;
+                    if (Math.abs(dx) > 2) m.faceDir = dx >= 0 ? 1 : -1;
+                }
+                const t = Math.max(0, Math.min(1, (parseFloat(m.timer) || 0) / Math.max(0.001, move.duration || duration)));
+                const ease = t * t * (3 - 2 * t);
+                m.x = move.startX + (move.endX - move.startX) * ease;
+                m.y = move.startY + (move.endY - move.startY) * ease;
+                m.x = Math.max(0, Math.min(gameState.WORLD_WIDTH, m.x));
+                m.y = Math.max(0, Math.min(gameState.WORLD_DEPTH, m.y));
+                if (Math.abs(move.endX - move.startX) > 0.001) m.faceDir = move.endX >= move.startX ? 1 : -1;
+            } else {
+                let dirX = m.faceDir === -1 ? -1 : 1;
+                let dirY = 0;
+                if (isChaseWalk) {
+                    const px = Number.isFinite(parseFloat(player.x)) ? parseFloat(player.x) : (parseFloat(m.x) || 0);
+                    const py = Number.isFinite(parseFloat(player.y)) ? parseFloat(player.y) : (parseFloat(m.y) || 0);
+                    const dx = px - (parseFloat(m.x) || 0);
+                    const dy = py - (parseFloat(m.y) || 0);
+                    const dist = Math.hypot(dx, dy) || 1;
+                    if (Math.abs(dx) > 2) m.faceDir = dx >= 0 ? 1 : -1;
+                    if (dist > stopDistance) {
+                        dirX = Math.abs(dx) > 4 ? dx / dist : (m.faceDir === -1 ? -1 : 1);
+                        dirY = Math.abs(dy) > 8 ? dy / dist : 0;
+                        const dirLen = Math.hypot(dirX, dirY) || 1;
+                        dirX /= dirLen;
+                        dirY /= dirLen;
+                        const speed = Math.max(30, this.getBossActionMoveSpeed(m, action, boss) || 90);
+                        const step = Math.min(speed * deltaTime, Math.max(0, dist - stopDistance));
+                        m.x += dirX * step;
+                        m.y += dirY * step;
+                    }
+                } else {
+                    const speed = Math.max(30, this.getBossActionMoveSpeed(m, action, boss) || 90);
+                    m.x += dirX * speed * deltaTime;
+                    m.y += dirY * speed * deltaTime;
+                }
+                m.x = Math.max(0, Math.min(gameState.WORLD_WIDTH, m.x));
+                m.y = Math.max(0, Math.min(gameState.WORLD_DEPTH, m.y));
+            }
+
+            if (isDoubleEdgeSpin && Array.isArray(gameState.effects)) {
+                const last = parseFloat(m.kasiyasP2DoubleEdgeSpinFxTimer);
+                const now = parseFloat(m.timer) || 0;
+                if (!Number.isFinite(last) || now < last || now - last >= 0.045) {
+                    m.kasiyasP2DoubleEdgeSpinFxTimer = now;
+                    const scale = parseFloat(m.scale) || 1;
+                    const bodyX = ((m.d && parseFloat(m.d.bodyX)) || 80) * scale;
+                    const bodyY = ((m.d && parseFloat(m.d.bodyY)) || 60) * scale;
+                    const bodyZ = ((m.d && parseFloat(m.d.bodyZ)) || 160) * scale;
+                    const dir = m.faceDir === -1 ? -1 : 1;
+                    const rawHitX = parseFloat(action.Hitbox_Size_X);
+                    const rawHitY = parseFloat(action.Hitbox_Size_Y);
+                    const rawHitZ = parseFloat(action.Hitbox_Size_Z);
+                    const hitW = Math.max(48, (Number.isFinite(rawHitX) && rawHitX > 0 ? rawHitX : bodyX * 1.25) * scale);
+                    const hitD = Math.max(30, (Number.isFinite(rawHitY) && rawHitY > 0 ? rawHitY : bodyY * 1.05) * scale);
+                    const hitH = Math.max(80, (Number.isFinite(rawHitZ) && rawHitZ > 0 ? rawHitZ : bodyZ * 1.05) * scale);
+                    const offXRaw = parseFloat(action.Hitbox_Offset_X);
+                    const offYRaw = parseFloat(action.Hitbox_Offset_Y);
+                    const offZRaw = parseFloat(action.Hitbox_Offset_Z);
+                    const offX = (Number.isFinite(offXRaw) ? offXRaw : Math.max(60, bodyX * 0.72)) * scale * dir;
+                    const offY = (Number.isFinite(offYRaw) ? offYRaw : 0) * scale;
+                    const offZ = (Number.isFinite(offZRaw) ? offZRaw : 0) * scale;
+                    gameState.effects.push({
+                        type: 'kasiyasDoubleEdgedSpin',
+                        renderType: eff,
+                        x: m.x + offX,
+                        y: m.y + offY,
+                        z: m.z + offZ + hitH * 0.52,
+                        dir: dir,
+                        w: hitW,
+                        d: hitD,
+                        h: hitH,
+                        life: 0.22,
+                        maxLife: 0.22,
+                        color: 'rgba(92,6,8,0.82)',
+                        accentColor: 'rgba(226,32,24,0.78)',
+                        hotColor: 'rgba(255,224,196,0.92)'
+                    });
+                }
+            }
             return;
         }
 

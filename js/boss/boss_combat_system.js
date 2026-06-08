@@ -191,6 +191,42 @@ const BossCombatSystem = {
         return true;
     },
 
+
+    moveKasiyasToMapCenterForCrossGroggy: function(m, gameState) {
+        if (!m || !gameState) return null;
+        let center = null;
+        if (typeof this.getBossFixedMapPosition === 'function') {
+            center = this.getBossFixedMapPosition(gameState, 'PLACE_MAP_CENTER');
+        } else if (typeof BossActionSystem !== 'undefined' && BossActionSystem.getBossFixedMapPosition) {
+            center = BossActionSystem.getBossFixedMapPosition(gameState, 'PLACE_MAP_CENTER');
+        }
+        const worldW = Math.max(1, parseFloat(gameState.WORLD_WIDTH) || 1400);
+        const worldD = Math.max(1, parseFloat(gameState.WORLD_DEPTH) || 400);
+        const targetX = Math.max(0, Math.min(worldW, parseFloat(center && center.x) || worldW / 2));
+        const targetY = Math.max(0, Math.min(worldD, parseFloat(center && center.y) || worldD / 2));
+        const fromX = parseFloat(m.x) || 0;
+        const fromY = parseFloat(m.y) || 0;
+
+        m.x = targetX;
+        m.y = targetY;
+        m.z = 0;
+        m.vx = 0;
+        m.vy = 0;
+        m.kbVx = 0;
+        m.kbVy = 0;
+        if (m.boss) {
+            m.boss.previewDashPath = null;
+            m.boss.currentDashPath = null;
+            m.boss.lastDashPath = null;
+            m.boss.actionMove = null;
+        }
+        const p = gameState.player || null;
+        if (p && Math.abs((parseFloat(p.x) || 0) - targetX) > 0.001) {
+            m.faceDir = ((parseFloat(p.x) || 0) >= targetX) ? 1 : -1;
+        }
+        return { fromX, fromY, x: targetX, y: targetY };
+    },
+
     resolveKasiyasMajorPattern3PendingCrossGroggy: function(m, gameState) {
         const boss = m && m.boss ? m.boss : null;
         const rt = boss && boss.majorPattern3Runtime ? boss.majorPattern3Runtime : null;
@@ -252,6 +288,32 @@ const BossCombatSystem = {
                 });
             }
         }
+        // 교차 발도는 돌진 도착지점에서 파훼 연출을 보여준 뒤,
+        // 화면 플래시 중 맵 중앙으로 위치를 보정하고 그로기에 진입한다.
+        const centerMove = (typeof this.moveKasiyasToMapCenterForCrossGroggy === 'function')
+            ? this.moveKasiyasToMapCenterForCrossGroggy(m, gameState)
+            : (BossCombatSystem.moveKasiyasToMapCenterForCrossGroggy
+                ? BossCombatSystem.moveKasiyasToMapCenterForCrossGroggy.call(this, m, gameState)
+                : null);
+        if (gameState && centerMove) {
+            const bodyZAfterMove = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
+            gameState.effects.push({
+                type: 'hitSpark',
+                renderType: 'EFT_CROSS_SLASH_GROGGY_CENTER_WARP',
+                x: m.x,
+                y: m.y,
+                z: m.z + bodyZAfterMove * 0.64,
+                dir: m.faceDir || 1,
+                w: ((m.d && m.d.bodyX) || 80) * (m.scale || 1) * 2.2,
+                h: bodyZAfterMove,
+                burstScale: 1.8,
+                life: 0.36,
+                maxLife: 0.36,
+                color: 'rgba(255,250,225,0.90)',
+                accentColor: 'rgba(255,210,80,0.82)'
+            });
+        }
+
         const actionForGroggy = { ...(pending.action || {}) };
         if (pending.groggyTime !== null && pending.groggyTime !== undefined) actionForGroggy.Groggy_Time = pending.groggyTime;
         if (pending.groggyPoseType) actionForGroggy.Groggy_Pose_Type = pending.groggyPoseType;
@@ -373,6 +435,355 @@ const BossCombatSystem = {
         }
     },
 
+    getKasiyasP2M2FinalPortalDirectionForAction: function(action) {
+        const id = String(action && action.Action_ID || '').trim();
+        const group = String(action && action.Random_Action_Group || '').trim().toUpperCase();
+        const name = String(action && action.Action_Name || '').trim();
+        if (id === '242065' || group.indexOf('LEFT') >= 0 || name.indexOf('좌측') >= 0) return 'LEFT';
+        if (id === '242062' || group.indexOf('RIGHT') >= 0 || name.indexOf('우측') >= 0) return 'RIGHT';
+        return '';
+    },
+
+    findKasiyasP2M2MatchingFiredSword: function(gameState, direction) {
+        const dir = String(direction || '').trim().toUpperCase();
+        if (!dir || !gameState || !Array.isArray(gameState.bossAttackObjects)) return null;
+        for (const obj of gameState.bossAttackObjects) {
+            if (!obj || obj.active === false) continue;
+            const kind = String(obj.kind || '').trim();
+            const data = obj.data || {};
+            const type = String(obj.objectType || data.Object_Type || '').trim().toUpperCase();
+            const renderType = String(obj.renderType || data.Object_Render_Type || '').trim().toUpperCase();
+            const isFired = kind === 'p2m2FiredGiantSword' || type === 'FIRE_OBJECT' || renderType === 'OBJ_P2_M2_FIRE_GIANT_SWORD';
+            if (!isFired) continue;
+            let fireDir = String(obj.fireDirection || '').trim().toUpperCase();
+            if (fireDir !== 'LEFT' && fireDir !== 'RIGHT') fireDir = (parseFloat(obj.vx) || 0) < 0 ? 'LEFT' : 'RIGHT';
+            if (fireDir === dir) return obj;
+        }
+        const remembered = gameState && gameState.p2m2LastFiredSword ? gameState.p2m2LastFiredSword : null;
+        if (remembered) {
+            const rememberedDir = String(remembered.direction || '').trim().toUpperCase();
+            const timeLeft = parseFloat(remembered.timer) || 0;
+            if (timeLeft > 0 && rememberedDir === dir) {
+                return {
+                    kind: 'p2m2FiredGiantSwordMemory',
+                    fireDirection: rememberedDir,
+                    x: Number.isFinite(parseFloat(remembered.x)) ? parseFloat(remembered.x) : ((dir === 'LEFT') ? 0 : (parseFloat(gameState.WORLD_WIDTH) || 1400)),
+                    y: Number.isFinite(parseFloat(remembered.y)) ? parseFloat(remembered.y) : ((parseFloat(gameState.WORLD_DEPTH) || 400) * 0.5),
+                    z: Number.isFinite(parseFloat(remembered.z)) ? parseFloat(remembered.z) : 180,
+                    w: Number.isFinite(parseFloat(remembered.w)) ? parseFloat(remembered.w) : 300,
+                    h: Number.isFinite(parseFloat(remembered.h)) ? parseFloat(remembered.h) : 160,
+                    memory: true
+                };
+            }
+        }
+        return null;
+    },
+
+
+    getKasiyasP2M2FinalPortalImpactPosition: function(gameState, direction) {
+        const dir = String(direction || '').trim().toUpperCase();
+        const place = dir === 'LEFT' ? 'PLACE_MAP_LEFT_AIR' : 'PLACE_MAP_RIGHT_AIR';
+        const pos = typeof this.getBossFixedMapPosition === 'function' ? this.getBossFixedMapPosition(gameState, place) : null;
+        const worldW = Math.max(1, parseFloat(gameState && gameState.WORLD_WIDTH) || 1400);
+        const worldD = Math.max(1, parseFloat(gameState && gameState.WORLD_DEPTH) || 400);
+        return {
+            x: pos && Number.isFinite(parseFloat(pos.x)) ? parseFloat(pos.x) : (dir === 'LEFT' ? Math.max(130, worldW * 0.105) : worldW - Math.max(130, worldW * 0.105)),
+            y: pos && Number.isFinite(parseFloat(pos.y)) ? parseFloat(pos.y) : Math.max(34, worldD * 0.12),
+            z: pos && Number.isFinite(parseFloat(pos.z)) ? parseFloat(pos.z) : 260
+        };
+    },
+
+    startKasiyasP2M2PerfectBreakSequence: function(m, action, gameState, hitContext = {}) {
+        const boss = m && m.boss ? m.boss : null;
+        if (!boss || !action || !gameState || boss.p2M2PerfectBreakPending) return false;
+        const direction = this.getKasiyasP2M2FinalPortalDirectionForAction(action);
+        const actionId = String(action.Action_ID || '').trim();
+        const actionName = String(action.Action_Name || '').trim();
+        const isPortalPhase = actionId === '242062' || actionId === '242066' || actionName.indexOf('포탈 열림') >= 0;
+        const fired = hitContext && hitContext.fired ? hitContext.fired : null;
+        const bodyZ = ((m.d && m.d.bodyZ) || 170) * (m.scale || 1);
+        const portalImpact = isPortalPhase && typeof this.getKasiyasP2M2FinalPortalImpactPosition === 'function'
+            ? this.getKasiyasP2M2FinalPortalImpactPosition(gameState, direction)
+            : null;
+        // 판정 구조는 안정판(step195)을 유지하되, 연출 좌표만 포탈/카시야스 실제 연출 위치에 가깝게 보정한다.
+        const px = isPortalPhase
+            ? (portalImpact && Number.isFinite(parseFloat(portalImpact.x)) ? parseFloat(portalImpact.x) : (fired && Number.isFinite(parseFloat(fired.x)) ? parseFloat(fired.x) : m.x))
+            : (fired && Number.isFinite(parseFloat(fired.x)) ? (parseFloat(fired.x) + (parseFloat(m.x) || 0)) * 0.5 : m.x);
+        const py = isPortalPhase
+            ? (portalImpact && Number.isFinite(parseFloat(portalImpact.y)) ? parseFloat(portalImpact.y) : (fired && Number.isFinite(parseFloat(fired.y)) ? parseFloat(fired.y) : m.y))
+            : (fired && Number.isFinite(parseFloat(fired.y)) ? (parseFloat(fired.y) + (parseFloat(m.y) || 0)) * 0.5 : m.y);
+        const pz = isPortalPhase
+            ? (portalImpact && Number.isFinite(parseFloat(portalImpact.z)) ? parseFloat(portalImpact.z) : (fired && Number.isFinite(parseFloat(fired.z)) ? parseFloat(fired.z) : 260))
+            : (m.z + bodyZ * 0.70);
+        const effectType = isPortalPhase ? 'EFT_KASIYAS_P2_M2_PORTAL_BREAK' : 'EFT_KASIYAS_P2_M2_GIANT_SWORD_CLASH';
+        const effectDelay = 1.0;
+
+        boss.p2M2FinalResolved = true;
+        boss.p2M2PerfectBreakPending = {
+            action: { ...action },
+            direction,
+            breakType: isPortalPhase ? 'PORTAL' : 'CLASH',
+            breakX: px,
+            breakY: py,
+            breakZ: pz,
+            effectType,
+            effectDelay,
+            effectFired: false,
+            timer: 0,
+            // 안정판의 방향 일치 기반 파훼는 유지하고, 투사체가 날아가는 시간을 약 1초 확보한 뒤 연출을 시작한다.
+            duration: 3.35,
+            flashTime: effectDelay + 1.42,
+            whiteHoldTime: 1.18,
+            flashed: false,
+            centerMoved: false
+        };
+        boss.action = null;
+        boss.actionHitFired = false;
+        boss.actionHitsDone = 0;
+        boss.actionCycleTimer = 0;
+        boss.previewDashPath = null;
+        boss.currentDashPath = null;
+        boss.lastDashPath = null;
+        boss.actionMove = null;
+        boss.parryWindowActive = false;
+        boss.parryCueTimer = 0;
+        // 포탈 붕괴형 완전 파훼에서는 그로기 전까지 카시야스 본체를 노출하지 않는다.
+        // 충돌형은 충돌 장면까지는 보이고, 흰 화면 전환 이후 숨긴다.
+        boss.kasiyasP2M2Hidden = isPortalPhase;
+        boss.kasiyasP1M3RushHidden = false;
+        m.state = 'IDLE';
+        m.kbVx = 0;
+        m.kbVy = 0;
+        m.vx = 0;
+        m.vy = 0;
+
+        if (Array.isArray(gameState.bossAttackObjects)) {
+            const keepLife = Math.max(3.35, parseFloat(boss.p2M2PerfectBreakPending && boss.p2M2PerfectBreakPending.duration) || 3.35);
+            gameState.bossAttackObjects.forEach(obj => {
+                if (!obj) return;
+                const rt = String(obj.renderType || obj.data && obj.data.Object_Render_Type || '').toUpperCase();
+                const isFiredSword = obj.kind === 'p2m2FiredGiantSword' || rt.indexOf('P2_M2_FIRE_GIANT_SWORD') >= 0;
+                if (isFiredSword) {
+                    // 완전 파훼 예약 시점에 발사체를 바로 제거하면, 지연 연출을 넣어도 검이 날아가는 모습이 사라진다.
+                    // 발사체는 그로기 진입/패턴 정리 시 일괄 정리되도록 유지한다.
+                    obj.keepUntilPerfectBreakCleanup = true;
+                    obj.maxLife = Math.max(parseFloat(obj.maxLife) || 0, keepLife);
+                }
+            });
+        }
+        gameState.p2m2LastFiredSword = null;
+
+        // 완전 파훼 확정 직후에는 바로 폭발 연출을 띄우지 않고, 투사체가 날아가는 체감 시간을 확보한다.
+        // 실제 붕괴/충돌 이펙트와 안내는 updateKasiyasP2M2PerfectBreakSequence에서 effectDelay 후 재생한다.
+        return true;
+    },
+
+    updateKasiyasP2M2PerfectBreakSequence: function(m, deltaTime, gameState) {
+        const boss = m && m.boss ? m.boss : null;
+        const pending = boss && boss.p2M2PerfectBreakPending ? boss.p2M2PerfectBreakPending : null;
+        if (!pending || !gameState) return false;
+        const dt = Math.max(0, parseFloat(deltaTime) || 0);
+        pending.timer = Math.max(0, (parseFloat(pending.timer) || 0) + dt);
+        m.state = 'IDLE';
+        m.kbVx = 0;
+        m.kbVy = 0;
+        m.vx = 0;
+        m.vy = 0;
+        boss.action = null;
+        // 연출 중 멀뚱히 서 있는 본체가 보이지 않도록 숨김 상태를 유지한다.
+        boss.kasiyasP2M2Hidden = pending.breakType === 'PORTAL' || !!pending.flashed;
+
+        if (!pending.effectFired && pending.timer >= (parseFloat(pending.effectDelay) || 0)) {
+            pending.effectFired = true;
+            const bodyZForEffect = ((m.d && m.d.bodyZ) || 170) * (m.scale || 1);
+            const isPortalBreak = String(pending.breakType || '').toUpperCase() === 'PORTAL';
+            const ex = Number.isFinite(parseFloat(pending.breakX)) ? parseFloat(pending.breakX) : (isPortalBreak ? m.x : m.x);
+            const ey = Number.isFinite(parseFloat(pending.breakY)) ? parseFloat(pending.breakY) : (isPortalBreak ? m.y : m.y);
+            const ez = Number.isFinite(parseFloat(pending.breakZ)) ? parseFloat(pending.breakZ) : (m.z + bodyZForEffect * 0.70);
+            const dirSign = String(pending.direction || '').toUpperCase() === 'LEFT' ? -1 : 1;
+            if (Array.isArray(gameState.effects)) {
+                gameState.effects.push({
+                    type: 'p2m2PerfectBreak',
+                    renderType: pending.effectType || (isPortalBreak ? 'EFT_KASIYAS_P2_M2_PORTAL_BREAK' : 'EFT_KASIYAS_P2_M2_GIANT_SWORD_CLASH'),
+                    x: ex,
+                    y: ey,
+                    z: ez,
+                    dir: dirSign,
+                    w: isPortalBreak ? 680 : 520,
+                    h: isPortalBreak ? 440 : 320,
+                    life: 1.45,
+                    maxLife: 1.45,
+                    color: isPortalBreak ? 'rgba(120,220,255,0.96)' : 'rgba(255,232,190,0.98)',
+                    accentColor: isPortalBreak ? 'rgba(126,42,255,0.90)' : 'rgba(255,46,36,0.95)'
+                });
+                gameState.effects.push({
+                    type: 'hitSpark',
+                    renderType: 'EFT_KASIYAS_P2_M2_PERFECT_BREAK_FLASH',
+                    x: ex,
+                    y: ey,
+                    z: ez,
+                    w: isPortalBreak ? 560 : 520,
+                    h: isPortalBreak ? 360 : 330,
+                    life: 0.72,
+                    maxLife: 0.72,
+                    color: 'rgba(255,250,220,0.96)',
+                    accentColor: isPortalBreak ? 'rgba(100,220,255,0.82)' : 'rgba(255,140,88,0.86)'
+                });
+            }
+            if (Array.isArray(gameState.floatingTexts)) {
+                const textX = isPortalBreak ? ex : m.x;
+                const textY = isPortalBreak ? ey : m.y;
+                const textZ = isPortalBreak ? ez + 90 : m.z + bodyZForEffect + 76;
+                gameState.floatingTexts.push({ x: textX, y: textY, z: textZ, text: '완전 파훼!', color: '#86f4ff', size: '30px', timer: 1.15 });
+            }
+            try { pushSystemNotice(isPortalBreak ? '거대한 검이 차원문을 붕괴시켰다!' : '거대한 검이 카시야스를 저지했다!', '#86f4ff', 1.1); } catch(e) {}
+        }
+
+        if (!pending.flashed && pending.timer >= pending.flashTime) {
+            pending.flashed = true;
+            // 밝은 전환 화면은 즉시 번쩍이지 않고 약 1초 동안 서서히 하얘진 뒤,
+            // 그로기 진입 직전에 약한 플래시만 주도록 한다.
+            gameState.screenHitFlash = {
+                life: pending.whiteHoldTime || 1.18,
+                maxLife: pending.whiteHoldTime || 1.18,
+                strength: 0.92,
+                mode: 'fullWhite',
+                rampTime: 1.0,
+                peakFlashTime: 0.12,
+                fadeOutTime: 0.04
+            };
+            boss.kasiyasP2M2Hidden = true;
+            const center = typeof this.getBossFixedMapPosition === 'function' ? this.getBossFixedMapPosition(gameState, 'PLACE_MAP_CENTER') : null;
+            if (center) {
+                m.x = parseFloat(center.x) || m.x;
+                m.y = parseFloat(center.y) || m.y;
+            }
+            m.z = 0;
+            boss.previewDashPath = null;
+            boss.currentDashPath = null;
+            boss.lastDashPath = null;
+            boss.actionMove = null;
+            const bodyZ = ((m.d && m.d.bodyZ) || 170) * (m.scale || 1);
+            if (Array.isArray(gameState.effects)) {
+                gameState.effects.push({
+                    type: 'hitSpark',
+                    renderType: 'EFT_CROSS_SLASH_GROGGY_CENTER_WARP',
+                    x: m.x,
+                    y: m.y,
+                    z: m.z + bodyZ * 0.65,
+                    w: ((m.d && m.d.bodyX) || 90) * (m.scale || 1) * 2.8,
+                    h: bodyZ * 1.1,
+                    life: 0.42,
+                    maxLife: 0.42,
+                    color: 'rgba(255,255,232,0.94)',
+                    accentColor: 'rgba(120,220,255,0.88)'
+                });
+            }
+        }
+
+        if (pending.timer >= pending.duration) {
+            const action = pending.action || {};
+            boss.p2M2PerfectBreakPending = null;
+            return this.enterKasiyasP2M2FinalGroggy(m, action, gameState, 'PERFECT');
+        }
+        return true;
+    },
+
+    enterKasiyasP2M2FinalGroggy: function(m, action, gameState, mode = 'PERFECT') {
+        const boss = m && m.boss ? m.boss : null;
+        if (!boss || !gameState || !action) return false;
+        const perfect = String(mode || '').toUpperCase() !== 'PARTIAL';
+        const groggyTime = Math.max(0.2, parseFloat(action.Groggy_Time) || (perfect ? 8 : 5));
+        const groggyPose = String(action.Groggy_Pose_Type || 'POSE_KASIYAS_P2_GROGGY').trim() || 'POSE_KASIYAS_P2_GROGGY';
+        const groggyHitRate = parseFloat(action.Groggy_Hit_DMG_Rate);
+        const center = typeof this.getBossFixedMapPosition === 'function' ? this.getBossFixedMapPosition(gameState, 'PLACE_MAP_CENTER') : null;
+        if (center) {
+            m.x = parseFloat(center.x) || m.x;
+            m.y = parseFloat(center.y) || m.y;
+        }
+        m.z = 0;
+        boss.kasiyasP2M2Hidden = false;
+        boss.kasiyasP1M3RushHidden = false;
+        boss.p2M2FinalResolved = true;
+        if (typeof this.clearKasiyasP2MajorPattern2Runtime === 'function') {
+            this.clearKasiyasP2MajorPattern2Runtime(gameState, { removeObjects: true, keepProgressObjects: false });
+        }
+        if (Array.isArray(gameState.bossAttackObjects)) {
+            gameState.bossAttackObjects = gameState.bossAttackObjects.filter(obj => !(obj && (obj.kind === 'p2m2FiredGiantSword' || String(obj.renderType || obj.data && obj.data.Object_Render_Type || '').toUpperCase().indexOf('P2_M2_FIRE_GIANT_SWORD') >= 0)));
+        }
+        gameState.p2m2LastFiredSword = null;
+        boss.activePattern = null;
+        boss.currentActionIndex = -1;
+        boss.currentLoopIndex = 0;
+        boss.loopCount = 1;
+        boss.action = null;
+        boss.actionHitFired = false;
+        boss.actionHitsDone = 0;
+        boss.actionCycleTimer = 0;
+        boss.previewDashPath = null;
+        boss.currentDashPath = null;
+        boss.actionMove = null;
+        boss.parryWindowActive = false;
+        boss.parryCueTimer = 0;
+        boss.groggyTimer = groggyTime;
+        boss.groggyMaxTime = groggyTime;
+        boss.groggyPoseType = groggyPose;
+        boss.groggyHitDmgRate = (!isNaN(groggyHitRate) && groggyHitRate >= 0) ? groggyHitRate : null;
+        boss.noPatternWaitTimer = Math.max(boss.noPatternWaitTimer || 0, groggyTime);
+        m.state = 'GROGGY';
+        m.timer = 0;
+        m.hasFired = false;
+        m.kbVx = 0;
+        m.kbVy = 0;
+        const p = gameState.player || null;
+        if (!perfect && p) {
+            p.hasP2M2ApostleSwordEnergy = false;
+            p.p2m2ApostleSwordEnergyTimer = 0;
+        }
+        const bodyZ = ((m.d && m.d.bodyZ) || 170) * (m.scale || 1);
+        if (Array.isArray(gameState.effects)) {
+            gameState.effects.push({
+                type: 'hitSpark',
+                renderType: perfect ? 'EFT_P2_M2_FINAL_PORTAL_BREAK' : 'EFT_APOSTLE_GUARD_BREAK',
+                x: m.x, y: m.y, z: m.z + bodyZ * 0.68,
+                w: ((m.d && m.d.bodyX) || 90) * (m.scale || 1) * (perfect ? 3.0 : 2.2),
+                h: bodyZ * (perfect ? 1.35 : 1.0),
+                life: perfect ? 0.62 : 0.42,
+                maxLife: perfect ? 0.62 : 0.42,
+                color: perfect ? 'rgba(120,220,255,0.96)' : 'rgba(255,232,95,0.98)',
+                accentColor: perfect ? 'rgba(120,42,255,0.88)' : 'rgba(255,90,64,0.96)'
+            });
+        }
+        if (Array.isArray(gameState.floatingTexts)) {
+            gameState.floatingTexts.push({ x: m.x, y: m.y, z: m.z + bodyZ + 40, text: perfect ? '완전 파훼!' : '부분 파훼!', color: perfect ? '#86f4ff' : '#ffe45c', size: '30px', timer: 1.0 });
+            gameState.floatingTexts.push({ x: m.x, y: m.y, z: m.z + bodyZ + 10, text: '카시야스 그로기', color: '#ffb84a', size: '22px', timer: 1.0 });
+        }
+        try { pushSystemNotice(perfect ? '완전 파훼! 카시야스 그로기' : '부분 파훼! 카시야스 그로기', perfect ? '#86f4ff' : '#ffe45c', 1.0); } catch(e) {}
+        this.ensureBossDebug(gameState).currentAction = null;
+        this.ensureBossDebug(gameState).currentObjectAction = null;
+        return true;
+    },
+
+    tryResolveKasiyasP2M2FinalPortalHit: function(m, action, gameState) {
+        const boss = m && m.boss ? m.boss : null;
+        if (!boss || !action || !gameState || boss.p2M2FinalResolved) return false;
+        const patternId = String(action.Pattern_ID || boss.activePattern && boss.activePattern.Pattern_ID || '').trim();
+        const cond = String(action.Groggy_Occurrence_Cond || '').trim().toUpperCase();
+        if (patternId !== '232007' || cond !== 'HIT_FIRE_OBJECT') return false;
+        const dir = this.getKasiyasP2M2FinalPortalDirectionForAction(action);
+        if (!dir) return false;
+        const fired = this.findKasiyasP2M2MatchingFiredSword(gameState, dir);
+        if (!fired) return false;
+        // 완전 파훼 판정이 성공해도 발사체를 즉시 비활성화하지 않는다.
+        // step196~198에서 1초 지연 연출을 넣은 상태에서 여기서 active=false를 해버리면
+        // 검이 날아가는 모습이 사라지므로, 그로기 진입/패턴 정리 시점까지 유지한다.
+        if (!fired.memory) {
+            fired.keepUntilPerfectBreakCleanup = true;
+            fired.maxLife = Math.max(parseFloat(fired.maxLife) || 0, 4.2);
+        }
+        return this.startKasiyasP2M2PerfectBreakSequence(m, action, gameState, { fired });
+    },
+
     tryApplyBossGuardSpecialResult: function(m, action, guardResult, gameState) {
         if (!m || !action || !guardResult || !guardResult.guarded || !gameState) return false;
         const boss = m && m.boss ? m.boss : null;
@@ -389,6 +800,12 @@ const BossCombatSystem = {
             if (!this.playerHasTemperedBladeGuard(gameState.player)) return false;
             if (boss && boss.majorPattern3Runtime && (boss.majorPattern3Runtime.crossSlashSpecialResolved || boss.majorPattern3Runtime.pendingCrossSlashGroggy)) return false;
             return this.queueKasiyasMajorPattern3CrossGuardResolve(m, action, gameState, guardResult);
+        }
+
+        if (cond === 'ATK_GUARD_WITH_APOSTLE_ENERGY') {
+            const p = gameState && gameState.player ? gameState.player : null;
+            if (!p || !p.hasP2M2ApostleSwordEnergy) return false;
+            return this.enterKasiyasP2M2FinalGroggy(m, action, gameState, 'PARTIAL');
         }
 
         return false;
@@ -654,13 +1071,89 @@ const BossCombatSystem = {
 
         return this.getBossDefaultDamageRate(m);
     },
+    isBossFrontDamageImmuneAgainstPlayer: function(m, gameState) {
+        if (!m || !gameState || !gameState.player) return false;
+        const boss = m.boss || null;
+        const action = boss && boss.action ? boss.action : null;
+        const defenceType = String(action && action.Action_Defence_Type || '').trim().toUpperCase();
+        if (defenceType !== 'FRONT_DMG_IMMUNE' && defenceType !== 'FRONT_DAMAGE_IMMUNE' && defenceType !== 'FRONT_INVINCIBLE') return false;
+        const p = gameState.player;
+        const scale = parseFloat(m.scale) || 1;
+        const bodyX = ((m.d && parseFloat(m.d.bodyX)) || 80) * scale;
+        const bodyY = ((m.d && parseFloat(m.d.bodyY)) || 60) * scale;
+        const storedFace = boss && Number.isFinite(parseFloat(boss.doubleEdgeSpinFaceDir)) ? parseFloat(boss.doubleEdgeSpinFaceDir) : null;
+        const face = storedFace !== null ? (storedFace < 0 ? -1 : 1) : ((m.faceDir === -1) ? -1 : 1);
+        const px = Number.isFinite(parseFloat(p.x)) ? parseFloat(p.x) : 0;
+        const py = Number.isFinite(parseFloat(p.y)) ? parseFloat(p.y) : 0;
+        const mx = Number.isFinite(parseFloat(m.x)) ? parseFloat(m.x) : 0;
+        const my = Number.isFinite(parseFloat(m.y)) ? parseFloat(m.y) : 0;
+        const dx = px - mx;
+        const dy = Math.abs(py - my);
+        const signedFrontX = dx * face;
+
+        const rawHitX = parseFloat(action.Hitbox_Size_X);
+        const rawHitY = parseFloat(action.Hitbox_Size_Y);
+        const rawOffsetX = parseFloat(action.Hitbox_Offset_X);
+        const hitW = Math.max(bodyX * 1.55, Number.isFinite(rawHitX) && rawHitX > 0 ? rawHitX * scale : bodyX * 2.4);
+        const hitD = Math.max(bodyY * 2.2, Number.isFinite(rawHitY) && rawHitY > 0 ? rawHitY * scale : bodyY * 3.0);
+        const offX = (Number.isFinite(rawOffsetX) ? rawOffsetX : 0) * scale;
+
+        // 양날검 회전 전진은 이동 중 faceDir이 흔들릴 수 있으므로, 액션 시작 시 저장한 방향과
+        // 실제 회전 칼날 히트박스 범위를 함께 사용해 전방 면역 영역을 안정화한다.
+        const frontStart = -bodyX * 0.55;
+        const frontEnd = Math.max(bodyX * 2.3, offX + hitW * 0.65 + bodyX * 0.35);
+        const sideTolerance = Math.max(bodyY * 2.8, hitD * 0.80);
+        return signedFrontX >= frontStart && signedFrontX <= frontEnd && dy <= sideTolerance;
+    },
+
     takeDamage: function(m, baseDmg, gameState) {
         const boss = m && m.boss ? m.boss : null;
         const action = boss && boss.action ? boss.action : null;
         const explicitActionRate = this.getBossExplicitActionDamageRate(action);
         const defenceType = String(action && action.Action_Defence_Type || '').trim().toUpperCase();
 
+        if (boss && boss.kasiyasP2M2Hidden) {
+            const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
+            if (gameState && Array.isArray(gameState.floatingTexts)) {
+                gameState.floatingTexts.push({
+                    x: m.x, y: m.y, z: (m.z || 0) + bodyZ + 18,
+                    text: '차원 은신', color: '#cfa6ff', size: '22px', timer: 0.45
+                });
+            }
+            return;
+        }
+
         if (this.tryResolveBossParryByPlayerHit && this.tryResolveBossParryByPlayerHit(m, gameState)) {
+            return;
+        }
+
+        if (this.isBossFrontDamageImmuneAgainstPlayer && this.isBossFrontDamageImmuneAgainstPlayer(m, gameState)) {
+            const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
+            gameState.floatingTexts.push({
+                x: m.x,
+                y: m.y,
+                z: m.z + bodyZ + 18,
+                text: '전방 면역',
+                color: '#ffb8a8',
+                size: '22px',
+                timer: 0.45
+            });
+            if (Array.isArray(gameState.effects)) {
+                gameState.effects.push({
+                    type: 'hitSpark',
+                    renderType: 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_SPIN',
+                    x: m.x + (m.faceDir === -1 ? -1 : 1) * (((m.d && m.d.bodyX) || 80) * (m.scale || 1) * 0.72),
+                    y: m.y,
+                    z: m.z + bodyZ * 0.50,
+                    dir: m.faceDir || 1,
+                    w: Math.max(118, ((m.d && m.d.bodyX) || 80) * (m.scale || 1) * 1.32),
+                    h: Math.max(160, bodyZ * 0.94),
+                    life: 0.20,
+                    maxLife: 0.20,
+                    color: 'rgba(92,6,8,0.78)',
+                    accentColor: 'rgba(226,32,24,0.72)'
+                });
+            }
             return;
         }
 
@@ -671,7 +1164,7 @@ const BossCombatSystem = {
                 y: m.y,
                 z: m.z + bodyZ + 18,
                 text: '무적',
-                color: '#c7d7ff',
+                color: '#ffb8a8',
                 size: '22px',
                 timer: 0.45
             });
@@ -680,6 +1173,11 @@ const BossCombatSystem = {
 
         let scaledDmg = calcScaledDamage(gameState.player.level, m.d.level, baseDmg);
         let finalDmg = Math.max(1, scaledDmg - m.d.def);
+        // F12 디버그 슈퍼 모드: 후반부 진입 테스트를 쉽게 하기 위해 보스가 받는 플레이어 피해만 10배로 증폭한다.
+        // 차원 방어전 전용 검기 HP/스킬 판정에는 적용하지 않는다.
+        if (gameState && gameState.superDamageMode && !(gameState.specialMode === 'P2_M3_DIMENSION_DEFENSE')) {
+            finalDmg *= 10;
+        }
         const receivedRate = this.getBossReceivedDamageRate(m);
         finalDmg = receivedRate <= 0 ? 0 : Math.max(1, finalDmg * receivedRate);
         if (finalDmg <= 0) {
@@ -689,7 +1187,7 @@ const BossCombatSystem = {
                 y: m.y,
                 z: m.z + bodyZ + 18,
                 text: '피해 0%',
-                color: '#c7d7ff',
+                color: '#ffb8a8',
                 size: '22px',
                 timer: 0.45
             });
@@ -771,21 +1269,61 @@ const BossCombatSystem = {
     },
     getBossPatternActionHitbox: function(m, action) {
         const scale = parseFloat(m && m.scale) || 1;
-        const atkW = (parseFloat(action && action.Hitbox_Size_X) || (m && m.d && m.d.bodyX) || 100) * scale;
-        const atkD = (parseFloat(action && action.Hitbox_Size_Y) || (m && m.d && m.d.bodyY) || 60) * scale;
-        const atkH = (parseFloat(action && action.Hitbox_Size_Z) || (m && m.d && m.d.bodyZ) || 80) * scale;
+        const finalHitboxMul = (typeof this.getKasiyasP2MajorPattern1FinalHitboxMultiplier === 'function')
+            ? this.getKasiyasP2MajorPattern1FinalHitboxMultiplier(m, action)
+            : 1;
+        const hitboxMul = Math.max(0.01, finalHitboxMul || 1);
+        const baseW = (parseFloat(action && action.Hitbox_Size_X) || (m && m.d && m.d.bodyX) || 100) * scale;
+        const baseD = (parseFloat(action && action.Hitbox_Size_Y) || (m && m.d && m.d.bodyY) || 60) * scale;
+        const baseH = (parseFloat(action && action.Hitbox_Size_Z) || (m && m.d && m.d.bodyZ) || 80) * scale;
+        const atkW = baseW * hitboxMul;
+        const atkD = baseD * hitboxMul;
+        const atkH = baseH * hitboxMul;
 
         const rawOffX = parseFloat(action && action.Hitbox_Offset_X);
         const rawOffY = parseFloat(action && action.Hitbox_Offset_Y);
         const rawOffZ = parseFloat(action && action.Hitbox_Offset_Z);
-        const offX = (!isNaN(rawOffX) ? rawOffX : atkW / (2 * scale)) * scale;
-        const offY = (!isNaN(rawOffY) ? rawOffY : 0) * scale;
-        const offZ = (!isNaN(rawOffZ) ? rawOffZ : 0) * scale;
+        const centerFixedEnhance = hitboxMul !== 1 && typeof this.isKasiyasP2MajorPattern1EnhancedAttackAction === 'function'
+            ? this.isKasiyasP2MajorPattern1EnhancedAttackAction(action)
+            : false;
+        const baseOffX = (!isNaN(rawOffX) ? rawOffX : baseW / (2 * scale)) * scale;
+        const baseOffY = (!isNaN(rawOffY) ? rawOffY : 0) * scale;
+        const baseOffZ = (!isNaN(rawOffZ) ? rawOffZ : 0) * scale;
+        // 2페이즈 대형 패턴 1 강화 검격은 크기만 커지고 중심점은 유지되도록 한다.
+        // 특히 Z축을 그대로 키우면 X자 교차점이 위로 밀려 보이므로, 증가한 높이의 절반만큼 아래로 보정한다.
+        const offX = baseOffX;
+        const offY = baseOffY;
+        const offZ = centerFixedEnhance ? baseOffZ - ((atkH - baseH) * 0.5) : baseOffZ;
+
+        const boss = m && m.boss ? m.boss : null;
+        const isP2P3JumpSlash = boss && boss.p2p3JumpSlashTarget &&
+            typeof this.isKasiyasP2Pattern3JumpSlashAction === 'function' &&
+            this.isKasiyasP2Pattern3JumpSlashAction(action);
+        let baseX = isP2P3JumpSlash ? (parseFloat(boss.p2p3JumpSlashTarget.bossX) || m.x || 0) : (m.x || 0);
+        let baseY = isP2P3JumpSlash ? (parseFloat(boss.p2p3JumpSlashTarget.bossY) || m.y || 0) : (m.y || 0);
+        let baseZ = isP2P3JumpSlash ? (parseFloat(boss.p2p3JumpSlashTarget.bossZ) || 0) : (m.z || 0);
+        const hitboxPlace = String(action && (action.Hitbox_Place_Type || action.Warning_Place_Type) || '').trim().toUpperCase();
+        const fixedPlace = hitboxPlace && typeof this.normalizeBossFixedMapPlaceType === 'function'
+            ? this.normalizeBossFixedMapPlaceType(hitboxPlace)
+            : hitboxPlace;
+        const isFixedHitbox = fixedPlace && typeof this.isBossFixedMapPlaceType === 'function' && this.isBossFixedMapPlaceType(fixedPlace);
+        if (isFixedHitbox && typeof this.getBossFixedMapPosition === 'function') {
+            const pos = this.getBossFixedMapPosition((m && m.gameState) || (typeof gameState !== 'undefined' ? gameState : null), fixedPlace);
+            // getBossPatternActionHitbox는 기존 호출부 호환상 gameState를 받지 않으므로,
+            // this.currentGameState가 없을 때는 보스가 가진 world 정보 대신 기본값으로 계산될 수 있다.
+            // 실제 런타임에서는 아래 fallback에서 m.gameState가 없어도 this.getBossFixedMapPosition 내부 기본값을 사용한다.
+            baseX = Number.isFinite(parseFloat(pos && pos.x)) ? parseFloat(pos.x) : baseX;
+            baseY = Number.isFinite(parseFloat(pos && pos.y)) ? parseFloat(pos.y) : baseY;
+            baseZ = Number.isFinite(parseFloat(pos && pos.z)) ? parseFloat(pos.z) : 0;
+        }
+        const faceDir = isFixedHitbox ? 1 : (isP2P3JumpSlash ? (boss.p2p3JumpSlashTarget.faceDir === -1 ? -1 : 1) : ((m.faceDir === -1) ? -1 : 1));
 
         return {
-            x: (m.x || 0) + offX * ((m.faceDir === -1) ? -1 : 1),
-            y: (m.y || 0) + offY,
-            z: (m.z || 0) + offZ,
+            // 고정 위치 히트박스(예: PLACE_MAP_CENTER)도 데이터의 Offset_X/Y/Z를 반영한다.
+            // 단, 고정 위치 판정은 보스 시선 방향과 무관해야 하므로 X 오프셋에는 faceDir을 곱하지 않는다.
+            x: baseX + (isFixedHitbox ? offX : offX * faceDir),
+            y: baseY + offY,
+            z: baseZ + offZ,
             w: atkW,
             d: atkD,
             h: atkH
@@ -859,8 +1397,10 @@ const BossCombatSystem = {
             life: life || 0.12
         });
     },
-    buildGuardInfoFromAttackData: function(data) {
+    buildGuardInfoFromAttackData: function(data, source = null) {
         if (!data) return null;
+        const guardSourceX = source && Number.isFinite(parseFloat(source.x)) ? parseFloat(source.x) : null;
+        const guardSourceY = source && Number.isFinite(parseFloat(source.y)) ? parseFloat(source.y) : null;
         const rewardKey = String(
             data.Guard_Reward_Key ||
             data.Action_Instance_Key ||
@@ -879,13 +1419,18 @@ const BossCombatSystem = {
             guardGetFightingSpirit: Math.max(0, parseFloat(data.Guard_Get_Fighting_Spirit) || 0),
             guardSpecialResultType: String(data.Guard_Special_Result_Type || '').trim().toUpperCase(),
             guardSpecialResultOccurrenceCond: String(data.Guard_Special_Result_Occurrence_Cond || '').trim().toUpperCase(),
+            guardSpecialResultCostType: String(data.Guard_Special_Result_Cost_Type || '').trim().toUpperCase(),
+            guardSpecialResultCostValue: Math.max(0, parseFloat(data.Guard_Special_Result_Cost_Value) || 0),
             guardDirectionType: String(data.Guard_Direction_Type || data.Guard_Direction_Check_Type || '').trim().toUpperCase(),
             guardRewardKey: rewardKey ? `${rewardKey}` : '',
             guardRewardLockTime: hitCount > 1 ? duration + 0.35 : 0.45,
             attackType: data.Attack_Type || data.Action_Attack_Type || data.Object_Type || data.Action_Type || '',
+            guardSourceX: guardSourceX,
+            guardSourceY: guardSourceY,
             makeKnockback: data.ATK_Make_Knockback === true || String(data.ATK_Make_Knockback || '').trim().toLowerCase() === 'true',
             knockbackCanGuard: data.Knockback_Can_Guard === true || String(data.Knockback_Can_Guard || '').trim().toLowerCase() === 'true',
-            knockbackDistance: parseFloat(data.Knockback_Distance) || 0
+            knockbackDistance: parseFloat(data.Knockback_Distance) || 0,
+            makeHitAction: !(data.ATK_Make_Hit_Action === false || String(data.ATK_Make_Hit_Action || '').trim().toLowerCase() === 'false')
         };
     },
 
@@ -921,10 +1466,16 @@ const BossCombatSystem = {
         const actionType = String(action.Action_Type || '').trim().toUpperCase();
         // MOVE 계열은 위치 이동만 수행한다. 패턴4의 대각 이동처럼 히트박스 데이터가 실수로 남아 있거나
         // 기본값 fallback이 들어가더라도 공격 판정이 발생하지 않도록 막는다.
-        if (['WARNING_PATH','WARNING','WAIT','SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT','MOVE'].includes(actionType)) return false;
+        if (['WARNING_PATH','WARNING','WAIT','SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT','MOVE','REMOVE_ALL_OBJECT','CLEAR_PATTERN_TERRAIN_OBJECTS'].includes(actionType)) return false;
 
         const hitboxType = String(action.Hitbox_Type || '').trim().toUpperCase();
-        const dmgRate = parseFloat(action.ATK_Damage_Rate) || 1;
+        // 정리/연출용 액션에 Hitbox_Type이 비어 있으면 기본 박스/기본 피해로 fallback되지 않게 막는다.
+        // 실제 공격 액션은 데이터에서 명시적인 Hitbox_Type을 가져야 한다.
+        if (!hitboxType) return false;
+        const m1FinalDmgMul = (typeof this.getKasiyasP2MajorPattern1FinalDamageMultiplier === 'function')
+            ? this.getKasiyasP2MajorPattern1FinalDamageMultiplier(m, action)
+            : 1;
+        const dmgRate = (parseFloat(action.ATK_Damage_Rate) || 1) * Math.max(0.01, m1FinalDmgMul || 1);
         const baseDmg = m.d.atk * dmgRate;
         const p = gameState.player;
         if (!p || !p.active || p.hp <= 0) return false;
@@ -943,7 +1494,8 @@ const BossCombatSystem = {
             this.pushDebugPathHitbox(path, width, height, 0.15, gameState);
             this.pushPathSlashEffects(path, width, height, action.VFX_Type || 'EFT_KASIYAS_RUSH_SLASH', gameState);
             if (this.isPlayerInsidePathHitbox(path, width, height, gameState)) {
-                const result = PlayerManager.takeDamage(gameState, calcScaledDamage(m.d.level, p.level, baseDmg), m.x, m.y, null, 0, 0, this.buildGuardInfoFromAttackData(action)) || {};
+                const result = PlayerManager.takeDamage(gameState, calcScaledDamage(m.d.level, p.level, baseDmg), m.x, m.y, null, 0, 0, this.buildGuardInfoFromAttackData(action, m)) || {};
+                if (typeof this.registerKasiyasP2MajorPattern1ResponseResult === 'function') this.registerKasiyasP2MajorPattern1ResponseResult(m, action, gameState, result);
                 this.applyKasiyasOniMarkAttackResult(gameState, 'BOSS', action, result, m);
                 this.trySpawnBossGuardSuccessObject(m, action, gameState, result, m.x, m.y);
                 this.tryApplyBossGuardSpecialResult(m, action, result, gameState);
@@ -984,26 +1536,27 @@ const BossCombatSystem = {
                 const atkW = hitbox.w;
                 const atkD = hitbox.d;
                 const atkH = hitbox.h;
-                if (action.VFX_Type) {
-                    const upperVfx = String(action.VFX_Type || '').toUpperCase();
+                const upperVfx = String(action.VFX_Type || '').toUpperCase();
+                if (action.VFX_Type && upperVfx !== 'EFT_KASIYAS_SHOULDER_ATK') {
                     gameState.effects.push({
-                        type: upperVfx === 'EFT_KASIYAS_SHOULDER_ATK' ? 'shoulderCharge' : 'hitSpark',
+                        type: 'hitSpark',
                         renderType: action.VFX_Type,
                         x: atkX,
                         y: atkY,
                         z: atkZ + atkH * 0.58,
                         dir: m.faceDir,
-                        w: upperVfx === 'EFT_KASIYAS_SHOULDER_ATK' ? Math.max(atkW * 1.12, 170 * scale) : Math.max(atkW * 1.04, 120 * scale),
-                        d: upperVfx === 'EFT_KASIYAS_SHOULDER_ATK' ? Math.max(atkD * 1.10, 70 * scale) : Math.max(atkD * 1.04, 60 * scale),
+                        w: Math.max(atkW * 1.04, 120 * scale),
+                        d: Math.max(atkD * 1.04, 60 * scale),
                         h: atkH,
-                        burstScale: upperVfx === 'EFT_KASIYAS_SHOULDER_ATK' ? 1.0 : 1.35,
+                        burstScale: 1.35,
                         life: 0.20,
                         maxLife: 0.20,
                         color: 'rgba(255,82,60,0.92)',
                         accentColor: 'rgba(28,0,0,0.90)'
                     });
                 }
-                const result = PlayerManager.takeDamage(gameState, calcScaledDamage(m.d.level, p.level, baseDmg), atkX, atkY, null, 0, 0, this.buildGuardInfoFromAttackData(action)) || {};
+                const result = PlayerManager.takeDamage(gameState, calcScaledDamage(m.d.level, p.level, baseDmg), atkX, atkY, null, 0, 0, this.buildGuardInfoFromAttackData(action, m)) || {};
+                if (typeof this.registerKasiyasP2MajorPattern1ResponseResult === 'function') this.registerKasiyasP2MajorPattern1ResponseResult(m, action, gameState, result);
                 this.applyKasiyasOniMarkAttackResult(gameState, 'BOSS', action, result, m);
                 this.tryApplyBossGuardSpecialResult(m, action, result, gameState);
                 return true;
@@ -1016,7 +1569,8 @@ const BossCombatSystem = {
             gameState.hitboxes.push({ ...hitbox, type: 'circle', life: 0.1 });
             this.pushBossPatternActionEffect(m, action, hitbox.x, hitbox.y, hitbox.z, hitbox.w, hitbox.d, hitbox.h, gameState);
             if (this.isPlayerInsideCircleHitbox(hitbox, gameState)) {
-                const result = PlayerManager.takeDamage(gameState, calcScaledDamage(m.d.level, p.level, baseDmg), hitbox.x, hitbox.y, null, 0, 0, this.buildGuardInfoFromAttackData(action)) || {};
+                const result = PlayerManager.takeDamage(gameState, calcScaledDamage(m.d.level, p.level, baseDmg), hitbox.x, hitbox.y, null, 0, 0, this.buildGuardInfoFromAttackData(action, m)) || {};
+                if (typeof this.registerKasiyasP2MajorPattern1ResponseResult === 'function') this.registerKasiyasP2MajorPattern1ResponseResult(m, action, gameState, result);
                 this.applyKasiyasOniMarkAttackResult(gameState, 'BOSS', action, result, m);
                 this.trySpawnBossGuardSuccessObject(m, action, gameState, result, hitbox.x, hitbox.y);
                 this.tryApplyBossGuardSpecialResult(m, action, result, gameState);
@@ -1025,24 +1579,20 @@ const BossCombatSystem = {
             return false;
         }
 
-        const atkW = (parseFloat(action.Hitbox_Size_X) || 100) * m.scale;
-        const atkD = (parseFloat(action.Hitbox_Size_Y) || 50) * m.scale;
-        const atkH = (parseFloat(action.Hitbox_Size_Z) || 80) * m.scale;
-
-        const offsetX = (parseFloat(action.Hitbox_Offset_X) || atkW / 2) * m.scale;
-        const offsetY = (parseFloat(action.Hitbox_Offset_Y) || 0) * m.scale;
-        const offsetZ = (parseFloat(action.Hitbox_Offset_Z) || 0) * m.scale;
-
-        const atkX = m.x + offsetX * (m.faceDir === -1 ? -1 : 1);
-        const atkY = m.y + offsetY;
-        const atkZ = m.z + offsetZ;
-        const hitbox = { x: atkX, y: atkY, z: atkZ, w: atkW, d: atkD, h: atkH };
+        const hitbox = this.getBossPatternActionHitbox(m, action);
+        const atkX = hitbox.x;
+        const atkY = hitbox.y;
+        const atkZ = hitbox.z;
+        const atkW = hitbox.w;
+        const atkD = hitbox.d;
+        const atkH = hitbox.h;
 
         gameState.hitboxes.push({ ...hitbox, life: 0.1 });
         this.pushBossPatternActionEffect(m, action, atkX, atkY, atkZ, atkW, atkD, atkH, gameState);
 
         if (this.isPlayerInsideBoxHitbox(hitbox, gameState)) {
-            const result = PlayerManager.takeDamage(gameState, calcScaledDamage(m.d.level, p.level, baseDmg), atkX, atkY, null, 0, 0, this.buildGuardInfoFromAttackData(action)) || {};
+            const result = PlayerManager.takeDamage(gameState, calcScaledDamage(m.d.level, p.level, baseDmg), atkX, atkY, null, 0, 0, this.buildGuardInfoFromAttackData(action, m)) || {};
+            if (typeof this.registerKasiyasP2MajorPattern1ResponseResult === 'function') this.registerKasiyasP2MajorPattern1ResponseResult(m, action, gameState, result);
             this.applyKasiyasOniMarkAttackResult(gameState, 'BOSS', action, result, m);
             this.trySpawnBossGuardSuccessObject(m, action, gameState, result, atkX, atkY);
             this.tryApplyBossGuardSpecialResult(m, action, result, gameState);
@@ -1050,6 +1600,147 @@ const BossCombatSystem = {
         }
         return false;
     },
+
+    isKasiyasP2M2SwordWallObject: function(obj) {
+        if (!obj) return false;
+        const data = obj.data || {};
+        const type = String(obj.objectType || data.Object_Type || '').trim().toUpperCase();
+        const renderType = String(obj.renderType || data.Object_Render_Type || '').trim().toUpperCase();
+        return type === 'SWORD_WALL' || type === 'SWORD_WALL_GIANT_SWORD' || renderType.indexOf('P2_M2_SWORD_WALL') >= 0;
+    },
+
+    getKasiyasP2M2SwordWallGapSlot: function(obj) {
+        const data = obj && obj.data ? obj.data : {};
+        const dataSlot = parseFloat(data.Sword_Wall_Gap_Slot_Index);
+        if (Number.isFinite(dataSlot)) return Math.max(0, Math.min(4, Math.round(dataSlot)));
+        const renderType = String(obj && (obj.renderType || data.Object_Render_Type) || '').trim().toUpperCase();
+        const name = String(obj && (obj.name || data.Object_Name || data.Name) || '').trim().toUpperCase();
+        const key = `${renderType} ${name}`;
+        if (key.indexOf('GAP_TOP') >= 0 || key.indexOf('최상단') >= 0) return 0;
+        if (key.indexOf('GAP_UPPER') >= 0 || key.indexOf('상단') >= 0) return 1;
+        if (key.indexOf('GAP_MIDDLE') >= 0 || key.indexOf('중단') >= 0 || key.indexOf('중앙') >= 0) return 2;
+        if (key.indexOf('GAP_LOWER') >= 0 || key.indexOf('하단') >= 0) return 3;
+        if (key.indexOf('GAP_BOTTOM') >= 0 || key.indexOf('최하단') >= 0) return 4;
+        return -1;
+    },
+
+    getKasiyasP2M2SwordWallGapInfo: function(obj, wallD) {
+        const data = obj && obj.data ? obj.data : {};
+        const targetD = Math.max(1, parseFloat(wallD) || parseFloat(data.Sword_Wall_Total_Y) || parseFloat(obj && obj.d) || 400);
+        const totalRaw = parseFloat(data.Sword_Wall_Total_Y);
+        const totalY = Number.isFinite(totalRaw) && totalRaw > 0 ? totalRaw : targetD;
+        const slot = this.getKasiyasP2M2SwordWallGapSlot ? this.getKasiyasP2M2SwordWallGapSlot(obj) : -1;
+        const slotH = totalY / 5;
+        let centerY = parseFloat(data.Sword_Wall_Gap_Center_Y);
+        let gapSizeY = parseFloat(data.Sword_Wall_Gap_Size_Y);
+        if (!Number.isFinite(centerY)) {
+            if (slot < 0) return null;
+            centerY = (slot + 0.5) * slotH;
+        }
+        if (!Number.isFinite(gapSizeY) || gapSizeY <= 0) gapSizeY = slotH;
+        centerY = Math.max(0, Math.min(totalY, centerY));
+        gapSizeY = Math.max(1, Math.min(totalY, gapSizeY));
+        const scale = targetD / totalY;
+        const localCenter = centerY * scale;
+        const localSize = gapSizeY * scale;
+        return {
+            slot,
+            totalY,
+            centerY,
+            gapSizeY,
+            localCenter,
+            localSize,
+            localStart: Math.max(0, localCenter - localSize / 2),
+            localEnd: Math.min(targetD, localCenter + localSize / 2)
+        };
+    },
+
+    getKasiyasP2M2SwordWallCollisionBoxes: function(obj, action, gameState) {
+        const worldD = Math.max(1, parseFloat(gameState && gameState.WORLD_DEPTH) || 400);
+        const wallW = Math.max(40, parseFloat(action && action.Hitbox_Size_X) || parseFloat(obj && obj.w) || 150);
+        const wallD = Math.max(80, parseFloat(action && action.Hitbox_Size_Y) || parseFloat(obj && obj.d) || worldD);
+        const wallH = Math.max(40, parseFloat(action && action.Hitbox_Size_Z) || parseFloat(obj && obj.h) || 220);
+        const offX = parseFloat(action && action.Hitbox_Offset_X) || 0;
+        const offY = parseFloat(action && action.Hitbox_Offset_Y) || 0;
+        const offZ = parseFloat(action && action.Hitbox_Offset_Z) || 0;
+        const curX = Number.isFinite(parseFloat(obj && obj.x)) ? parseFloat(obj.x) : 0;
+        const prevX = Number.isFinite(parseFloat(obj && obj.prevX)) ? parseFloat(obj.prevX) : curX;
+        const minX = Math.min(prevX, curX) + offX - wallW / 2;
+        const maxX = Math.max(prevX, curX) + offX + wallW / 2;
+        const centerX = (minX + maxX) / 2;
+        const widthX = Math.max(wallW, maxX - minX);
+        const centerY = (Number.isFinite(parseFloat(obj && obj.y)) ? parseFloat(obj.y) : worldD / 2) + offY;
+        const top = centerY - wallD / 2;
+        const gapInfo = this.getKasiyasP2M2SwordWallGapInfo ? this.getKasiyasP2M2SwordWallGapInfo(obj, wallD) : null;
+        const boxes = [];
+        const sourceObject = obj;
+        const sourceObjectId = String(obj && obj.data && (obj.data.Object_ID || obj.data.Attack_Object_ID) || '').trim();
+        const sourceActionId = String(action && action.Object_Action_ID || '').trim();
+        const makeBox = (y1, y2, idx) => {
+            const d = Math.max(1, y2 - y1);
+            return {
+                x: centerX,
+                y: y1 + d / 2,
+                z: (Number.isFinite(parseFloat(obj && obj.z)) ? parseFloat(obj.z) : 0) + offZ,
+                w: widthX,
+                d: d,
+                h: wallH,
+                life: 0.12,
+                sourceObject,
+                sourceObjectId,
+                sourceActionId,
+                swordWallSegment: idx,
+                cancelOnGuard: false
+            };
+        };
+        if (!gapInfo) {
+            boxes.push(makeBox(top, top + wallD, 0));
+            return boxes;
+        }
+        const gapStart = top + gapInfo.localStart;
+        const gapEnd = top + gapInfo.localEnd;
+        if (gapStart - top > 2) boxes.push(makeBox(top, gapStart, 0));
+        if (top + wallD - gapEnd > 2) boxes.push(makeBox(gapEnd, top + wallD, 1));
+        return boxes;
+    },
+
+    fireKasiyasP2M2SwordWallHit: function(obj, action, gameState) {
+        const p = gameState && gameState.player ? gameState.player : null;
+        if (!p || !p.active || p.hp <= 0 || obj.actionCancelled) return false;
+        const wallD = Math.max(80, parseFloat(action && action.Hitbox_Size_Y) || parseFloat(obj && obj.d) || parseFloat(gameState && gameState.WORLD_DEPTH) || 400);
+        const centerY = (Number.isFinite(parseFloat(obj && obj.y)) ? parseFloat(obj.y) : (parseFloat(gameState && gameState.WORLD_DEPTH) || 400) / 2) + (parseFloat(action && action.Hitbox_Offset_Y) || 0);
+        const gapInfo = this.getKasiyasP2M2SwordWallGapInfo ? this.getKasiyasP2M2SwordWallGapInfo(obj, wallD) : null;
+        if (gapInfo) {
+            const gapStart = centerY - wallD / 2 + gapInfo.localStart;
+            const gapEnd = centerY - wallD / 2 + gapInfo.localEnd;
+            // 검벽은 Y축 빈틈을 통과하는 기믹이므로, 플레이어 중심 Y가 데이터상 빈틈 안에 있으면 안전 처리한다.
+            if ((p.y || 0) >= gapStart && (p.y || 0) <= gapEnd) return false;
+        }
+        const boxes = this.getKasiyasP2M2SwordWallCollisionBoxes ? this.getKasiyasP2M2SwordWallCollisionBoxes(obj, action, gameState) : [];
+        boxes.forEach(box => gameState.hitboxes.push({ ...box }));
+        this.pushBossObjectActionEffect && this.pushBossObjectActionEffect(obj, action, boxes[0] || { x: obj.x, y: obj.y, z: obj.z, w: 1, d: 1, h: 1 }, gameState);
+        const hitBox = boxes.find(box => this.isPlayerInsideBoxHitbox(box, gameState));
+        if (!hitBox) return false;
+        const owner = obj.owner;
+        if (owner && owner.hp > 0) {
+            const dmgRate = parseFloat(action.ATK_Damage_Rate) || parseFloat(action.Damage_Rate) || 1;
+            const baseDmg = owner.d.atk * dmgRate;
+            this.pushBossDebugLog && this.pushBossDebugLog(gameState, 'OBJECT_HIT', `${String(action.Object_Action_ID || '').trim()} ${this.getBossDebugName(action)}`, `SWORD_WALL / damage ${baseDmg.toFixed(1)}`);
+            PlayerManager.takeDamage(
+                gameState,
+                calcScaledDamage(owner.d.level, gameState.player.level, baseDmg),
+                hitBox.x,
+                hitBox.y,
+                null,
+                0,
+                0,
+                this.buildGuardInfoFromAttackData(action, obj)
+            );
+            return true;
+        }
+        return false;
+    },
+
     getBossObjectActionHitbox: function(obj, action) {
         const boxes = this.getBossObjectActionHitboxes(obj, action);
         return boxes.extra || boxes.body || boxes.primary;
@@ -1062,6 +1753,14 @@ const BossCombatSystem = {
         const bodyDRaw = obj && obj.d ? (parseFloat(obj.d.bodyY) || 60) : 60;
         const bodyHRaw = obj && obj.d ? (parseFloat(obj.d.bodyZ) || 160) : 160;
         const body = { x: obj.x, y: obj.y, z: obj.z, w: bodyWRaw * scale, d: bodyDRaw * scale, h: bodyHRaw * scale };
+
+        if (hitboxType === 'HITBOX_OBJECT_SIZE') {
+            const rect = obj.terrainArea || (typeof this.getTerrainAreaRect === 'function' ? this.getTerrainAreaRect(obj, null) : null);
+            const primary = rect
+                ? { x: rect.centerX, y: rect.centerY, z: 0, w: rect.w, d: rect.h, h: parseFloat(action.Hitbox_Size_Z) || 120 }
+                : { x: obj.x, y: obj.y, z: obj.z, w: parseFloat(action.Hitbox_Size_X) || bodyWRaw, d: parseFloat(action.Hitbox_Size_Y) || bodyDRaw, h: parseFloat(action.Hitbox_Size_Z) || bodyHRaw };
+            return { body: null, extra: null, primary };
+        }
 
         const rawX = parseFloat(action.Hitbox_Size_X);
         const rawY = parseFloat(action.Hitbox_Size_Y);
@@ -1093,7 +1792,11 @@ const BossCombatSystem = {
         if (!p || !p.active || p.hp <= 0 || obj.actionCancelled) return false;
 
         const hitboxType = String(action.Hitbox_Type || '').trim().toUpperCase();
-        if (hitboxType !== 'HITBOX_BOX' && hitboxType !== 'HITBOX_CIRCLE' && hitboxType !== 'HITBOX_BODY_COLLISION') return false;
+        if (hitboxType !== 'HITBOX_BOX' && hitboxType !== 'HITBOX_CIRCLE' && hitboxType !== 'HITBOX_BODY_COLLISION' && hitboxType !== 'HITBOX_OBJECT_SIZE') return false;
+
+        if (this.isKasiyasP2M2SwordWallObject && this.isKasiyasP2M2SwordWallObject(obj) && hitboxType === 'HITBOX_BOX') {
+            return this.fireKasiyasP2M2SwordWallHit(obj, action, gameState);
+        }
 
         const hitboxes = this.getBossObjectActionHitboxes(obj, action);
         const hitbox = hitboxes.primary;
@@ -1141,7 +1844,7 @@ const BossCombatSystem = {
                     null,
                     0,
                     0,
-                    this.buildGuardInfoFromAttackData(action)
+                    this.buildGuardInfoFromAttackData(action, obj)
                 ) || {};
 
                 this.applyKasiyasOniMarkAttackResult(gameState, 'CLONE', action, result, obj);

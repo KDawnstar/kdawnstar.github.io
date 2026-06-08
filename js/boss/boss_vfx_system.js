@@ -25,6 +25,11 @@ const BossVFXSystem = {
         EFT_KASIYAS_FIST_BUMPING: 'hitSpark',
         EFT_KASIYAS_STOMP: 'hitSpark',
         EFT_SHOCKWAVE: 'shockwave',
+        EFT_KASIYAS_P2_DOUBLE_SWORD_ANOTHER_ENERGY: 'particle',
+        EFT_KASIYAS_P2_M1_LEFT_SWORD_SLASH_WITH_RED_ENERGY: 'slash',
+        EFT_KASIYAS_P2_M1_RIGHT_SWORD_SLASH_WITH_YELLOW_ENERGY: 'slash',
+        EFT_KASIYAS_P2_M1_X_SLASH_CHARGE: 'particle',
+        EFT_KASIYAS_P2_M1_X_SLASH: 'slash',
     
         EFT_HIT: 'hitSpark',
         EFT_STRIKE: 'hitSpark',
@@ -221,10 +226,12 @@ const BossVFXSystem = {
         // 카시야스 잔류 검격: 경로 위에 얇은 검선 여러 개를 남긴다.
         if (
             effectType === 'EFT_MANY_SLASH_BURST' ||
-            effectType === 'EFT_KASIYAS_PATH_SLASH_LINES'
+            effectType === 'EFT_KASIYAS_PATH_SLASH_LINES' ||
+            effectType === 'EFT_KASIYAS_PATH_ONI_SLASH_LINES'
         ) {
-            const count = Math.max(10, Math.min(24, Math.round(length / 65)));
-            const isKasiyasLines = effectType === 'EFT_KASIYAS_PATH_SLASH_LINES';
+            const isOniLines = effectType === 'EFT_KASIYAS_PATH_ONI_SLASH_LINES';
+            const count = isOniLines ? Math.max(14, Math.min(32, Math.round(length / 54))) : Math.max(10, Math.min(24, Math.round(length / 65)));
+            const isKasiyasLines = effectType === 'EFT_KASIYAS_PATH_SLASH_LINES' || isOniLines;
     
             for (let i = 0; i < count; i++) {
                 const t = (i + 0.35 + Math.random() * 0.30) / count;
@@ -305,19 +312,21 @@ const BossVFXSystem = {
         const isClone = !!options.isClone;
         const upperActionEffect = String((action && (action.VFX_Type || action.Effect_Render_Type)) || '').trim().toUpperCase();
         const isBasicRushIssen = upperActionEffect === 'EFT_KASIYAS_RUSH_ISSEN' || upperActionEffect === 'EFT_RUSH_ISSEN' || upperActionEffect === 'EFT_KASIYAS_RUSH_SLASH';
+        const isOniRushSlash = upperActionEffect === 'EFT_KASIYAS_P2_ONI_SLASH';
+        const isP3RushBody = upperActionEffect === 'EFT_KASIYAS_P3_HIGH_SPEED_RUSH_SLASH' || upperActionEffect === 'EFT_KASIYAS_P3_RUSH_SLASH';
         const renderType = upperActionEffect || (isClone ? 'EFT_KASIYAS_CLONE_LOW_RUSH' : 'EFT_KASIYAS_LOW_RUSH');
         const visualW = Math.max(
-            isBasicRushIssen ? 96 : 112,
-            bodyX * (isBasicRushIssen ? 1.28 : (isClone ? 1.45 : 1.56)),
-            hitW * (isBasicRushIssen ? 0.78 : (isClone ? 0.86 : 0.94))
+            isBasicRushIssen ? 96 : (isOniRushSlash ? 86 : 112),
+            bodyX * (isBasicRushIssen ? 1.28 : (isOniRushSlash ? 1.20 : (isClone ? 1.45 : 1.56))),
+            hitW * (isBasicRushIssen ? 0.78 : (isOniRushSlash ? 0.88 : (isClone ? 0.86 : 0.94)))
         );
         const visualD = Math.max(
-            isBasicRushIssen ? 46 : 58,
-            bodyY * (isBasicRushIssen ? 1.10 : (isClone ? 1.28 : 1.42)),
-            hitD * (isBasicRushIssen ? 0.82 : (isClone ? 0.92 : 1.00))
+            isBasicRushIssen ? 46 : (isOniRushSlash ? 42 : 58),
+            bodyY * (isBasicRushIssen ? 1.10 : (isOniRushSlash ? 1.08 : (isClone ? 1.28 : 1.42))),
+            hitD * (isBasicRushIssen ? 0.82 : (isOniRushSlash ? 0.76 : (isClone ? 0.92 : 1.00)))
         );
         // 화면상 높이는 캐릭터 신체를 덮는 정도로 제한한다. 판정 Z가 커져도 이펙트가 위로 떠오르지 않는다.
-        const visualH = Math.max(72, bodyZ * (isBasicRushIssen ? 0.58 : (isClone ? 0.66 : 0.74)), visualD * 0.54);
+        const visualH = Math.max(isOniRushSlash ? 62 : 72, bodyZ * (isBasicRushIssen ? 0.58 : (isOniRushSlash ? 0.62 : (isClone ? 0.66 : 0.74))), visualD * (isOniRushSlash ? 0.48 : 0.54));
         const fxX = (parseFloat(actor.x) || 0) + dirX * hitOffX * 0.30;
         const fxY = (parseFloat(actor.y) || 0) + hitOffY * 0.55;
         const fxZ = (parseFloat(actor.z) || 0) + Math.max(28, bodyZ * (isBasicRushIssen ? 0.38 : 0.44));
@@ -336,11 +345,12 @@ const BossVFXSystem = {
             maxLife: isClone ? 0.145 : 0.165,
             pathAngle: angle,
             isClone: isClone,
-            color: isBasicRushIssen ? 'rgba(235,34,32,0.82)' : (isClone ? 'rgba(210,36,54,0.74)' : 'rgba(255,44,40,0.90)'),
-            accentColor: isBasicRushIssen ? 'rgba(18,0,0,0.82)' : (isClone ? 'rgba(50,0,18,0.70)' : 'rgba(18,0,0,0.90)'),
-            hotColor: isBasicRushIssen ? 'rgba(255,176,80,0.58)' : (isClone ? 'rgba(255,135,100,0.55)' : 'rgba(255,215,86,0.72)'),
+            color: isP3RushBody ? 'rgba(134,66,255,0.88)' : (isBasicRushIssen ? 'rgba(235,34,32,0.82)' : (isClone ? 'rgba(210,36,54,0.74)' : 'rgba(255,44,40,0.90)')),
+            accentColor: isP3RushBody ? 'rgba(10,0,42,0.88)' : (isBasicRushIssen ? 'rgba(18,0,0,0.82)' : (isClone ? 'rgba(50,0,18,0.70)' : 'rgba(18,0,0,0.90)')),
+            hotColor: isP3RushBody ? 'rgba(224,208,255,0.66)' : (isBasicRushIssen ? 'rgba(255,176,80,0.58)' : (isClone ? 'rgba(255,135,100,0.55)' : 'rgba(255,215,86,0.72)')),
             bodyCoverRush: true,
-            basicRushIssen: isBasicRushIssen
+            basicRushIssen: isBasicRushIssen,
+            p3RushBody: isP3RushBody
         });
 
         // 몸에 붙는 공격 이펙트와 별개로, 아주 짧은 잔상만 뒤에 남긴다.
@@ -356,7 +366,8 @@ const BossVFXSystem = {
             life: 0.10,
             maxLife: 0.10,
             pathAngle: angle,
-            cloneTrail: isClone
+            cloneTrail: isClone,
+            p3RushTrail: isP3RushBody
         });
     },
 
@@ -407,19 +418,26 @@ const BossVFXSystem = {
         const duration = Math.max(0.12, Math.min(0.45, this.getBossActionDuration(m, action, gameState) * 0.55));
     
         if (eff === 'EFT_KASIYAS_SHOULDER_ATK') {
+            const localOffsetX = Math.max(bodyX * 0.28, Math.min(hitOffX * 0.34, bodyX * 0.70));
+            const localOffsetZ = Math.max(bodyZ * 0.50, hitOffZ);
             gameState.effects.push({
                 type: 'shoulderCharge',
                 renderType: eff,
-                x: m.x + dir * Math.max(bodyX * 0.58, hitOffX * 0.72),
+                // 신체 돌진 이펙트는 히트박스 중심이 아니라 카시야스 몸 앞쪽에 붙어서 따라가게 한다.
+                x: m.x + dir * localOffsetX,
                 y: m.y,
-                z: m.z + Math.max(bodyZ * 0.52, hitOffZ),
+                z: m.z + localOffsetZ,
+                followTarget: m,
+                localOffsetX: localOffsetX,
+                localOffsetY: 0,
+                localOffsetZ: localOffsetZ,
                 dir: dir,
-                w: Math.max(hitW * 1.05, bodyX * 2.2),
-                d: Math.max(hitD * 1.05, bodyY * 1.5),
-                h: Math.max(hitH, bodyZ * 0.70),
+                w: Math.max(hitW * 0.86, bodyX * 2.15),
+                d: Math.max(hitD * 1.05, bodyY * 1.45),
+                h: Math.max(hitH, bodyZ * 0.72),
                 burstScale: 1.0,
-                life: duration,
-                maxLife: duration,
+                life: Math.max(0.24, duration),
+                maxLife: Math.max(0.24, duration),
                 color: 'rgba(255,88,58,0.88)',
                 accentColor: 'rgba(22,0,0,0.88)'
             });
@@ -427,22 +445,8 @@ const BossVFXSystem = {
         }
     
         if (eff === 'EFT_KASIYAS_FIST_BUMPING') {
-            gameState.effects.push({
-                type: 'hitSpark',
-                renderType: eff,
-                x: m.x + dir * Math.max(bodyX * 0.72, hitOffX * 0.85),
-                y: m.y,
-                z: m.z + Math.max(bodyZ * 0.58, hitOffZ),
-                dir: dir,
-                w: Math.max(hitW * 1.05, bodyX * 2.0),
-                d: Math.max(hitD * 1.05, bodyY * 1.4),
-                h: Math.max(hitH, bodyZ * 0.72),
-                burstScale: 1.0,
-                life: duration,
-                maxLife: duration,
-                color: 'rgba(255,78,58,0.90)',
-                accentColor: 'rgba(18,0,0,0.90)'
-            });
+            // 주먹 휘두르기는 액션 시작 cue가 아니라 실제 히트 판정 타이밍에만 호형 이펙트를 출력한다.
+            // cue 이펙트를 별도로 내보내면 판정 없는 위치에 한 번 더 생기는 것처럼 보일 수 있다.
             return;
         }
     
@@ -461,7 +465,22 @@ const BossVFXSystem = {
                 color: 'rgba(230,214,188,0.58)',
                 accentColor: 'rgba(56,42,30,0.64)'
             });
+            this.triggerScreenShake(gameState, 6.5, 0.22);
         }
+    },
+
+
+    triggerScreenShake: function(gameState, power = 4, duration = 0.14) {
+        if (!gameState) return;
+        const p = Math.max(0, parseFloat(power) || 0);
+        const d = Math.max(0, parseFloat(duration) || 0);
+        if (p <= 0 || d <= 0) return;
+        const cur = gameState.screenShake || { timer: 0, maxTime: 0, power: 0 };
+        gameState.screenShake = {
+            timer: Math.max(parseFloat(cur.timer) || 0, d),
+            maxTime: Math.max(parseFloat(cur.maxTime) || 0, d),
+            power: Math.max(parseFloat(cur.power) || 0, p)
+        };
     },
 
     pushBossPatternActionEffect: function(m, action, atkX, atkY, atkZ, atkW, atkD, atkH, gameState) {
@@ -476,11 +495,135 @@ const BossVFXSystem = {
         let life = 0.24;
     
         const upperEff = effEnum.toUpperCase();
-        if (upperEff === 'EFT_KASIYAS_SWORD_QUICK_DRAW' || upperEff === 'EFT_KASIYAS_RUSH_ISSEN' || upperEff === 'EFT_RUSH_ISSEN' || upperEff === 'EFT_KASIYAS_RUSH_SLASH') {
+        if (upperEff === 'EFT_KASIYAS_SWORD_QUICK_DRAW' || upperEff === 'EFT_KASIYAS_RUSH_ISSEN' || upperEff === 'EFT_RUSH_ISSEN' || upperEff === 'EFT_KASIYAS_RUSH_SLASH' || upperEff === 'EFT_KASIYAS_P2_ONI_SLASH') {
             // 돌진 계열은 경로 전체에 깔리는 일반 slash가 아니라 실제 이동 중인 몸/검을 덮는 부착형 이펙트로 표현한다.
             // Hitbox_Size/Offset은 pushKasiyasRushBodyEffect에서 X/Y 기준으로 반영한다.
             return;
         }
+        if (upperEff === 'EFT_KASIYAS_P2_GROUND_PUNCH' || upperEff === 'EFT_KASIYAS_P2_GROUND_PUNCH_STRONG') {
+            const strong = upperEff === 'EFT_KASIYAS_P2_GROUND_PUNCH_STRONG';
+            gameState.effects.push({
+                type: 'stompDust',
+                renderType: upperEff,
+                strong: strong,
+                x: atkX,
+                y: atkY,
+                z: 8,
+                w: Math.max(atkW * (strong ? 1.55 : 1.22), strong ? 820 : 520),
+                d: Math.max(atkD * (strong ? 1.42 : 1.25), strong ? 280 : 185),
+                h: Math.max(28, atkH * 0.18),
+                life: strong ? 0.52 : 0.34,
+                maxLife: strong ? 0.52 : 0.34,
+                color: strong ? 'rgba(255,74,44,0.92)' : 'rgba(255,226,176,0.86)',
+                accentColor: strong ? 'rgba(120,0,0,0.95)' : 'rgba(95,58,24,0.92)'
+            });
+            const hitStart = parseFloat(action && action.Hitbox_Start_Time);
+            const hitEnd = parseFloat(action && action.Hitbox_End_Time);
+            const hitDuration = (isFinite(hitStart) && isFinite(hitEnd) && hitEnd > hitStart) ? (hitEnd - hitStart) : (strong ? 0.42 : 0.28);
+            // 지면 충격파는 판정이 살아 있는 동안 화면이 계속 울리는 느낌이 나도록
+            // 기존의 짧은 1회 흔들림보다 지속 시간과 강도를 조금 더 높인다.
+            this.triggerScreenShake(gameState, strong ? 12.0 : 7.0, strong ? Math.max(0.36, hitDuration + 0.12) : Math.max(0.24, hitDuration + 0.08));
+            return;
+        }
+
+        if (upperEff === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_JUMP_SLASH' || upperEff === 'EFT_KASIYAS_P2_M2_AIR_SPIN_SLASH' || upperEff === 'EFT_KASIYAS_P2_M2_FINAL_SLASH') {
+            const isP2M2Air = upperEff === 'EFT_KASIYAS_P2_M2_AIR_SPIN_SLASH';
+            const isP2M2Final = upperEff === 'EFT_KASIYAS_P2_M2_FINAL_SLASH';
+            const isP2M2 = isP2M2Air || isP2M2Final;
+            gameState.effects.push({
+                type: 'kasiyasP2AirSpinSlash',
+                renderType: upperEff,
+                p2m2BodySpin: isP2M2Air,
+                p2m2FinalSpin: isP2M2Final,
+                x: atkX,
+                y: atkY,
+                z: atkZ + Math.max(18, atkH * (isP2M2Air ? 0.50 : 0.22)),
+                dir: m.faceDir || 1,
+                w: isP2M2Air ? Math.max(atkW * 1.55, 420 * effectScale) : Math.max(atkW * (isP2M2Final ? 1.18 : 1.06), isP2M2Final ? 1850 * effectScale : 760 * effectScale),
+                d: isP2M2Air ? Math.max(atkD * 1.35, 250 * effectScale) : Math.max(atkD * (isP2M2Final ? 1.25 : 1.15), isP2M2Final ? 440 * effectScale : 260 * effectScale),
+                h: isP2M2Air ? Math.max(atkH * 1.08, 320 * effectScale) : Math.max(atkH * (isP2M2Final ? 0.86 : 0.66), isP2M2Final ? 360 * effectScale : 280 * effectScale),
+                life: isP2M2Air ? 0.46 : (isP2M2Final ? 0.72 : 0.50),
+                maxLife: isP2M2Air ? 0.46 : (isP2M2Final ? 0.72 : 0.50),
+                color: 'rgba(255,58,40,1.0)',
+                accentColor: 'rgba(20,0,0,0.98)'
+            });
+            this.triggerScreenShake(gameState, isP2M2Final ? 12.0 : (isP2M2Air ? 7.5 : 8.5), isP2M2Final ? 0.38 : (isP2M2Air ? 0.22 : 0.28));
+            return;
+        }
+
+        if (upperEff === 'EFT_KASIYAS_P3_AIM_SWORD_PLAYER' || upperEff === 'EFT_KASIYAS_P3_WALK_WITH_AURA') {
+            // 이 둘은 보스 본체 렌더에서 지속형 자세/장판으로 표현한다. 다단히트마다 별도 이펙트를 생성하지 않는다.
+            return;
+        }
+
+        if (upperEff === 'EFT_KASIYAS_P3_HIGH_SPEED_RUSH_SLASH') {
+            gameState.effects.push({
+                type: 'p3HighSpeedRushLeafSlash',
+                renderType: upperEff,
+                x: atkX,
+                y: atkY,
+                z: atkZ + Math.max(12, atkH * 0.46),
+                dir: m.faceDir || 1,
+                w: Math.max(900 * effectScale, atkW * 1.02),
+                d: Math.max(170 * effectScale, atkD * 1.05),
+                h: Math.max(90 * effectScale, atkH * 0.42),
+                life: 0.42,
+                maxLife: 0.42,
+                color: 'rgba(156,78,255,0.98)',
+                accentColor: 'rgba(10,0,28,0.98)',
+                hotColor: 'rgba(230,214,255,0.86)'
+            });
+            this.triggerScreenShake(gameState, 9.0, 0.22);
+            return;
+        }
+
+        if (upperEff === 'EFT_KASIYAS_P3_SWORD_WAVE_CAST_SLASH') {
+            gameState.effects.push({
+                type: 'kasiyasP3SwordWaveCastSlash',
+                renderType: upperEff,
+                x: atkX,
+                y: atkY,
+                z: atkZ + atkH * 0.58,
+                dir: m.faceDir || 1,
+                w: Math.max(420 * effectScale, atkW * 1.25),
+                d: Math.max(220 * effectScale, atkD * 1.10),
+                h: Math.max(420 * effectScale, atkH * 1.18),
+                life: 0.52,
+                maxLife: 0.52,
+                color: 'rgba(152,76,255,0.98)',
+                accentColor: 'rgba(20,0,0,0.98)',
+                darkColor: 'rgba(0,0,0,0.98)'
+            });
+            this.triggerScreenShake(gameState, 8.5, 0.26);
+            return;
+        }
+
+        if (upperEff === 'EFT_KASIYAS_P3_HORIZONTAL_SLASH' || upperEff === 'EFT_KASIYAS_P3_SLASH_UP' || upperEff === 'EFT_KASIYAS_P3_SLASH_DOWN' || upperEff === 'EFT_KASIYAS_P3_AIR_SLASH_DOWN' || upperEff === 'EFT_KASIYAS_P3_DIAGONAL_SLASH' || upperEff === 'EFT_KASIYAS_P3_AURA_CUT_OFF_SLASH') {
+            const isAuraCut = upperEff === 'EFT_KASIYAS_P3_AURA_CUT_OFF_SLASH';
+            const isAirDown = upperEff === 'EFT_KASIYAS_P3_AIR_SLASH_DOWN';
+            const mode = isAirDown ? 'AIR_DOWN' : (upperEff.indexOf('HORIZONTAL') >= 0 ? 'HORIZONTAL' : (upperEff.indexOf('UP') >= 0 ? 'UP' : (upperEff.indexOf('DIAGONAL') >= 0 || isAuraCut ? 'DIAGONAL' : 'DOWN')));
+            gameState.effects.push({
+                type: 'kasiyasP3HeavySlash',
+                renderType: upperEff,
+                slashMode: isAuraCut ? 'AURA_DIAGONAL' : mode,
+                x: atkX,
+                y: atkY,
+                z: atkZ + atkH * 0.50,
+                dir: m.faceDir || 1,
+                w: Math.max(120, atkW),
+                d: Math.max(70, atkD),
+                h: Math.max(90, atkH),
+                life: (mode === 'DIAGONAL' || isAuraCut || isAirDown) ? 0.48 : 0.34,
+                maxLife: (mode === 'DIAGONAL' || isAuraCut || isAirDown) ? 0.48 : 0.34,
+                color: isAuraCut ? 'rgba(255,42,28,1.0)' : 'rgba(255,64,48,0.98)',
+                accentColor: isAuraCut ? 'rgba(20,0,0,0.96)' : 'rgba(184,84,255,0.88)',
+                darkColor: isAuraCut ? 'rgba(0,0,0,0.98)' : 'rgba(20,0,28,0.92)',
+                auraCut: isAuraCut
+            });
+            this.triggerScreenShake(gameState, (mode === 'DIAGONAL' || isAuraCut || isAirDown) ? 10.0 : 6.0, (mode === 'DIAGONAL' || isAuraCut || isAirDown) ? 0.26 : 0.18);
+            return;
+        }
+
         if (upperEff === 'EFT_KASIYAS_P1_M2_FINAL_SLASH') {
             // 최종 참격의 실제 판정 Z 크기는 맵 전체 공격용으로 매우 크게 잡혀 있다.
             // 그 값을 그대로 이펙트 높이/출력 Z에 쓰면 참격이 하늘 쪽에서 발생해 보이므로,
@@ -503,6 +646,95 @@ const BossVFXSystem = {
                 maxLife: 0.78,
                 color: 'rgba(132,0,0,0.98)',
                 accentColor: 'rgba(8,0,0,0.98)'
+            });
+            return;
+        }
+
+        if (upperEff === 'EFT_KASIYAS_P2_M1_LEFT_SWORD_SLASH_WITH_RED_ENERGY' || upperEff === 'EFT_KASIYAS_P2_M1_RIGHT_SWORD_SLASH_WITH_YELLOW_ENERGY') {
+            const isYellow = upperEff.indexOf('YELLOW') >= 0;
+            gameState.effects.push({
+                type: 'kasiyasP2M1ArcSlash',
+                renderType: effEnum,
+                poseType: poseType,
+                x: atkX,
+                y: atkY,
+                // 강화로 히트박스가 커져도 검격 중심이 위로 밀리지 않도록 중심 기준으로 출력한다.
+                z: atkZ + atkH * 0.50,
+                dir: m.faceDir,
+                // 교차 검격은 공격 판정 안내 역할을 해야 하므로 히트박스 끝까지 거의 꽉 차게 맞춘다.
+                w: Math.max(24, atkW * 0.98),
+                d: Math.max(16, atkD * 0.98),
+                h: Math.max(24, atkH * 0.98),
+                life: 0.42,
+                maxLife: 0.42,
+                color: isYellow ? 'rgba(255,222,54,0.99)' : 'rgba(255,48,34,0.99)',
+                accentColor: isYellow ? 'rgba(126,62,0,0.96)' : 'rgba(34,0,0,0.98)',
+                effectScale: effectScale,
+                flameColorType: isYellow ? 'YELLOW' : 'RED',
+                curveSign: isYellow ? -1 : 1
+            });
+            return;
+        }
+
+        if (upperEff === 'EFT_KASIYAS_P2_M1_X_SLASH') {
+            const boss = m && m.boss ? m.boss : null;
+            const enhanceCount = Math.max(0, parseInt(boss && boss.p2MajorPattern1Runtime && boss.p2MajorPattern1Runtime.enhanceCount) || 0);
+            gameState.effects = (gameState.effects || []).filter(e => !(e && e.type === 'kasiyasP2M1SwordEnergyAura'));
+            gameState.effects.push({
+                type: 'kasiyasP2M1FinalXSlash',
+                renderType: upperEff,
+                x: atkX,
+                y: atkY,
+                // 히트박스 확대 보정과 함께 X 교차점이 중앙에 남도록 중심 기준으로 출력한다.
+                z: atkZ + atkH * 0.50,
+                dir: m.faceDir || 1,
+                // 최종 X자 베기도 히트박스 대각선 끝과 끝을 거의 채우는 느낌으로 맞춘다.
+                w: Math.max(32, atkW * 0.98),
+                d: Math.max(20, atkD * 0.98),
+                h: Math.max(32, atkH * 0.98),
+                life: enhanceCount >= 5 ? 0.64 : 0.52,
+                maxLife: enhanceCount >= 5 ? 0.64 : 0.52,
+                color: 'rgba(255,52,36,1.0)',
+                accentColor: 'rgba(255,220,52,0.98)',
+                enhanced: enhanceCount >= 5,
+                enhanceCount: enhanceCount,
+                effectScale: effectScale
+            });
+            this.triggerScreenShake(gameState, enhanceCount >= 5 ? 14 : 9, enhanceCount >= 5 ? 0.38 : 0.26);
+            return;
+        }
+
+        if (upperEff === 'EFT_KASIYAS_P2_DOUBLE_SWORD_CROSS_SLASH' || upperEff === 'EFT_KASIYAS_P2_DOUBLE_SWORD_UP_DOWN_SLASH') {
+            // 양손 검격은 ATK_Hit_Count가 2여도 시각 이펙트는 한 번만 출력한다.
+            // 한 번의 X자/상하 분리 이펙트가 내부적으로 2회 판정을 가진다는 느낌을 유지하기 위함.
+            const boss = m && m.boss ? m.boss : null;
+            if (boss) {
+                const effectKey = [
+                    String(action && action.Action_ID || '').trim(),
+                    String(boss.activePattern && boss.activePattern.Pattern_ID || '').trim(),
+                    String(boss.currentActionIndex || 0),
+                    String(boss.currentLoopIndex || 0),
+                    upperEff
+                ].join(':');
+                if (boss.lastP2DoubleSlashVisualEffectKey === effectKey) return;
+                boss.lastP2DoubleSlashVisualEffectKey = effectKey;
+            }
+            gameState.effects.push({
+                type: 'kasiyasP2DoubleSlash',
+                renderType: upperEff,
+                slashMode: upperEff === 'EFT_KASIYAS_P2_DOUBLE_SWORD_UP_DOWN_SLASH' ? 'UP_DOWN' : 'CROSS',
+                x: atkX,
+                y: atkY,
+                z: atkZ + atkH * 0.56,
+                dir: m.faceDir || 1,
+                // 공통 X자/상하 검격도 공격 판정이 바로 읽히도록 히트박스를 거의 채우게 맞춘다.
+                w: Math.max(24, atkW * 0.98),
+                d: Math.max(16, atkD * 0.98),
+                h: Math.max(24, atkH * 0.98),
+                life: 0.34,
+                maxLife: 0.34,
+                color: 'rgba(255,62,48,0.96)',
+                accentColor: 'rgba(16,0,0,0.94)'
             });
             return;
         }
@@ -549,48 +781,37 @@ const BossVFXSystem = {
         }
 
         if (upperEff === 'EFT_KASIYAS_SHOULDER_ATK') {
-            gameState.effects.push({
-                type: 'shoulderCharge',
-                renderType: upperEff,
-                x: atkX,
-                y: atkY,
-                z: atkZ + atkH * 0.48,
-                dir: m.faceDir,
-                w: Math.max(atkW * 1.16, 190 * effectScale),
-                d: Math.max((atkD || atkH * 0.55) * 1.12, 90 * effectScale),
-                h: Math.max(atkH, 90 * effectScale),
-                life: 0.30,
-                maxLife: 0.30,
-                color: 'rgba(255,88,58,0.90)',
-                accentColor: 'rgba(22,0,0,0.90)'
-            });
+            // 어깨치기는 액션 시작 cue에서 돌진 잔상/압력선을 이미 출력한다.
+            // 몸통 충돌 다단히트마다 같은 이펙트가 반복되면 조잡해 보이므로 실제 히트 타이밍 이펙트는 생략한다.
             return;
         }
     
         if (upperEff === 'EFT_KASIYAS_FIST_BUMPING' || upperEff === 'EFT_KASIYAS_STOMP') {
+            const isFist = upperEff === 'EFT_KASIYAS_FIST_BUMPING';
             gameState.effects.push({
                 type: upperEff === 'EFT_KASIYAS_STOMP' ? 'stompDust' : 'hitSpark',
                 renderType: upperEff,
+                // 주먹 공격은 히트박스 중심을 기준으로, 히트박스 X 범위를 채우는 전방 내지르기 이펙트로 출력한다.
                 x: atkX,
                 y: atkY,
-                z: atkZ + atkH * (upperEff === 'EFT_KASIYAS_STOMP' ? 0.18 : 0.55),
+                z: atkZ + atkH * (upperEff === 'EFT_KASIYAS_STOMP' ? 0.18 : 0.56),
                 dir: m.faceDir,
-                w: upperEff === 'EFT_KASIYAS_STOMP' ? Math.max(atkW * 0.52, 85 * effectScale) : Math.max(atkW * 1.10, 150 * effectScale),
-                d: upperEff === 'EFT_KASIYAS_STOMP' ? Math.max((atkD || atkH) * 0.48, 55 * effectScale) : Math.max((atkD || atkH) * 1.08, 70 * effectScale),
+                w: upperEff === 'EFT_KASIYAS_STOMP' ? Math.max(atkW * 0.52, 85 * effectScale) : Math.max(atkW * 1.00, 170 * effectScale),
+                d: upperEff === 'EFT_KASIYAS_STOMP' ? Math.max((atkD || atkH) * 0.48, 55 * effectScale) : Math.max((atkD || atkH) * 1.00, 78 * effectScale),
                 h: upperEff === 'EFT_KASIYAS_STOMP' ? Math.max(18, atkH * 0.20) : atkH,
                 life: upperEff === 'EFT_KASIYAS_STOMP' ? 0.18 : 0.24,
                 maxLife: upperEff === 'EFT_KASIYAS_STOMP' ? 0.18 : 0.24,
-                burstScale: upperEff === 'EFT_KASIYAS_FIST_BUMPING' ? 1.45 : 0.85,
-                color: upperEff === 'EFT_KASIYAS_STOMP' ? 'rgba(230,214,188,0.58)' : 'rgba(255,76,60,0.92)',
-                accentColor: upperEff === 'EFT_KASIYAS_STOMP' ? 'rgba(56,42,30,0.64)' : 'rgba(28,0,0,0.90)'
+                burstScale: upperEff === 'EFT_KASIYAS_FIST_BUMPING' ? 1.0 : 0.85,
+                color: upperEff === 'EFT_KASIYAS_STOMP' ? 'rgba(230,214,188,0.58)' : 'rgba(255,76,60,0.88)',
+                accentColor: upperEff === 'EFT_KASIYAS_STOMP' ? 'rgba(56,42,30,0.64)' : 'rgba(28,0,0,0.86)'
             });
             return;
         }
     
-        if (upperEff === 'EFT_SLASH_DOWN' || upperEff === 'EFT_KASIYAS_SLASH_DOWN' || upperEff === 'EFT_KASIYAS_CHARGE_SLASH_DOWN' || upperEff === 'EFT_KASIYAS_SLASH_01' || upperEff === 'EFT_KASIYAS_SLASH_04') {
+        if (upperEff === 'EFT_SLASH_DOWN' || upperEff === 'EFT_KASIYAS_SLASH_DOWN' || upperEff === 'EFT_KASIYAS_CHARGE_SLASH_DOWN' || upperEff === 'EFT_KASIYAS_SLASH_01' || upperEff === 'EFT_KASIYAS_SLASH_04' || upperEff === 'EFT_KASIYAS_P2_LEFT_SWORD_SLASH_DOWN' || upperEff === 'EFT_KASIYAS_P2_LEFT_SWORD_DIAGONAL_SLASH') {
             slashColor = 'rgba(255, 48, 44, 0.98)';
             accentColor = 'rgba(26, 0, 0, 0.92)';
-            life = 0.28;
+            life = upperEff.indexOf('P2') >= 0 ? 0.30 : 0.28;
         } else if (upperEff === 'EFT_STABBING' || upperEff === 'EFT_KASIYAS_STABBING' || upperEff === 'EFT_KASIYAS_SLASH_02') {
             slashColor = 'rgba(255, 64, 56, 0.98)';
             accentColor = 'rgba(20, 0, 0, 0.90)';
@@ -605,7 +826,7 @@ const BossVFXSystem = {
             life = 0.24;
         }
     
-        const isHorizontalSlashEffect = upperEff === 'EFT_KASIYAS_HORIZONTAL_SLASH' || upperEff === 'EFT_HORIZONTAL_SLASH';
+        const isHorizontalSlashEffect = upperEff === 'EFT_KASIYAS_HORIZONTAL_SLASH' || upperEff === 'EFT_HORIZONTAL_SLASH' || upperEff === 'EFT_KASIYAS_P2_RIGHT_SWORD_HORIZONTAL_SLASH';
         gameState.effects.push({
             type: 'slash',
             renderType: effEnum,
@@ -625,10 +846,305 @@ const BossVFXSystem = {
         });
     },
 
+    pushKasiyasP2MajorPattern1SwordEnergyAura: function(m, action, gameState, life = 10.5) {
+        if (!m || !gameState) return;
+        const boss = m && m.boss ? m.boss : null;
+        const rt = boss && boss.p2MajorPattern1Runtime ? boss.p2MajorPattern1Runtime : null;
+        // 같은 패턴 안에서 follow aura가 중복 생성되면 검 기운이 지나치게 밝아지므로 하나만 유지한다.
+        gameState.effects = (gameState.effects || []).filter(e => !(e && e.type === 'kasiyasP2M1SwordEnergyAura'));
+        const bodyX = ((m.d && parseFloat(m.d.bodyX)) || 90) * (parseFloat(m.scale) || 1);
+        const bodyZ = ((m.d && parseFloat(m.d.bodyZ)) || 170) * (parseFloat(m.scale) || 1);
+        const duration = Math.max(2.0, parseFloat(life) || 10.5);
+        gameState.effects.push({
+            type: 'kasiyasP2M1SwordEnergyAura',
+            renderType: 'EFT_KASIYAS_P2_DOUBLE_SWORD_ANOTHER_ENERGY_GRANTED',
+            followTarget: m,
+            x: m.x,
+            y: m.y,
+            z: (parseFloat(m.z) || 0) + bodyZ * 0.54,
+            localOffsetX: 0,
+            localOffsetY: 0,
+            localOffsetZ: bodyZ * 0.50,
+            dir: m.faceDir || 1,
+            w: Math.max(270, bodyX * 2.65),
+            h: Math.max(240, bodyZ * 1.36),
+            // maxLife를 짧게 잡아 패턴 진행 중에는 선명하게 유지하고 마지막에만 천천히 사라지게 한다.
+            life: duration,
+            maxLife: Math.min(duration, 1.25)
+        });
+        if (rt) rt.swordEnergyAuraActive = true;
+    },
+
     pushBossCastEffect: function(m, action, gameState) {
         const eff = String(action && (action.VFX_Type || action.Effect_Render_Type) || '').trim().toUpperCase();
         if (!eff) return;
+
+        if (eff === 'EFT_KASIYAS_P3_SLASH_UP' || eff === 'EFT_KASIYAS_P3_HORIZONTAL_SLASH' || eff === 'EFT_KASIYAS_P3_SLASH_DOWN' || eff === 'EFT_KASIYAS_P3_AIR_SLASH_DOWN') {
+            const duration = Math.max(0.35, parseFloat(action.Action_Anim_Duration) || 0.9);
+            const bodyX = ((m.d && parseFloat(m.d.bodyX)) || 90) * (parseFloat(m.scale) || 1);
+            const bodyZ = ((m.d && parseFloat(m.d.bodyZ)) || 170) * (parseFloat(m.scale) || 1);
+            const mode = eff === 'EFT_KASIYAS_P3_AIR_SLASH_DOWN' ? 'AIR_DOWN' : (eff.indexOf('HORIZONTAL') >= 0 ? 'HORIZONTAL' : (eff.indexOf('UP') >= 0 ? 'UP' : 'DOWN'));
+            gameState.effects.push({
+                type: 'kasiyasP3HeavySlash',
+                renderType: eff,
+                slashMode: mode,
+                x: m.x + (m.faceDir || 1) * bodyX * 0.28,
+                y: m.y,
+                z: (parseFloat(m.z) || 0) + bodyZ * 0.56,
+                dir: m.faceDir || 1,
+                w: Math.max(220, bodyX * 2.7),
+                d: Math.max(120, bodyX * 1.1),
+                h: Math.max(260, bodyZ * 1.35),
+                life: Math.min(0.48, duration),
+                maxLife: Math.min(0.48, duration),
+                color: 'rgba(152,76,255,0.98)',
+                accentColor: 'rgba(20,0,42,0.94)',
+                darkColor: 'rgba(0,0,0,0.98)'
+            });
+            if (eff === 'EFT_KASIYAS_P3_AIR_SLASH_DOWN') this.triggerScreenShake(gameState, 7.5, 0.22);
+            return;
+        }
+
+        if (eff === 'EFT_KASIYAS_P3_CAST_DIMENSION_CRACK_SLASH') {
+            const duration = Math.max(0.35, parseFloat(action.Action_Anim_Duration) || 0.9);
+            const bodyX = ((m.d && parseFloat(m.d.bodyX)) || 90) * (parseFloat(m.scale) || 1);
+            const bodyZ = ((m.d && parseFloat(m.d.bodyZ)) || 170) * (parseFloat(m.scale) || 1);
+            gameState.effects.push({
+                type: 'kasiyasP3DimensionCrackCastSlash',
+                renderType: eff,
+                x: m.x + (m.faceDir || 1) * bodyX * 0.30,
+                y: m.y,
+                z: (parseFloat(m.z) || 0) + bodyZ * 0.58,
+                dir: m.faceDir || 1,
+                w: Math.max(300, bodyX * 3.3),
+                d: Math.max(140, bodyX * 1.35),
+                h: Math.max(330, bodyZ * 1.65),
+                life: duration,
+                maxLife: duration,
+                color: 'rgba(150,74,255,0.94)',
+                accentColor: 'rgba(8,0,28,0.96)',
+                hotColor: 'rgba(226,214,255,0.76)'
+            });
+            this.triggerScreenShake(gameState, 5.5, Math.min(0.25, duration));
+            return;
+        }
+
+        if (eff === 'EFT_KASIYAS_P3_RUSH_SLASH_CHARGE') {
+            const duration = Math.max(0.6, parseFloat(action.Action_Anim_Duration) || 1.0);
+            const bodyX = ((m.d && parseFloat(m.d.bodyX)) || 90) * (parseFloat(m.scale) || 1);
+            const bodyZ = ((m.d && parseFloat(m.d.bodyZ)) || 170) * (parseFloat(m.scale) || 1);
+            gameState.effects.push({
+                type: 'kasiyasP3RushSlashCharge',
+                renderType: eff,
+                x: m.x,
+                y: m.y,
+                z: (parseFloat(m.z) || 0) + bodyZ * 0.52,
+                dir: m.faceDir || 1,
+                w: Math.max(260, bodyX * 2.8),
+                h: Math.max(260, bodyZ * 1.45),
+                life: duration,
+                maxLife: duration,
+                color: 'rgba(150,70,255,0.88)',
+                accentColor: 'rgba(8,0,28,0.96)'
+            });
+            return;
+        }
+
+        if (eff === 'EFT_KASIYAS_P2_DOUBLE_SWORD_ANOTHER_ENERGY' || eff === 'EFT_KASIYAS_P2_M1_X_SLASH_CHARGE') {
+            const duration = Math.max(0.5, parseFloat(action.Action_Anim_Duration) || 1.0);
+            const bodyX = ((m.d && parseFloat(m.d.bodyX)) || 90) * (parseFloat(m.scale) || 1);
+            const bodyZ = ((m.d && parseFloat(m.d.bodyZ)) || 170) * (parseFloat(m.scale) || 1);
+            gameState.effects.push({
+                type: 'kasiyasP2ChargeEnergy',
+                renderType: eff,
+                x: m.x,
+                y: m.y,
+                z: (parseFloat(m.z) || 0) + bodyZ * 0.55,
+                dir: m.faceDir || 1,
+                w: eff === 'EFT_KASIYAS_P2_M1_X_SLASH_CHARGE' ? Math.max(270, bodyX * 2.9) : Math.max(240, bodyX * 2.35),
+                h: eff === 'EFT_KASIYAS_P2_M1_X_SLASH_CHARGE' ? Math.max(310, bodyZ * 1.60) : Math.max(250, bodyZ * 1.32),
+                life: duration,
+                maxLife: duration,
+                color: eff === 'EFT_KASIYAS_P2_M1_X_SLASH_CHARGE' ? 'rgba(255,62,42,0.90)' : 'rgba(255,85,44,0.80)',
+                accentColor: eff === 'EFT_KASIYAS_P2_M1_X_SLASH_CHARGE' ? 'rgba(20,0,0,0.94)' : 'rgba(255,210,60,0.62)'
+            });
+            // 2페이즈 대형 패턴 1의 검 기운 오라는 이 액션 시작 시점이 아니라
+            // 기운 부여 모션이 끝난 뒤 별도 종료 훅에서 활성화한다.
+            return;
+        }
+
+        if (eff === 'EFT_KASIYAS_P2_M2_WAIT_IN_DIMENSION_PORTAL') {
+            const duration = Math.max(0.35, parseFloat(action.Action_Anim_Duration) || 1.2);
+            const group = String(action.Random_Action_Group || '').trim().toUpperCase();
+            const moveDir = String(action.Action_Move_Direction || '').trim().toUpperCase();
+            const direction = group.indexOf('LEFT') >= 0 || moveDir.indexOf('LEFT') >= 0 ? 'LEFT' : 'RIGHT';
+            const bodyX = ((m.d && parseFloat(m.d.bodyX)) || 90) * (parseFloat(m.scale) || 1);
+            const bodyZ = ((m.d && parseFloat(m.d.bodyZ)) || 170) * (parseFloat(m.scale) || 1);
+            gameState.effects.push({
+                type: 'dimensionPortalOpen',
+                renderType: eff,
+                p2m2FinalPortal: true,
+                showKasiyasSilhouette: true,
+                portalDirection: direction,
+                x: m.x,
+                y: m.y,
+                z: Math.max(180, parseFloat(m.z) || 240),
+                w: Math.max(360, bodyX * 5.0),
+                h: Math.max(220, bodyZ * 1.35),
+                life: duration,
+                maxLife: duration,
+                dir: direction === 'LEFT' ? -1 : 1
+            });
+            return;
+        }
+
+        if (eff === 'EFT_KASIYAS_P2_SUMMON_DIMENSION_PORTAL') {
+            const duration = Math.max(0.35, parseFloat(action.Action_Anim_Duration) || 0.75);
+            const worldW = Math.max(1, parseFloat(gameState && gameState.WORLD_WIDTH) || 1400);
+            gameState.effects.push({
+                type: 'dimensionPortalOpen',
+                renderType: eff,
+                x: worldW / 2,
+                y: Math.max(22, Math.min(46, (parseFloat(gameState && gameState.WORLD_DEPTH) || 400) * 0.08)),
+                z: 250,
+                w: 540,
+                h: 180,
+                life: duration,
+                maxLife: duration
+            });
+            return;
+        }
+
+        if (eff === 'EFT_KASIYAS_P2_ONI_STANCE_ENERGY_CHARGE' || eff === 'EFT_KASIYAS_P2_ONI_STANCE_FULL_ENERGY') {
+            const bodyX = ((m.d && m.d.bodyX) || 80) * (m.scale || 1);
+            const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
+            const duration = Math.max(0.35, parseFloat(action.Action_Anim_Duration) || 0.7);
+            const full = eff === 'EFT_KASIYAS_P2_ONI_STANCE_FULL_ENERGY';
+            gameState.effects.push({
+                type: 'kasiyasP2ChargeEnergy',
+                renderType: eff,
+                x: m.x, y: m.y, z: m.z + bodyZ * 0.48,
+                dir: m.faceDir || 1,
+                w: Math.max(210, bodyX * (full ? 2.75 : 2.35)),
+                h: Math.max(210, bodyZ * (full ? 1.35 : 1.12)),
+                life: duration,
+                maxLife: duration,
+                color: full ? 'rgba(255,28,66,0.86)' : 'rgba(198,30,84,0.72)',
+                accentColor: full ? 'rgba(255,192,116,0.80)' : 'rgba(118,52,210,0.64)',
+                oniCharge: true,
+                fullEnergy: full
+            });
+            return;
+        }
+
+        if (eff === 'EFT_KASIYAS_P2_PUT_SWORD') {
+            const bodyX = ((m.d && m.d.bodyX) || 80) * (m.scale || 1);
+            const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
+            const duration = Math.max(0.55, parseFloat(action.Action_Anim_Duration) || 1.0);
+            const dir = m.faceDir || 1;
+            gameState.effects.push({
+                type: 'kasiyasP2PutSword', renderType: eff,
+                x: m.x + dir * bodyX * 0.35, y: m.y, z: m.z + bodyZ * 0.34,
+                dir: dir, w: Math.max(160, bodyX * 2.0), h: Math.max(160, bodyZ * 0.92),
+                life: Math.min(duration, 0.65), maxLife: Math.min(duration, 0.65),
+                color: 'rgba(230,245,255,0.82)', accentColor: 'rgba(255,86,54,0.70)'
+            });
+            const sideOffset = Math.max(82, bodyX * 0.78);
+            gameState.effects.push({
+                type: 'kasiyasP2GroundSwords', renderType: eff,
+                // 카시야스 몸을 가리지 않도록 중심이 아니라 양 옆에 한 자루씩 배치한다.
+                x: m.x, y: m.y, z: 8, dir: dir,
+                swords: [
+                    { dx: -sideOffset, dy: -18, angle: -0.08 },
+                    { dx: sideOffset, dy: 18, angle: 0.08 }
+                ],
+                w: Math.max(116, bodyX * 1.08), h: Math.max(118, bodyZ * 0.58),
+                life: 8.0, maxLife: 8.0,
+                color: 'rgba(226,242,255,0.94)', accentColor: 'rgba(84,28,16,0.88)'
+            });
+            return;
+        }
+
+        if (eff === 'EFT_KASIYAS_P2_GROUND_PUNCH_CHARGE') {
+            const bodyX = ((m.d && m.d.bodyX) || 80) * (m.scale || 1);
+            const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
+            const duration = Math.max(0.45, parseFloat(action.Action_Anim_Duration) || 1.0);
+            gameState.effects.push({
+                type: 'kasiyasP2GroundPunchCharge', renderType: eff,
+                x: m.x, y: m.y, z: m.z + bodyZ * 0.58,
+                dir: m.faceDir || 1,
+                w: Math.max(180, bodyX * 2.35), h: Math.max(190, bodyZ * 1.08),
+                life: duration, maxLife: duration,
+                color: 'rgba(255,72,48,0.76)', accentColor: 'rgba(20,0,0,0.88)'
+            });
+            return;
+        }
     
+        if (eff === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_STANCE') {
+            if (Array.isArray(gameState.effects)) {
+                gameState.effects = gameState.effects.filter(e => e && e.type !== 'kasiyasP2GroundSwords' && e.type !== 'kasiyasP2PutSword');
+            }
+            const bodyX = ((m.d && m.d.bodyX) || 80) * (m.scale || 1);
+            const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
+            gameState.effects.push({
+                type: 'hitSpark', renderType: eff,
+                x: m.x + (m.faceDir || 1) * bodyX * 0.30,
+                y: m.y,
+                z: m.z + bodyZ * 0.45,
+                dir: m.faceDir || 1,
+                w: Math.max(160, bodyX * 2.0), h: Math.max(150, bodyZ * 0.85),
+                life: 0.26, maxLife: 0.26,
+                color: 'rgba(255,70,48,0.82)', accentColor: 'rgba(255,220,140,0.70)'
+            });
+            return;
+        }
+
+        if (eff === 'EFT_KASIYAS_P2_SWORD_STORM_SPAWN') {
+            const bodyX = ((m.d && m.d.bodyX) || 80) * (m.scale || 1);
+            const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
+            const duration = Math.max(0.35, parseFloat(action.Action_Anim_Duration) || 0.75);
+            const conditionType = String(action.Action_Condition_Type || '').trim().toUpperCase();
+            const spawnObjectId = String(action.Spawn_Object_ID || action.Object_ID || '').trim();
+            const apostleCast = conditionType === 'LATE_PHASE' || spawnObjectId === '252002';
+            gameState.effects.push({
+                type: 'kasiyasP2SwordStormCast',
+                renderType: eff,
+                apostle: apostleCast,
+                x: m.x + (m.faceDir || 1) * bodyX * 0.72,
+                y: m.y,
+                z: m.z + bodyZ * 0.44,
+                dir: m.faceDir || 1,
+                w: Math.max(230, bodyX * 3.10),
+                h: Math.max(220, bodyZ * 1.32),
+                life: duration,
+                maxLife: duration,
+                color: apostleCast ? 'rgba(255,58,42,0.88)' : 'rgba(210,246,255,0.82)',
+                accentColor: apostleCast ? 'rgba(18,0,0,0.94)' : 'rgba(8,24,36,0.86)'
+            });
+            return;
+        }
+
+        if (eff === 'EFT_KASIYAS_P2_CHARGE_ENERGY') {
+            const bodyX = ((m.d && m.d.bodyX) || 80) * (m.scale || 1);
+            const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
+            const duration = Math.max(0.35, parseFloat(action.Action_Anim_Duration) || 0.5);
+            gameState.effects.push({
+                type: 'kasiyasP2ChargeEnergy',
+                renderType: eff,
+                x: m.x,
+                y: m.y,
+                z: m.z + bodyZ * 0.48,
+                dir: m.faceDir || 1,
+                w: Math.max(140, bodyX * 2.35),
+                h: Math.max(160, bodyZ * 1.05),
+                life: duration,
+                maxLife: duration,
+                color: 'rgba(255,54,38,0.90)',
+                accentColor: 'rgba(18,0,0,0.94)'
+            });
+            return;
+        }
+
         if (eff === 'EFT_SUMMON_CLONE') {
             gameState.effects.push({
                 type: 'cloneSummon',
@@ -691,12 +1207,64 @@ const BossVFXSystem = {
     pushBossObjectActionEffect: function(obj, action, hitbox, gameState) {
         const renderType = String(action.VFX_Type || '').trim().toUpperCase();
         if (!renderType) return;
+        if (renderType.indexOf('EFT_P2_M2_SWORD_WALL') >= 0) {
+            // 검벽은 오브젝트 본체 렌더링이 곧 공격 이펙트이므로, 매 히트 체크마다 별도 slash를 만들지 않는다.
+            return;
+        }
         if (renderType === 'EFT_KASIYAS_SWORD_QUICK_DRAW') {
             // 대형 패턴 3번 분신 돌진 발도는 실제 이동 중인 몸/검에 붙는 kasiyasRushBodySlash로만 표현한다.
             // 여기서 일반 slash 이펙트를 추가하면 확장 히트박스 크기만큼 기존 반달형 검호가 크게 출력된다.
             return;
         }
     
+        if (renderType === 'EFT_SWORD_STORM_MOVE' || renderType === 'EFT_SWORD_STORM_WITH_APOSTLE_ENERGY') {
+            const apostle = String(obj && obj.renderType || obj && obj.data && obj.data.Object_Render_Type || '').trim().toUpperCase().indexOf('APOSTLE') >= 0
+                || renderType === 'EFT_SWORD_STORM_WITH_APOSTLE_ENERGY';
+            gameState.effects.push({
+                type: 'swordStormPulse',
+                renderType: renderType,
+                apostle: apostle,
+                x: hitbox.x,
+                y: hitbox.y,
+                z: hitbox.z + Math.max(90, hitbox.h * 0.22),
+                dir: obj.faceDir || 1,
+                w: Math.max(340, Math.min(900, hitbox.w * 0.92)),
+                d: Math.max(120, Math.min(360, hitbox.d * 0.96)),
+                h: Math.max(320, Math.min(620, hitbox.h * 0.36)),
+                life: 0.16,
+                maxLife: 0.16,
+                sourceObject: obj,
+                sourceObjectId: String(obj.data && (obj.data.Object_ID || obj.data.Attack_Object_ID) || '').trim(),
+                sourceActionId: String(action.Object_Action_ID || '').trim(),
+                cancelOnGuard: false
+            });
+            return;
+        }
+
+        if (renderType === 'EFT_SWORD_STORM_BURST' || renderType === 'EFT_SWORD_STORM_BURST_WITH_APOSTLE_ENERGY') {
+            const apostle = renderType === 'EFT_SWORD_STORM_BURST_WITH_APOSTLE_ENERGY'
+                || String(obj && obj.renderType || obj && obj.data && obj.data.Object_Render_Type || '').trim().toUpperCase().indexOf('APOSTLE') >= 0;
+            gameState.effects.push({
+                type: 'swordStormBurst',
+                renderType: renderType,
+                apostle: apostle,
+                x: hitbox.x,
+                y: hitbox.y,
+                z: hitbox.z + Math.max(92, hitbox.h * 0.20),
+                dir: obj.faceDir || 1,
+                w: Math.max(400, Math.min(980, hitbox.w * 0.98)),
+                d: Math.max(145, Math.min(400, hitbox.d * 1.05)),
+                h: Math.max(360, Math.min(680, hitbox.h * 0.40)),
+                life: 0.42,
+                maxLife: 0.42,
+                sourceObject: obj,
+                sourceObjectId: String(obj.data && (obj.data.Object_ID || obj.data.Attack_Object_ID) || '').trim(),
+                sourceActionId: String(action.Object_Action_ID || '').trim(),
+                cancelOnGuard: true
+            });
+            return;
+        }
+
         if (renderType === 'EFT_KASIYAS_SWORDPLAY') {
             gameState.effects.push({
                 type: 'swordplaySlashes',
@@ -764,6 +1332,9 @@ const BossVFXSystem = {
                 color: 'rgba(245,248,255,0.92)',
                 accentColor: 'rgba(40,52,68,0.82)'
             });
+            // 잔상 내려찍기처럼 오브젝트 액션에서 발생하는 충격파도
+            // 지면이 울리는 느낌이 나도록 화면 흔들림을 공통 적용한다.
+            this.triggerScreenShake(gameState, 8.5, 0.34);
             return;
         }
 

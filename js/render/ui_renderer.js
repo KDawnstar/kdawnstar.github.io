@@ -140,7 +140,9 @@ GameRenderer.drawTargetUI = function(ctx, canvas, targetUI, gameState = null) {
             const patternNo = getPatternNumber(pattern, category);
             const numberText = patternNo ? ` ${patternNo}` : '';
 
-            if (category === 'MAJOR' || category === 'GIMMICK') return `대형 패턴${numberText} : ${patternName}`;
+            if (category === 'MAJOR' || category === 'GIMMICK') {
+                return `대형 패턴${numberText} : ${patternName}`;
+            }
             if (category === 'BASIC') return `기본 패턴${numberText} : ${patternName}`;
             return `진행 패턴${numberText} : ${patternName}`;
         }
@@ -436,6 +438,31 @@ GameRenderer.drawTargetUI = function(ctx, canvas, targetUI, gameState = null) {
             strokeWidth: 3
         });
 
+        const p2M1Rt = tm && tm.boss ? tm.boss.p2MajorPattern1Runtime : null;
+        const p2M1Active = tm && tm.boss && tm.boss.activePattern && String(tm.boss.activePattern.Pattern_ID || '').trim() === '232006' && p2M1Rt;
+        if (p2M1Active) {
+            const enh = Math.max(0, parseInt(p2M1Rt.enhanceCount) || 0);
+            const dmgUp = Math.max(0, parseInt(p2M1Rt.atkDmgUpCount) || 0);
+            const sizeUp = Math.max(0, parseInt(p2M1Rt.atkHitboxUpCount) || 0);
+            const m1W = Math.min(430, Math.max(340, infoW * 0.56));
+            const m1H = 34;
+            const m1X = infoX + 10;
+            const m1Y = y + uiH + 8;
+            drawSharpPanel(m1X, m1Y, m1W, m1H, 'rgba(14, 5, 6, 0.92)', 'rgba(255, 194, 72, 0.70)');
+            drawDiamond(m1X + 15, m1Y + 17, 5.5, 'rgba(220, 35, 36, 0.98)', 'rgba(255, 224, 126, 0.82)');
+            drawText(`기운 증폭 ${enh}/8`, m1X + 30, m1Y + 17, {
+                font: makeFont('900', 15),
+                fill: '#ffe082',
+                strokeWidth: 3
+            });
+            drawText(`피해 ${dmgUp} · 범위 ${sizeUp}`, m1X + m1W - 12, m1Y + 17, {
+                font: makeFont('900', 13),
+                align: 'right',
+                fill: '#ffffff',
+                strokeWidth: 3
+            });
+        }
+
         // 대형 패턴 3번: 귀면족의 낙인 해제 조건은 HP 상태창에 붙이지 않고,
         // 하단에 별도 기믹 게이지 패널처럼 표시한다.
         const playerMark = gameState && gameState.player ? gameState.player.kasiyasOniMark : null;
@@ -701,6 +728,11 @@ GameRenderer.drawBossPhaseTransitionOverlay = function(ctx, canvas, gameState) {
     // 도착 후 CUTSCENE 단계부터 시네마틱 오버레이를 재생한다.
     const trPhase = String(tr.phase || 'CUTSCENE').toUpperCase();
     if (trPhase === 'PRE_MOVE') return;
+    const trType = String(tr.type || '').trim().toUpperCase();
+    if (trType === 'KASIYAS_P2_TO_P3' && typeof this.drawKasiyasP2ToP3TransitionOverlay === 'function') {
+        this.drawKasiyasP2ToP3TransitionOverlay(ctx, canvas, gameState, tr);
+        return;
+    }
 
     const boss = tr.boss;
     const camera = gameState.camera || { x: 0 };
@@ -1021,6 +1053,240 @@ GameRenderer.drawBossPhaseTransitionOverlay = function(ctx, canvas, gameState) {
         ctx.strokeStyle = 'rgba(116,0,0,0.80)';
         ctx.strokeText(text, w / 2, 94);
         ctx.fillStyle = 'rgba(255,238,214,0.98)';
+        ctx.fillText(text, w / 2, 94);
+        ctx.restore();
+    }
+
+    ctx.restore();
+};
+
+GameRenderer.drawKasiyasP2ToP3TransitionOverlay = function(ctx, canvas, gameState, tr) {
+    if (!ctx || !canvas || !tr) return;
+
+    const boss = tr.boss || null;
+    const camera = gameState && gameState.camera ? gameState.camera : { x: 0 };
+    const duration = Math.max(0.001, parseFloat(tr.duration) || 9.0);
+    const timer = Math.max(0, Math.min(duration, parseFloat(tr.timer) || 0));
+    const w = canvas.width;
+    const h = canvas.height;
+    const uiFont = '"Malgun Gothic", "Segoe UI", Arial, sans-serif';
+    const smooth = (v) => {
+        v = Math.max(0, Math.min(1, v));
+        return v * v * (3 - 2 * v);
+    };
+    const fadeIn = Math.min(1, timer / 0.45);
+    const fadeOut = Math.min(1, (duration - timer) / 0.75);
+    const alpha = Math.max(0, Math.min(1, fadeIn, fadeOut));
+    const bx = boss ? ((parseFloat(boss.x) || 0) - (parseFloat(camera.x) || 0)) : w / 2;
+    const bodyZ = boss && boss.d ? (((boss.d.bodyZ || boss.d.Body_Size_Z || 160) * (boss.scale || 1))) : 160;
+    const by = boss ? (this.GROUND_BASE_Y + (parseFloat(boss.y) || 0) - Math.max(80, bodyZ * 0.58)) : h * 0.50;
+    const pulse = 0.5 + Math.sin(Date.now() / 90) * 0.5;
+
+    const dropT = smooth((timer - 0.12) / 0.82);
+    const discardFade = 1 - smooth((timer - 1.20) / 0.85);
+    const portalT = smooth((timer - 1.15) / 0.72) * (1 - smooth((timer - 3.05) / 0.55));
+    const pullT = smooth((timer - 2.05) / 1.55);
+    const slashT = smooth((timer - 3.70) / 1.25);
+    const stanceT = smooth((timer - 4.95) / 0.90);
+    const auraT = smooth((timer - 5.40) / 1.55);
+
+    const drawDroppedSword = (sx, sy, ex, ey, startAngle, endAngle, a, dropProgress) => {
+        if (a <= 0.01) return;
+        const fall = Math.max(0, Math.min(1, dropProgress));
+        const easedFall = fall * fall * (3 - 2 * fall);
+        const x = sx + (ex - sx) * easedFall;
+        const y = sy + (ey - sy) * easedFall + Math.sin(fall * Math.PI) * 10;
+        const angle = startAngle * (1 - easedFall) + endAngle * easedFall;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        ctx.globalAlpha *= a;
+        // 버려진 기존 이도류는 더 이상 힘을 품지 않은 물리적인 검으로만 보이게 한다.
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(0,0,0,0.82)';
+        ctx.lineWidth = 9;
+        ctx.beginPath();
+        ctx.moveTo(-46, 0);
+        ctx.lineTo(48, 0);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(190,198,206,0.82)';
+        ctx.lineWidth = 4.2;
+        ctx.beginPath();
+        ctx.moveTo(-34, 0);
+        ctx.lineTo(38, 0);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(244,246,250,0.42)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(-28, -1.6);
+        ctx.lineTo(32, -1.6);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(166,124,42,0.92)';
+        ctx.fillRect(-8, -5, 16, 10);
+        ctx.fillStyle = 'rgba(52,30,18,0.96)';
+        ctx.fillRect(-28, -2.6, 20, 5.2);
+        ctx.restore();
+    };
+
+    const drawPortal = (x, y, a) => {
+        if (a <= 0.01) return;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha *= a;
+        const r = 28 + 18 * a + pulse * 3;
+        const grad = ctx.createRadialGradient(0, 0, 4, 0, 0, r * 1.35);
+        grad.addColorStop(0, `rgba(255,244,255,${0.12 * a})`);
+        grad.addColorStop(0.32, `rgba(204,112,255,${0.24 * a})`);
+        grad.addColorStop(0.72, `rgba(70,0,100,${0.18 * a})`);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, r * 1.05, r * 0.50, 0.10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = 'rgba(194,96,255,0.45)';
+        ctx.strokeStyle = `rgba(214,142,255,${0.38 * a})`;
+        ctx.lineWidth = 3.2;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, r * 0.98, r * 0.46, 0.08, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    };
+
+    const drawP3Sword = (x, y, angle, len, a) => {
+        if (a <= 0.01) return;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha *= a;
+        ctx.shadowBlur = 16;
+        ctx.shadowColor = 'rgba(204,98,255,0.70)';
+        ctx.strokeStyle = 'rgba(0,0,0,0.90)';
+        ctx.lineWidth = 11;
+        ctx.beginPath();
+        ctx.moveTo(-22, 0);
+        ctx.lineTo(len, 0);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(205,120,255,0.88)';
+        ctx.lineWidth = 5.2;
+        ctx.beginPath();
+        ctx.moveTo(-16, 0);
+        ctx.lineTo(len - 8, 0);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,244,255,0.72)';
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        ctx.moveTo(-10, -1);
+        ctx.lineTo(len - 14, -1);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(178,128,42,0.95)';
+        ctx.fillRect(-16, -5, 14, 10);
+        ctx.fillRect(-24, -2.5, 8, 5);
+        ctx.strokeStyle = `rgba(255,52,70,${0.28 + pulse * 0.12})`;
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(-10, 7);
+        ctx.quadraticCurveTo(len * 0.36, -10, len - 4, 4);
+        ctx.stroke();
+        ctx.restore();
+    };
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.74)';
+    ctx.fillRect(0, 0, w, 68);
+    ctx.fillRect(0, h - 68, w, 68);
+
+    const vignette = ctx.createRadialGradient(bx, by + 18, 36, bx, by + 18, Math.max(w, h) * 0.80);
+    vignette.addColorStop(0, `rgba(138,0,30,${0.05 + auraT * 0.07})`);
+    vignette.addColorStop(0.35, `rgba(40,0,48,${0.20 + portalT * 0.10})`);
+    vignette.addColorStop(1, 'rgba(0,0,0,0.62)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, w, h);
+
+    const groundY = by + 94;
+    if (discardFade > 0.02) {
+        const swordAlpha = Math.max(0, discardFade) * Math.max(0.35, dropT);
+        // 2페이즈 기본 자세에서 양손에 있던 두 검이 그대로 아래로 떨어지는 흐름.
+        drawDroppedSword(bx - 36, by + 18, bx - 104, groundY - 10 + Math.sin(Date.now() / 180) * 1.2, 2.46, -0.86, swordAlpha, dropT);
+        drawDroppedSword(bx + 34, by + 18, bx + 96, groundY - 6 + Math.sin(Date.now() / 190 + 1.5) * 1.2, 0.62, 0.82, swordAlpha * 0.96, dropT);
+    }
+
+    if (portalT > 0.02) {
+        drawPortal(bx + 24, by - 220, portalT);
+    }
+
+
+    // 시험 횡베기 이펙트는 방향 보정이 전투용 검호와 계속 충돌하므로 삭제한다.
+    // 카시야스가 검을 옆으로 뻗는 모션만 남겨 '검 상태 확인' 느낌을 살린다.
+
+    if (auraT > 0.02) {
+        ctx.save();
+        ctx.translate(bx, by + 6);
+        ctx.globalCompositeOperation = 'lighter';
+        const baseR = 84 + 34 * auraT + pulse * 8;
+        const core = ctx.createRadialGradient(0, 0, 8, 0, 0, baseR * 1.16);
+        core.addColorStop(0, `rgba(255,232,174,${0.045 + auraT * 0.030})`);
+        core.addColorStop(0.30, `rgba(255,108,48,${0.080 + auraT * 0.065})`);
+        core.addColorStop(0.62, `rgba(174,12,32,${0.105 + auraT * 0.060})`);
+        core.addColorStop(0.88, `rgba(58,0,26,${0.18})`);
+        core.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = core;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, baseR * 0.96, baseR * 0.64, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = 'rgba(255,92,44,0.48)';
+        ctx.strokeStyle = `rgba(255,100,48,${0.18 + auraT * 0.16})`;
+        ctx.lineWidth = 7.0;
+        ctx.beginPath();
+        ctx.moveTo(-baseR * 0.60, 32);
+        ctx.quadraticCurveTo(-baseR * 0.86, -baseR * 0.20, -baseR * 0.36, -baseR * 0.82);
+        ctx.quadraticCurveTo(0, -baseR * 1.08, baseR * 0.38, -baseR * 0.82);
+        ctx.quadraticCurveTo(baseR * 0.86, -baseR * 0.20, baseR * 0.60, 32);
+        ctx.stroke();
+
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = 'rgba(194,96,255,0.30)';
+        ctx.strokeStyle = `rgba(204,132,255,${0.07 + auraT * 0.07})`;
+        ctx.lineWidth = 3.0;
+        ctx.beginPath();
+        ctx.ellipse(0, -36, baseR * 0.64, baseR * 0.34, 0.18, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    if (auraT > 0.16) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const flash = auraT * Math.min(1, (duration - timer) / 1.0);
+        ctx.fillStyle = `rgba(255,240,255,${0.028 * flash + pulse * 0.015 * flash})`;
+        ctx.fillRect(0, 0, w, h);
+        ctx.restore();
+    }
+
+    const titleAlpha = Math.min(1, Math.max(0, (timer - 0.25) / 0.40)) * Math.min(1, (duration - timer) / 0.70);
+    if (titleAlpha > 0) {
+        let text = '카시야스가 두 검을 버린다';
+        if (timer >= 1.5 && timer < 3.85) text = '차원에서 새로운 검을 꺼낸다';
+        else if (timer >= 3.85 && timer < 5.10) text = '검의 상태를 가볍게 시험한다';
+        else if (timer >= 5.10) text = '카시야스 3페이즈 돌입';
+        ctx.save();
+        ctx.globalAlpha = alpha * titleAlpha;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = `900 30px ${uiFont}`;
+        ctx.lineWidth = 7;
+        ctx.strokeStyle = 'rgba(0,0,0,0.94)';
+        ctx.strokeText(text, w / 2, 94);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(74,0,100,0.86)';
+        ctx.strokeText(text, w / 2, 94);
+        ctx.fillStyle = 'rgba(255,238,255,0.98)';
         ctx.fillText(text, w / 2, 94);
         ctx.restore();
     }

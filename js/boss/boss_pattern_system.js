@@ -42,8 +42,22 @@ const BossPatternSystem = {
         return arr;
     },
 
-    buildBossPatternRuntimeActions: function(pattern, gameState) {
-        const sourceActions = Array.isArray(pattern && pattern.Runtime_Actions) ? pattern.Runtime_Actions : [];
+    buildBossPatternRuntimeActions: function(pattern, gameState, boss = null) {
+        const rawActions = Array.isArray(pattern && pattern.Runtime_Actions) ? pattern.Runtime_Actions : [];
+        const hasOrderValue = (action, field) => {
+            const raw = action && action[field];
+            if (raw === undefined || raw === null) return false;
+            if (String(raw).trim() === '') return false;
+            const n = parseFloat(raw);
+            return Number.isFinite(n) && n > 0;
+        };
+        const lateMode = !!(boss && boss.isLatePhase && rawActions.some(action => hasOrderValue(action, 'Late_Phase_Action_Order')));
+        const orderField = lateMode ? 'Late_Phase_Action_Order' : 'Action_Order';
+        const sourceActions = rawActions
+            .filter(action => hasOrderValue(action, orderField))
+            .slice()
+            .sort((a, b) => (parseFloat(a[orderField]) || 0) - (parseFloat(b[orderField]) || 0));
+        const getRuntimeOrder = (action) => parseFloat(action && action[orderField]) || 0;
         const result = [];
         const usedRandomOrders = new Set();
 
@@ -69,13 +83,28 @@ const BossPatternSystem = {
                     const ag = parseFloat(a.Random_Action_Group_Order);
                     const bg = parseFloat(b.Random_Action_Group_Order);
                     if (!isNaN(ag) || !isNaN(bg)) return (isNaN(ag) ? 9999 : ag) - (isNaN(bg) ? 9999 : bg);
-                    return (parseFloat(a.Action_Order) || 0) - (parseFloat(b.Action_Order) || 0);
+                    return getRuntimeOrder(a) - getRuntimeOrder(b);
                 });
-                const minOrder = sortedRows.reduce((v, row) => Math.min(v, parseFloat(row.Action_Order) || 999999), 999999);
+                const minOrder = sortedRows.reduce((v, row) => Math.min(v, getRuntimeOrder(row) || 999999), 999999);
                 return { key, rows: sortedRows, minOrder };
             }).sort((a, b) => a.minOrder - b.minOrder);
 
-            const shuffled = this.shuffleBossActionGroupList(groups);
+            const patternIdForRandom = String(pattern && pattern.Pattern_ID || '').trim();
+            const isP2M2FinalPortalBranch = patternIdForRandom === '232007' && String(randomOrder) === '2';
+            let shuffled;
+            if (isP2M2FinalPortalBranch && groups.length > 1) {
+                // 2페이즈 대형 패턴 2번 최종 구간은 좌/우 포탈 세트 중 하나만 선택해야 한다.
+                // 기존 Random_Action_Order 방식처럼 모든 그룹을 섞어 실행하면 좌/우 포탈이 둘 다 실행되므로,
+                // Random_Action_Order=2 한정으로 그룹 단위 exclusive branch로 해석한다.
+                const picked = this.shuffleBossActionGroupList(groups)[0];
+                shuffled = picked ? [picked] : [];
+                if (boss) {
+                    boss.p2M2FinalPortalGroupKey = picked ? picked.key : '';
+                    boss.p2M2FinalPortalDirection = picked && String(picked.key || '').toUpperCase().includes('LEFT') ? 'LEFT' : 'RIGHT';
+                }
+            } else {
+                shuffled = this.shuffleBossActionGroupList(groups);
+            }
             shuffled.forEach(group => group.rows.forEach(row => result.push(row)));
 
             try {
@@ -89,6 +118,181 @@ const BossPatternSystem = {
         }
 
         return result;
+    },
+
+
+    isKasiyasP2MajorPattern1Pattern: function(pattern) {
+        const patternId = String(pattern && pattern.Pattern_ID || '').trim();
+        const sourceId = this.getBossPatternActionSourceId ? this.getBossPatternActionSourceId(pattern) : patternId;
+        return patternId === '232006' || sourceId === '232006';
+    },
+
+    isKasiyasP2MajorPattern1Action: function(action) {
+        return String(action && action.Pattern_ID || '').trim() === '232006';
+    },
+
+    ensureKasiyasP2MajorPattern1Runtime: function(boss) {
+        if (!boss) return null;
+        boss.p2MajorPattern1Runtime = boss.p2MajorPattern1Runtime || {
+            enhanceCount: 0,
+            atkDmgUpCount: 0,
+            atkHitboxUpCount: 0,
+            actionResults: {},
+            lastFloatingTimer: 0,
+            swordEnergyGranted: false,
+            swordEnergyAuraActive: false,
+            leftSwordEnergy: 'RED',
+            rightSwordEnergy: 'YELLOW'
+        };
+        return boss.p2MajorPattern1Runtime;
+    },
+
+    getKasiyasP2MajorPattern1EnhanceCount: function(m) {
+        const rt = m && m.boss ? m.boss.p2MajorPattern1Runtime : null;
+        return Math.max(0, parseInt(rt && rt.enhanceCount) || 0);
+    },
+
+    shouldSkipBossPatternActionByCondition: function(m, action, gameState) {
+        const cond = String(action && action.Action_Condition_Type || '').trim().toUpperCase();
+        if (!cond || cond === 'NONE') return false;
+        if ((cond === 'LATE_PHASE' || cond === 'LATE_PHASE_START') && !(m && m.boss && m.boss.isLatePhase)) return true;
+
+        const value = parseFloat(action && action.Action_Condition_Value);
+        const threshold = Number.isFinite(value) ? value : 0;
+        if (cond === 'PATTERN_ENHANCE_COUNT_UNDER') {
+            return this.getKasiyasP2MajorPattern1EnhanceCount(m) >= threshold;
+        }
+        if (cond === 'PATTERN_ENHANCE_COUNT_OVER_OR_EQUAL') {
+            return this.getKasiyasP2MajorPattern1EnhanceCount(m) < threshold;
+        }
+        return false;
+    },
+
+    finalizeKasiyasP2MajorPattern1ActionAsDodgeIfNeeded: function(m, action, gameState) {
+        if (!m || !m.boss || !action || String(action.Pattern_ID || '').trim() !== '232006') return false;
+        const required = String(action.Required_Response_Type || '').trim().toUpperCase();
+        if (!required) return false;
+        const rt = this.ensureKasiyasP2MajorPattern1Runtime(m.boss);
+        if (!rt) return false;
+        const key = `${String(action.Action_ID || '').trim()}:${m.boss.currentLoopIndex || 0}:${m.boss.currentActionIndex || 0}`;
+        if (rt.actionResults && rt.actionResults[key]) return false;
+        // 해당 공격 액션이 끝날 때까지 피격/가드 결과가 없으면 이동 회피로 판정한다.
+        return this.registerKasiyasP2MajorPattern1ResponseResult(m, action, gameState, { dodged: true, responseType: 'DODGE', resultKey: key });
+    },
+
+    registerKasiyasP2MajorPattern1ResponseResult: function(m, action, gameState, result = {}) {
+        if (!m || !m.boss || !action || String(action.Pattern_ID || '').trim() !== '232006') return false;
+        const required = String(action.Required_Response_Type || '').trim().toUpperCase();
+        if (!required) return false;
+        const rt = this.ensureKasiyasP2MajorPattern1Runtime(m.boss);
+        if (!rt) return false;
+        const key = String(result.resultKey || `${String(action.Action_ID || '').trim()}:${m.boss.currentLoopIndex || 0}:${m.boss.currentActionIndex || 0}`).trim();
+        rt.actionResults = rt.actionResults || {};
+        if (rt.actionResults[key]) return false;
+
+        let response = String(result.responseType || '').trim().toUpperCase();
+        if (!response) response = result.guarded ? 'GUARD' : (result.dodged ? 'DODGE' : 'HIT');
+        const correct = response === required;
+        const player = gameState && gameState.player ? gameState.player : null;
+        const actionName = this.getBossDebugName ? this.getBossDebugName(action) : String(action.Action_Name || action.Action_ID || '');
+
+        if (correct) {
+            let spirit = 0;
+            if (response === 'DODGE') spirit = Math.max(0, parseFloat(action.Dodge_Get_Fighting_Spirit) || 0);
+            // GUARD 보상은 PlayerManager.takeDamage의 기존 Guard_Get_Fighting_Spirit 처리에 맡긴다.
+            if (spirit > 0 && typeof PlayerManager !== 'undefined' && PlayerManager.addFightingSpirit) {
+                PlayerManager.addFightingSpirit(gameState, spirit, {
+                    rewardKey: `P2M1_DODGE_${key}`,
+                    lockTime: 0.40
+                });
+            }
+            if (gameState && Array.isArray(gameState.floatingTexts) && player) {
+                gameState.floatingTexts.push({
+                    x: player.x,
+                    y: player.y,
+                    z: (player.z || 0) + (player.bodyZ || 100) + 56,
+                    text: response === 'DODGE' ? '회피 성공!' : '가드 성공!',
+                    color: response === 'DODGE' ? '#ff7b66' : '#ffe45c',
+                    size: '24px',
+                    timer: 0.75,
+                    isBubble: false
+                });
+            }
+            this.pushBossDebugLog && this.pushBossDebugLog(gameState, 'P2_M1_OK', `${String(action.Action_ID || '').trim()} ${actionName}`, `${response} / spirit ${spirit}`);
+        } else {
+            const enhanceType = String(action.Wrong_Response_Enhance_Type || '').trim().toUpperCase();
+            const enhanceValue = Math.max(0, parseFloat(action.Pattern_Enhance_Value) || 0);
+            rt.enhanceCount = Math.max(0, (parseInt(rt.enhanceCount) || 0) + 1);
+            if (enhanceType === 'PATTERN_ATK_DMG_UP') rt.atkDmgUpCount = Math.max(0, (parseInt(rt.atkDmgUpCount) || 0) + 1);
+            if (enhanceType === 'PATTERN_ATK_HITBOX_SIZE_UP') rt.atkHitboxUpCount = Math.max(0, (parseInt(rt.atkHitboxUpCount) || 0) + 1);
+            rt.lastEnhanceValue = enhanceValue;
+            if (gameState && Array.isArray(gameState.floatingTexts) && player) {
+                gameState.floatingTexts.push({
+                    x: m.x,
+                    y: m.y,
+                    z: (m.z || 0) + (((m.d && m.d.bodyZ) || 160) * (m.scale || 1)) + 66,
+                    text: `기운 증폭 ${rt.enhanceCount}/8`,
+                    color: enhanceType === 'PATTERN_ATK_HITBOX_SIZE_UP' ? '#ffd84e' : '#ff4c3f',
+                    size: '24px',
+                    timer: 0.80,
+                    isBubble: false
+                });
+            }
+            this.pushBossDebugLog && this.pushBossDebugLog(gameState, 'P2_M1_BAD', `${String(action.Action_ID || '').trim()} ${actionName}`, `${response} != ${required}, enhance ${rt.enhanceCount}/8`);
+        }
+
+        rt.actionResults[key] = { response, required, correct, time: Date.now() };
+        return true;
+    },
+
+    isKasiyasP2MajorPattern1EnhancedAttackAction: function(action) {
+        if (!action || String(action.Pattern_ID || '').trim() !== '232006') return false;
+        const actionType = String(action.Action_Type || '').trim().toUpperCase();
+        if (actionType !== 'ATK') return false;
+        const id = String(action.Action_ID || '').trim();
+        const name = String(action.Action_Name || '').trim();
+        const required = String(action.Required_Response_Type || '').trim().toUpperCase();
+        return !!required || id === '242049' || id === '242050' || name.indexOf('최종 X자 베기') >= 0;
+    },
+
+    getKasiyasP2MajorPattern1FinalDamageMultiplier: function(m, action) {
+        // 이 함수는 모든 본체 공격 판정 계산 경로에서 호출될 수 있으므로,
+        // MonsterRuntimeSystem 래퍼 누락 같은 이유로 전체 공격 판정이 중단되지 않게
+        // 외부 helper(this.isKasiyas...)에 의존하지 않고 직접 안전 검사한다.
+        if (!m || !m.boss || !action) return 1;
+        const patternId = String(action.Pattern_ID || '').trim();
+        if (patternId !== '232006') return 1;
+        const actionType = String(action.Action_Type || '').trim().toUpperCase();
+        if (actionType !== 'ATK') return 1;
+        const required = String(action.Required_Response_Type || '').trim().toUpperCase();
+        const actionId = String(action.Action_ID || '').trim();
+        const actionName = String(action.Action_Name || '').trim();
+        const isTarget = !!required || actionId === '242049' || actionId === '242050' || actionName.indexOf('최종 X자 베기') >= 0;
+        if (!isTarget) return 1;
+
+        const rt = m.boss.p2MajorPattern1Runtime || {};
+        const count = Math.max(0, parseInt(rt.atkDmgUpCount) || 0);
+        const val = Math.max(0, parseFloat(rt.lastEnhanceValue) || parseFloat(action.Pattern_Enhance_Value) || 0.2);
+        return 1 + count * val;
+    },
+
+    getKasiyasP2MajorPattern1FinalHitboxMultiplier: function(m, action) {
+        // 모든 본체 공격 공통 hitbox 계산에서 호출된다. helper 래퍼 의존 없이 안전 검사한다.
+        if (!m || !m.boss || !action) return 1;
+        const patternId = String(action.Pattern_ID || '').trim();
+        if (patternId !== '232006') return 1;
+        const actionType = String(action.Action_Type || '').trim().toUpperCase();
+        if (actionType !== 'ATK') return 1;
+        const required = String(action.Required_Response_Type || '').trim().toUpperCase();
+        const actionId = String(action.Action_ID || '').trim();
+        const actionName = String(action.Action_Name || '').trim();
+        const isTarget = !!required || actionId === '242049' || actionId === '242050' || actionName.indexOf('최종 X자 베기') >= 0;
+        if (!isTarget) return 1;
+
+        const rt = m.boss.p2MajorPattern1Runtime || {};
+        const count = Math.max(0, parseInt(rt.atkHitboxUpCount) || 0);
+        const val = Math.max(0, parseFloat(rt.lastEnhanceValue) || parseFloat(action.Pattern_Enhance_Value) || 0.2);
+        return 1 + count * val;
     },
 
     updateBossCooldowns: function(m, deltaTime) {
@@ -127,6 +331,8 @@ const BossPatternSystem = {
         if (v === 'MOVE_WALK') return 'WALK';
         if (v === 'MOVE_SHOULDER_ATK') return 'MOVE_SHOULDER_ATK';
         if (v === 'MOVE_WITH_NOISE') return 'NOISE';
+        if (v === 'MOVE_JUMP') return 'JUMP';
+        if (v === 'MOVE_WARP') return 'WARP';
         return v;
     },
 
@@ -398,14 +604,19 @@ const BossPatternSystem = {
 
         boss.activePattern = pattern;
         if (String(pattern.Pattern_ID || '').trim() === String(boss.phase && boss.phase.Late_Opening_Pattern_ID || '').trim()) {
+            boss.lateOpeningPatternStarted = true;
             boss.lateOpeningPatternUsed = true;
+            boss.pendingLateOpeningPatternId = null;
         }
         boss.currentActionIndex = -1;
         boss.currentLoopIndex = 0;
         boss.loopCount = this.getPatternLoopCount(pattern, boss);
         boss.action = null;
         boss.actionHitFired = false;
-        boss.runtimeActions = this.buildBossPatternRuntimeActions(pattern, gameState);
+        boss.actionObjectSpawnStartFired = false;
+        boss.actionObjectSpawnEndFired = false;
+        boss.p2p3JumpSlashTarget = null;
+        boss.runtimeActions = this.buildBossPatternRuntimeActions(pattern, gameState, boss);
         boss.pattern4Runtime = null;
         boss.majorPattern1Runtime = null;
         boss.majorPattern2Runtime = null;
@@ -420,6 +631,37 @@ const BossPatternSystem = {
             boss.majorPattern2Runtime = { objectGroupSelections: {} };
         }
 
+
+        if (this.isKasiyasP2MajorPattern1Pattern && this.isKasiyasP2MajorPattern1Pattern(pattern)) {
+            boss.p2MajorPattern1Runtime = {
+                enhanceCount: 0,
+                atkDmgUpCount: 0,
+                atkHitboxUpCount: 0,
+                actionResults: {},
+                lastEnhanceValue: 0.2,
+                swordEnergyGranted: false,
+                swordEnergyAuraActive: false,
+                leftSwordEnergy: 'RED',
+                rightSwordEnergy: 'YELLOW'
+            };
+        }
+
+        if (String(pattern.Pattern_ID || '').trim() === '232007') {
+            boss.p2M2FinalResolved = false;
+            boss.p2M2FinalPortalGroupKey = '';
+            boss.p2M2FinalPortalDirection = '';
+            if (gameState) {
+                gameState.p2m2LastFiredSword = null;
+                // 부분 파훼는 이번 패턴에서 거대 검을 실제로 파괴해 얻은 사도의 기운이 있을 때만 성립해야 한다.
+                // 이전 연습/패턴에서 남은 플래그가 마지막 피니시 가드 그로기를 잘못 발생시키지 않도록 패턴 시작 시 초기화한다.
+                const p = gameState.player || null;
+                if (p) {
+                    p.hasP2M2ApostleSwordEnergy = false;
+                    p.p2m2ApostleSwordEnergyTimer = 0;
+                    p.kasiyasApostleEnergyFlashTimer = 0;
+                }
+            }
+        }
 
         if (this.isKasiyasMajorPattern3Pattern(pattern)) {
             if (typeof this.clearKasiyasMajorPattern3Runtime === 'function') {
@@ -458,6 +700,25 @@ const BossPatternSystem = {
                     BossObjectSystem.clearKasiyasMajorPattern3Runtime(gameState, { removeActors: true, clearMark: true });
                 }
             }
+            if (patternId === '232006') {
+                boss.p2MajorPattern1Runtime = null;
+            }
+            if (patternId === '232007') {
+                // 검벽 웨이브가 끝나도 파괴된 거대 검/조준/발사체는 후속 파훼 기믹으로 이어질 수 있으므로 유지한다.
+                // 연습 모드에서 다른 패턴을 강제 실행하거나 패턴을 새로 시작할 때는 기본 정리 옵션으로 제거된다.
+                if (typeof this.clearKasiyasP2MajorPattern2Runtime === 'function') {
+                    this.clearKasiyasP2MajorPattern2Runtime(gameState, { removeObjects: true, keepProgressObjects: true });
+                } else if (typeof BossObjectSystem !== 'undefined' && BossObjectSystem.clearKasiyasP2MajorPattern2Runtime) {
+                    BossObjectSystem.clearKasiyasP2MajorPattern2Runtime.call(this, gameState, { removeObjects: true, keepProgressObjects: true });
+                }
+            }
+            if (patternId === '232003') {
+                if (typeof this.clearKasiyasP2Pattern3Runtime === 'function') {
+                    this.clearKasiyasP2Pattern3Runtime(gameState, { clearAllHitboxes: true, forceResetBossState: true });
+                } else if (typeof BossObjectSystem !== 'undefined' && BossObjectSystem.clearKasiyasP2Pattern3Runtime) {
+                    BossObjectSystem.clearKasiyasP2Pattern3Runtime.call(this, gameState, { clearAllHitboxes: true, forceResetBossState: true });
+                }
+            }
             boss.patternCooldowns[patternId] = parseFloat(pattern.Pattern_Cooldown) || 1;
             this.pushBossDebugLog(
                 gameState,
@@ -477,11 +738,16 @@ const BossPatternSystem = {
         boss.action = null;
         boss.runtimeActions = null;
         boss.actionHitFired = false;
+        boss.actionObjectSpawnStartFired = false;
+        boss.actionObjectSpawnEndFired = false;
         boss.actionHitsDone = 0;
         boss.actionCycleTimer = 0;
         boss.previewDashPath = null;
+        boss.p2p3JumpSlashTarget = null;
         boss.currentDashPath = null;
         boss.actionMove = null;
+        boss.kasiyasP2M2Hidden = false;
+        boss.kasiyasP1M3RushHidden = false;
         boss.noPatternWaitTimer = parseFloat(boss.phase && boss.phase.No_Pattern_Wait_Time) || 0.2;
 
         m.state = 'IDLE';
@@ -495,6 +761,10 @@ const BossPatternSystem = {
         if (!boss || !pattern) return;
 
         const actions = boss.runtimeActions || pattern.Runtime_Actions || [];
+
+        if (boss.action && typeof this.finalizeKasiyasP2MajorPattern1ActionAsDodgeIfNeeded === 'function') {
+            this.finalizeKasiyasP2MajorPattern1ActionAsDodgeIfNeeded(m, boss.action, gameState);
+        }
 
         while (true) {
             boss.currentActionIndex++;
@@ -512,7 +782,7 @@ const BossPatternSystem = {
             const action = actions[boss.currentActionIndex];
             const cond = String(action.Action_Condition_Type || '').trim().toUpperCase();
 
-            if ((cond === 'LATE_PHASE' || cond === 'LATE_PHASE_START') && !boss.isLatePhase) {
+            if (typeof this.shouldSkipBossPatternActionByCondition === 'function' && this.shouldSkipBossPatternActionByCondition(m, action, gameState)) {
                 this.pushBossDebugLog(
                     gameState,
                     'SKIP',
@@ -524,13 +794,16 @@ const BossPatternSystem = {
 
             boss.action = action;
             boss.actionHitFired = false;
+            boss.actionObjectSpawnStartFired = false;
+            boss.actionObjectSpawnEndFired = false;
             boss.actionHitsDone = 0;
             boss.actionCycleTimer = 999;
+            boss.lastP2DoubleSlashVisualEffectKey = null;
             boss.parryWindowActive = false;
             boss.parryCueTimer = 0;
 
             const actionType = String(action.Action_Type || '').trim().toUpperCase();
-            if (['WAIT','WARNING_PATH','WARNING','SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT','MOVE','MOVE_GROUP','CALL_OBJECT_ACTION'].includes(actionType)) m.state = 'IDLE';
+            if (['WAIT','WARNING_PATH','WARNING','SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT','MOVE','MOVE_GROUP','CALL_OBJECT_ACTION','DIRECT_ACT','P2_M3_EXCLUSIVE_MODE_START'].includes(actionType)) m.state = 'IDLE';
             else m.state = 'ATK_MELEE';
 
             m.timer = 0;
@@ -551,7 +824,7 @@ const BossPatternSystem = {
                 canGuard: action.ATK_Can_Guard === true || String(action.ATK_Can_Guard || '').trim().toLowerCase() === 'true',
                 loopIndex: boss.currentLoopIndex + 1,
                 loopCount: boss.loopCount,
-                order: parseFloat(action.Action_Order) || (boss.currentActionIndex + 1),
+                order: parseFloat(action.Runtime_Effective_Action_Order || action.Late_Phase_Action_Order || action.Action_Order) || (boss.currentActionIndex + 1),
                 duration: this.getBossActionDuration(m, action, gameState)
             };
             this.pushBossDebugLog(

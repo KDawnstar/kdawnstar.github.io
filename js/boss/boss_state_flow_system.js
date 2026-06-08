@@ -26,6 +26,9 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
             }
 
             if (!m.isDeadProcessed) {
+                if (typeof this.clearAllBossPatternRuntimeOnDeath === 'function') {
+                    this.clearAllBossPatternRuntimeOnDeath(m, gameState);
+                }
                 m.isDeadProcessed = true;
                 MonsterAI.changeState(m, 'DIE', gameState);
                 if (gameState.targetUI.monster === m) gameState.targetUI.timer = 1.5;
@@ -50,11 +53,33 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
 
         const hpRate = (parseFloat(m.hp) || 0) / Math.max(1, parseFloat(m.maxHp) || 1);
         const lateThreshold = this.getBossLatePhaseThreshold(boss.phase);
+        const wasLatePhase = !!boss.isLatePhase;
         boss.isLatePhase = hpRate <= lateThreshold;
 
         if (boss.isLatePhase && !boss.lateNoticeShown) {
             boss.lateNoticeShown = true;
             pushSystemNotice('⚠️ 카시야스 후반부 돌입', '#e67e22', 1.8);
+        }
+
+        // 후반부 개시 패턴은 후반부 진입 순간 예약해 두고,
+        // 현재 진행 중인 패턴/행동이 끝난 뒤 일반 패턴 선택보다 먼저 강제 실행한다.
+        // 이렇게 해야 후반부 진입 직후 다른 기본/대형 패턴이 먼저 뽑히는 상황을 막을 수 있다.
+        const lateOpeningIdForReserve = String(boss.phase && boss.phase.Late_Opening_Pattern_ID || '').trim();
+        const hasValidLateOpeningId = lateOpeningIdForReserve && lateOpeningIdForReserve !== '0';
+        if (boss.isLatePhase && hasValidLateOpeningId && !boss.lateOpeningPatternUsed && !boss.lateOpeningPatternStarted) {
+            if (!wasLatePhase || !String(boss.pendingLateOpeningPatternId || '').trim()) {
+                boss.pendingLateOpeningPatternId = lateOpeningIdForReserve;
+                if (typeof this.pushBossDebugLog === 'function') {
+                    this.pushBossDebugLog(gameState, 'LATE', `후반부 개시 패턴 예약 ${lateOpeningIdForReserve}`, '현재 패턴 종료 후 우선 실행');
+                }
+            }
+        }
+
+        if (boss.p2M2PerfectBreakPending) {
+            if (typeof this.updateKasiyasP2M2PerfectBreakSequence === 'function') {
+                this.updateKasiyasP2M2PerfectBreakSequence(m, deltaTime, gameState);
+                return true;
+            }
         }
 
         if (boss.groggyTimer > 0) {
@@ -73,16 +98,186 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
         }
 
         if (boss.action) {
+            if (typeof this.tryResolveKasiyasP2M2FinalPortalHit === 'function' && this.tryResolveKasiyasP2M2FinalPortalHit(m, boss.action, gameState)) {
+                return true;
+            }
+            const activeActionIdForGaze = String(boss.action && boss.action.Action_ID || '').trim();
+            const activePatternIdForGaze = String(boss.action && boss.action.Pattern_ID || '').trim();
+            // 2페이즈 대형 패턴 1의 최종 X자 베기 준비는 대기 시간이 길기 때문에,
+            // 액션 시작 시 1회만 바라보지 않고 준비 중 계속 플레이어 방향을 추적한다.
+            if (activePatternIdForGaze === '232006' && activeActionIdForGaze === '242048' && typeof this.applyBossActionGaze === 'function') {
+                this.applyBossActionGaze(m, boss.action, gameState);
+            }
             this.updateBossPatternActionMovement(m, boss.action, deltaTime, gameState);
+            const activePoseForAirSlash = String(boss.action && boss.action.Action_Pose_Type || '').trim().toUpperCase();
+            const activeActionIdForAirSlash = String(boss.action && boss.action.Action_ID || '').trim();
+            if (activePoseForAirSlash === 'POSE_KASIYAS_P3_AIR_SLASH_DOWN' || activeActionIdForAirSlash === '243032') {
+                // 3페이즈 기본 패턴 5번의 마무리는 단순 공중 유지 자세가 아니라,
+                // 맵 중앙 상공에서 지면으로 낙하하며 검을 내려찍는 액션으로 보여야 한다.
+                // 따라서 243032 진행률에 맞춰 Z를 공중 높이에서 0까지 직접 보간하고,
+                // 검흔 판정이 켜지는 시점에는 지면에 착지/충돌한 실루엣이 되도록 한다.
+                const bodyZForAirSlash = ((m.d && parseFloat(m.d.bodyZ)) || 170) * (parseFloat(m.scale) || 1);
+                let actionDurationForAirSlash = parseFloat(boss.action && boss.action.Action_Anim_Duration) || 2.0;
+                try {
+                    if (typeof this.getBossActionDuration === 'function') {
+                        actionDurationForAirSlash = this.getBossActionDuration(m, boss.action, gameState) || actionDurationForAirSlash;
+                    }
+                } catch (e) {}
+                actionDurationForAirSlash = Math.max(0.25, parseFloat(actionDurationForAirSlash) || 2.0);
+
+                let impactTime = Math.max(0.18, actionDurationForAirSlash * 0.50);
+                try {
+                    const group = String(boss.action && boss.action.Spawn_Object_Group || '').trim();
+                    const db = gameState && gameState.DB_BOSS_PATTERN_OBJECT ? gameState.DB_BOSS_PATTERN_OBJECT : null;
+                    if (group && db) {
+                        Object.keys(db).forEach(key => {
+                            const data = db[key] || {};
+                            if (String(data.Object_Group || '').trim() === group) {
+                                const delay = parseFloat(data.Hitbox_Delay_Time);
+                                if (!isNaN(delay) && delay > 0) impactTime = Math.min(impactTime, delay);
+                            }
+                        });
+                    }
+                } catch (e) {}
+                impactTime = Math.max(0.18, Math.min(impactTime, actionDurationForAirSlash * 0.85));
+
+                const timerForAirSlash = Math.max(0, parseFloat(m.timer) || 0);
+                const actionIndexForAirSlash = parseInt(boss.currentActionIndex);
+                const runtimeKey = `${activeActionIdForAirSlash || 'AIR'}:${isNaN(actionIndexForAirSlash) ? -1 : actionIndexForAirSlash}`;
+                const shouldResetAirSlash = !boss.p3B5AirSlashRuntime
+                    || boss.p3B5AirSlashRuntime.key !== runtimeKey
+                    || timerForAirSlash < (parseFloat(boss.p3B5AirSlashRuntime.lastTimer) || 0) - 0.05;
+                if (shouldResetAirSlash) {
+                    boss.p3B5AirSlashRuntime = {
+                        key: runtimeKey,
+                        startZ: Math.max(240, parseFloat(m.z) || 0, bodyZForAirSlash * 1.20),
+                        impactTime: impactTime,
+                        lastTimer: timerForAirSlash
+                    };
+                }
+
+                const airSlashRuntime = boss.p3B5AirSlashRuntime || {};
+                airSlashRuntime.impactTime = impactTime;
+                airSlashRuntime.lastTimer = timerForAirSlash;
+                const startZ = Math.max(160, parseFloat(airSlashRuntime.startZ) || 240);
+                const tRaw = Math.max(0, Math.min(1, timerForAirSlash / Math.max(0.001, impactTime)));
+                // 초반에는 잠깐 체공하고, 후반에 지면을 향해 빠르게 떨어지는 느낌.
+                const eased = Math.pow(tRaw, 1.55);
+                const currentZ = startZ * (1 - eased);
+
+                if (timerForAirSlash < impactTime) {
+                    m.z = Math.max(0, currentZ);
+                    m.vz = 0;
+                    m.isGrounded = false;
+                } else {
+                    m.z = 0;
+                    m.vz = 0;
+                    m.isGrounded = true;
+                }
+            } else {
+                boss.p3B5AirSlashRuntime = null;
+                boss.p3B5AirSlashHoldZ = null;
+            }
             this.updateBossParryCue(m, boss.action, deltaTime, gameState);
 
             const actionType = String(boss.action.Action_Type || '').trim().toUpperCase();
+            if (actionType === 'P2_M3_EXCLUSIVE_MODE_START') {
+                // step213: 지면 붕괴 DIRECT_ACT가 끝난 직후 배우들이 음수 Z/피격 상태로 남아 있으면
+                // 전용 모드 시작 실패 시 화면이 빈 기존 맵 상태로 멈춰 보일 수 있으므로, 시작 직전에 안전 복구한다.
+                const p = gameState && gameState.player;
+                if (p) {
+                    p.z = 0;
+                    p.vz = 0;
+                    p.kbVx = 0;
+                    p.kbVy = 0;
+                    p.vx = 0;
+                    p.vy = 0;
+                    p.isGrounded = true;
+                    if (p.state === 'Hit' || p.state === 'HIT') p.state = 'Idle';
+                }
+                m.z = 0;
+                m.kbVx = 0;
+                m.kbVy = 0;
+                if (gameState) {
+                    // 이전 DIRECT_ACT용 오버레이는 여기서 종료하고, 이후에는 P2_M3 전용 INTRO가 담당한다.
+                    gameState.p2m3IntroRuntime = null;
+                    if (gameState.specialMode === 'P2_M3_DIMENSION_DEFENSE' && !(gameState.p2m3DefenseRuntime && gameState.p2m3DefenseRuntime.active)) {
+                        gameState.specialMode = null;
+                        gameState.p2m3DefenseRuntime = null;
+                    }
+                }
+                // step214: 이전 프레임에서 시작 플래그만 true가 되었지만 실제 전용 모드 런타임이 활성화되지 않은 경우,
+                // 242073을 영구 대기시키지 말고 플래그를 풀어 다시 시작 시도한다.
+                const p2m3ActiveNow = !!(typeof P2M3DimensionDefenseSystem !== 'undefined' && P2M3DimensionDefenseSystem.isActive && P2M3DimensionDefenseSystem.isActive(gameState));
+                if (boss.p2m3ExclusiveModeStarted && !p2m3ActiveNow) {
+                    boss.p2m3ExclusiveModeStarted = false;
+                    if (typeof this.pushBossDebugLog === 'function') {
+                        this.pushBossDebugLog(gameState, 'P2_M3_START_RETRY', '242073 차원 방어전 시작 재시도', 'started flag existed but runtime was not active');
+                    }
+                }
+
+                if (!boss.p2m3ExclusiveModeStarted && typeof P2M3DimensionDefenseSystem !== 'undefined' && P2M3DimensionDefenseSystem.startFromPattern) {
+                    let startedP2M3 = false;
+                    let activeAfterStart = false;
+                    const patternIdForP2M3 = String(boss.action.Pattern_ID || boss.activePattern && boss.activePattern.Pattern_ID || '232008');
+                    const sourceActionIdForP2M3 = String(boss.action.Action_ID || '');
+                    try {
+                        startedP2M3 = P2M3DimensionDefenseSystem.startFromPattern(gameState, m, {
+                            patternId: patternIdForP2M3,
+                            sourceActionId: sourceActionIdForP2M3
+                        });
+                        activeAfterStart = !!(P2M3DimensionDefenseSystem.isActive && P2M3DimensionDefenseSystem.isActive(gameState));
+                    } catch (e) {
+                        console.warn('[P2M3] startFromPattern failed', e);
+                        startedP2M3 = false;
+                        activeAfterStart = false;
+                    }
+                    // stale specialMode 때문에 1회 실패한 경우 강제 정리 후 한 번만 재시도한다.
+                    if ((!startedP2M3 || !activeAfterStart) && gameState) {
+                        gameState.specialMode = null;
+                        gameState.p2m3DefenseRuntime = null;
+                        gameState.p2m3IntroRuntime = null;
+                        try {
+                            startedP2M3 = P2M3DimensionDefenseSystem.startFromPattern(gameState, m, {
+                                patternId: patternIdForP2M3,
+                                sourceActionId: sourceActionIdForP2M3
+                            });
+                            activeAfterStart = !!(P2M3DimensionDefenseSystem.isActive && P2M3DimensionDefenseSystem.isActive(gameState));
+                        } catch (e) {
+                            console.warn('[P2M3] startFromPattern retry failed', e);
+                            startedP2M3 = false;
+                            activeAfterStart = false;
+                        }
+                    }
+                    boss.p2m3ExclusiveModeStarted = !!(startedP2M3 && activeAfterStart);
+                    if (typeof this.pushBossDebugLog === 'function') {
+                        const rt = gameState && gameState.p2m3DefenseRuntime;
+                        this.pushBossDebugLog(
+                            gameState,
+                            boss.p2m3ExclusiveModeStarted ? 'P2_M3_START' : 'P2_M3_START_FAIL',
+                            `${sourceActionIdForP2M3 || '242073'} 차원 방어전 시작`,
+                            `started=${!!startedP2M3}, active=${!!activeAfterStart}, specialMode=${String(gameState && gameState.specialMode || '-')}, phase=${String(rt && rt.phase || '-')}`
+                        );
+                    }
+                    if (boss.p2m3ExclusiveModeStarted) return true;
+                }
+                // 그래도 시작하지 못하면 다음 프레임 재시도하되, 시작 완료 플래그를 남기지 않는다.
+                boss.p2m3ExclusiveModeStarted = false;
+                return true;
+            }
+            if (actionType === 'DIRECT_ACT' && typeof P2M3DimensionDefenseSystem !== 'undefined' && P2M3DimensionDefenseSystem.updatePatternIntroAction) {
+                P2M3DimensionDefenseSystem.updatePatternIntroAction(m, boss.action, deltaTime, gameState);
+            }
             const hitWindow = this.getBossActionHitWindow(m, boss.action);
             const hitStart = hitWindow.start;
             const hitEnd = hitWindow.end || hitStart;
             const animDur = this.getBossActionDuration(m, boss.action, gameState);
 
-            if (!['WAIT','WARNING_PATH','WARNING','SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT','MOVE'].includes(actionType)) {
+            if (typeof this.updateBossInlineActionWarning === 'function') {
+                this.updateBossInlineActionWarning(m, boss.action, gameState);
+            }
+
+            if (!['WAIT','WARNING_PATH','WARNING','SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT','MOVE','REMOVE_ALL_OBJECT','CLEAR_PATTERN_TERRAIN_OBJECTS','DIRECT_ACT','P2_M3_EXCLUSIVE_MODE_START'].includes(actionType)) {
                 const rawHitEnd = parseFloat(boss.action.Hitbox_End_Time);
                 const effectiveHitEnd = !isNaN(rawHitEnd) && rawHitEnd > 0 ? hitEnd : animDur;
                 const hitboxType = String(boss.action.Hitbox_Type || '').trim().toUpperCase();
@@ -110,11 +305,18 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
             }
 
             if (m.timer >= animDur) {
-                if (['SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT'].includes(actionType)) {
+                if (String(boss.action && boss.action.Pattern_ID || '').trim() === '232006' && String(boss.action && boss.action.Action_ID || '').trim() === '242039') {
+                    boss.p2MajorPattern1Runtime = boss.p2MajorPattern1Runtime || {};
+                    // 기운 부여 액션이 완전히 끝난 뒤부터만 검 기운을 활성화한다.
+                    // 별도의 몸 옆 세로 오라 이펙트는 사용하지 않고, 검신 렌더 쪽에서만 표시한다.
+                    boss.p2MajorPattern1Runtime.swordEnergyGranted = true;
+                }
+                if (typeof this.trySpawnBossPatternActionObjectsAtTiming === 'function') {
+                    this.trySpawnBossPatternActionObjectsAtTiming(m, boss.action, gameState, 'ACTION_END');
+                } else if (['SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT'].includes(actionType)) {
                     const spawnTiming = String(boss.action.Object_Spawn_Timing || 'ACTION_START').trim().toUpperCase();
-                    if (spawnTiming === 'ACTION_END' && !boss.actionHitFired) {
+                    if (spawnTiming === 'ACTION_END') {
                         this.spawnBossAttackObjectFromAction(m, boss.action, gameState);
-                        boss.actionHitFired = true;
                     }
                 }
                 // 대형 패턴 3번 교차 발도 파훼는 가드 순간 즉시 그로기에 들어가지 않고,
@@ -138,13 +340,22 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
         }
 
         if (boss.isLatePhase && !boss.lateOpeningPatternStarted && !boss.lateOpeningPatternUsed) {
-            const lateOpeningId = String(boss.phase && boss.phase.Late_Opening_Pattern_ID || '').trim();
-            const lateOpeningPattern = lateOpeningId && gameState.DB_BOSS_PATTERN ? gameState.DB_BOSS_PATTERN[lateOpeningId] : null;
+            const lateOpeningId = String(boss.pendingLateOpeningPatternId || boss.phase && boss.phase.Late_Opening_Pattern_ID || '').trim();
+            const lateOpeningPattern = lateOpeningId && lateOpeningId !== '0' && gameState.DB_BOSS_PATTERN ? gameState.DB_BOSS_PATTERN[lateOpeningId] : null;
             if (lateOpeningPattern && Array.isArray(lateOpeningPattern.Runtime_Actions) && lateOpeningPattern.Runtime_Actions.length > 0) {
                 boss.lateOpeningPatternStarted = true;
-                boss.lateOpeningPatternUsed = true;
+                boss.pendingLateOpeningPatternId = null;
                 this.startBossPattern(m, lateOpeningPattern, gameState);
                 return true;
+            }
+            if (lateOpeningId && lateOpeningId !== '0') {
+                // 데이터에 패턴 또는 액션이 아직 없는 경우에는 무한 예약으로 일반 패턴이 막히지 않도록 처리한다.
+                boss.pendingLateOpeningPatternId = null;
+                boss.lateOpeningPatternStarted = true;
+                boss.lateOpeningPatternUsed = true;
+                if (typeof this.pushBossDebugLog === 'function') {
+                    this.pushBossDebugLog(gameState, 'LATE', `후반부 개시 패턴 실행 불가 ${lateOpeningId}`, '패턴 데이터 또는 액션 없음');
+                }
             }
         }
 

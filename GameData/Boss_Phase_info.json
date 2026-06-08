@@ -16,7 +16,6 @@
     "Default_Move_Speed_Rate": 1,
     "No_Pattern_Wait_Time": 0.2,
     "Phase_Transition_Type": "KASIYAS_P1_TO_P2",
-    "Phase_Transition_Duration": 10,
     "Next_Phase_HP_Restore_Type": "FULL",
     "Next_Phase_Start_Text": "카시야스 2페이즈 돌입"
   },
@@ -27,7 +26,7 @@
     "Phase_Monster_ID": 201002,
     "Late_Phase_HP_Rate": 0.5,
     "Opening_Pattern_ID": 0,
-    "Late_Opening_Pattern_ID": 0,
+    "Late_Opening_Pattern_ID": 232008,
     "End_Condition_Type": "HP_UNDER",
     "End_Condition_Value": 0,
     "Next_Phase_ID": 220003,
@@ -36,10 +35,9 @@
     "Chase_Stop_Distance": 150,
     "Default_Move_Speed_Rate": 1,
     "No_Pattern_Wait_Time": 0.2,
-    "Phase_Transition_Type": null,
-    "Phase_Transition_Duration": null,
-    "Next_Phase_HP_Restore_Type": null,
-    "Next_Phase_Start_Text": null
+    "Phase_Transition_Type": "KASIYAS_P2_TO_P3",
+    "Next_Phase_HP_Restore_Type": "FULL",
+    "Next_Phase_Start_Text": "카시야스 3페이즈 돌입"
   },
   {
     "Phase_ID": 220003,
@@ -58,7 +56,6 @@
     "Default_Move_Speed_Rate": 1,
     "No_Pattern_Wait_Time": 0.2,
     "Phase_Transition_Type": null,
-    "Phase_Transition_Duration": null,
     "Next_Phase_HP_Restore_Type": null,
     "Next_Phase_Start_Text": null
   }

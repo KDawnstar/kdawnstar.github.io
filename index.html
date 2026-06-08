@@ -1794,6 +1794,7 @@ button,
 #bottomHUD,
 #hudSection,
 .boss-cast-gauge,
+.boss-groggy-gauge,
 .boss-log-action-btn {
     font-family: var(--panel-font) !important;
 }
@@ -1921,6 +1922,51 @@ button,
     font-size: 14px !important;
 }
 
+.boss-groggy-gauge {
+    position: absolute;
+    left: 50%;
+    top: -72px;
+    transform: translateX(-50%);
+    width: min(620px, 68%);
+    height: 28px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(9, 8, 24, 0.78);
+    border: 1px solid rgba(177, 141, 255, 0.76);
+    box-shadow: 0 0 18px rgba(0,0,0,0.46), inset 0 0 12px rgba(145,110,255,0.18);
+    z-index: 8;
+    pointer-events: none;
+}
+
+.boss-groggy-gauge.hidden {
+    display: none;
+}
+
+.boss-groggy-gauge-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, rgba(80,45,180,0.90), rgba(155,88,255,0.95), rgba(255,222,128,0.96));
+    box-shadow: 0 0 16px rgba(174,112,255,0.54);
+    transition: width 0.08s linear;
+}
+
+.boss-groggy-gauge-text {
+    position: relative;
+    z-index: 2;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff6ff;
+    font-size: 14px;
+    font-weight: 900;
+    letter-spacing: -0.1px;
+    text-shadow: 0 1px 3px #000, 0 0 8px rgba(0,0,0,0.92);
+}
+
 @media (max-width: 1500px) {
     #bottomHUD {
         grid-template-columns: minmax(0, 1fr) 410px !important;
@@ -1957,6 +2003,7 @@ button,
 #bottomHUD,
 #hudSection,
 .boss-cast-gauge,
+.boss-groggy-gauge,
 .boss-log-action-btn {
     font-family: var(--panel-font) !important;
 }
@@ -2105,6 +2152,10 @@ button,
     </div>
 
     <div id="hudSection" data-base-height="220">
+        <div id="bossGroggyGauge" class="boss-groggy-gauge hidden">
+            <div id="bossGroggyGaugeFill" class="boss-groggy-gauge-fill"></div>
+            <div id="bossGroggyGaugeText" class="boss-groggy-gauge-text">카시야스 그로기</div>
+        </div>
         <div id="bossCastGauge" class="boss-cast-gauge hidden">
             <div id="bossCastGaugeFill" class="boss-cast-gauge-fill"></div>
             <div id="bossCastGaugeText" class="boss-cast-gauge-text">강화 내려베기</div>
@@ -2270,6 +2321,8 @@ button,
     <script src="js/render/effect_renderer.js"></script>
     <script src="js/render/ui_renderer.js"></script>
     <script src="js/render/debug_renderer.js"></script>
+    <script src="js/special/p2_m3_dimension_defense_renderer.js"></script>
+    <script src="js/special/p2_m3_dimension_defense_system.js"></script>
 
     <script src="js/player/player_entity.js"></script>
     <script src="js/player/player_action_system.js"></script>

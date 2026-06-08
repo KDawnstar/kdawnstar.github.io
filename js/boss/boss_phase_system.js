@@ -45,6 +45,7 @@ const BossPhaseSystem = {
             lateNoticeShown: false,
             lateOpeningPatternUsed: false,
             lateOpeningPatternStarted: false,
+            pendingLateOpeningPatternId: null,
             previewDashPath: null,
             currentDashPath: null,
             lastDashPath: null
@@ -61,6 +62,55 @@ const BossPhaseSystem = {
         const nextPhaseId = String(phase && phase.Next_Phase_ID || '').trim();
         if (!nextPhaseId || nextPhaseId === '0') return null;
         return gameState && gameState.DB_BOSS_PHASE ? gameState.DB_BOSS_PHASE[nextPhaseId] || null : null;
+    },
+
+    resetPlayerForBossPhaseTransition: function(m, gameState) {
+        const p = gameState && gameState.player ? gameState.player : null;
+        if (!p || !p.active) return;
+
+        const stage = gameState.currentStage || null;
+        const worldW = Math.max(1, parseFloat(gameState.WORLD_WIDTH) || 2000);
+        const worldD = Math.max(1, parseFloat(gameState.WORLD_DEPTH) || 300);
+        const rawSpawnX = parseFloat(stage && (stage.Player_Start_Center_X !== undefined ? stage.Player_Start_Center_X : stage.Player_Spawn_X));
+        const rawSpawnY = parseFloat(stage && (stage.Player_Start_Center_Y !== undefined ? stage.Player_Start_Center_Y : stage.Player_Spawn_Y));
+        const bodyX = Math.max(1, (parseFloat(p.bodyX) || 60) * (parseFloat(p.scale) || 1) * 0.5);
+        const spawnX = Number.isFinite(rawSpawnX) ? rawSpawnX : 300;
+        const spawnY = Number.isFinite(rawSpawnY) ? rawSpawnY : worldD * 0.5;
+
+        p.x = Math.max(bodyX, Math.min(worldW - bodyX, spawnX));
+        p.y = Math.max(0, Math.min(worldD, spawnY));
+        p.z = 0;
+        p.vz = 0;
+        p.isGrounded = true;
+        p.state = 'Idle';
+        p.prevState = 'Idle';
+        p.forcePrevState = null;
+        p.atkTimer = 0;
+        p.kbVx = 0;
+        p.kbVy = 0;
+        p.invincibleTimer = 0;
+        p.dashTimer = 0;
+        p.dashCooldownTimer = 0;
+        p.dashSpeedX = 0;
+        p.dashSpeedY = 0;
+        p.ghostTimer = 0;
+        p.isRunning = false;
+        p.runDirection = null;
+        p.guardTimer = 0;
+        p.maxGuardTimer = 0;
+        p.guardCooldownTimer = 0;
+        p.guardSuccessTimer = 0;
+        p.guardForcedRecover = false;
+        p.freezeTimer = 0;
+        p.maxFreezeTimer = 0;
+        p.mashReduced = 0;
+        p.rapidAtkAllowTimer = 0;
+        p.rapidAtkCooldownTimer = 0;
+        p.rapidAtkCount = 0;
+        p.stanceSwapTimer = 0;
+
+        const bossX = Number.isFinite(parseFloat(m && m.x)) ? parseFloat(m.x) : worldW * 0.74;
+        p.faceDir = bossX >= p.x ? 1 : -1;
     },
 
     clearBossPhaseTransitionRuntime: function(m, gameState) {
@@ -126,17 +176,31 @@ const BossPhaseSystem = {
         if (!nextPhase) return false;
 
         const transitionType = String(boss.phase.Phase_Transition_Type || '').trim();
+        const transitionTypeKey = transitionType.toUpperCase();
         const durationRaw = parseFloat(boss.phase.Phase_Transition_Duration);
-        const duration = !isNaN(durationRaw) && durationRaw > 0 ? durationRaw : 10.0;
+        const defaultTransitionDuration = transitionTypeKey === 'KASIYAS_P2_TO_P3' ? 9.0 : 10.0;
+        const duration = !isNaN(durationRaw) && durationRaw > 0 ? durationRaw : defaultTransitionDuration;
         const restoreType = String(boss.phase.Next_Phase_HP_Restore_Type || 'FULL').trim().toUpperCase();
         const startText = String(boss.phase.Next_Phase_Start_Text || nextPhase.Phase_Name || '다음 페이즈 돌입').trim();
 
         this.clearBossPhaseTransitionRuntime(m, gameState);
+        this.resetPlayerForBossPhaseTransition(m, gameState);
 
         const worldW = Math.max(1, parseFloat(gameState.WORLD_WIDTH) || 2000);
         const worldD = Math.max(1, parseFloat(gameState.WORLD_DEPTH) || 300);
-        const targetX = Math.max(220, Math.min(worldW - 180, worldW * 0.74));
-        const targetY = Math.max(55, Math.min(worldD - 45, worldD * 0.50));
+        const isP2ToP3Transition = String(transitionType || '').trim().toUpperCase() === 'KASIYAS_P2_TO_P3';
+        const stage = gameState.currentStage || null;
+        const rawBossSpawnX = parseFloat(stage && (stage.Boss_Spawn_Center_X !== undefined ? stage.Boss_Spawn_Center_X : stage.Boss_Spawn_X));
+        const rawBossSpawnY = parseFloat(stage && (stage.Boss_Spawn_Center_Y !== undefined ? stage.Boss_Spawn_Center_Y : stage.Boss_Spawn_Y));
+        const defaultBossX = Number.isFinite(rawBossSpawnX) ? rawBossSpawnX : Math.max(220, Math.min(worldW - 180, worldW * 0.74));
+        const defaultBossY = Number.isFinite(rawBossSpawnY) ? rawBossSpawnY : worldD * 0.50;
+        // 3페이즈 개시 연출은 2페이즈 개시와 같은 문법으로, 플레이어/카시야스를 기본 자리로 정렬한 뒤 카시야스 쪽을 확대한다.
+        const targetX = isP2ToP3Transition
+            ? Math.max(220, Math.min(worldW - 180, defaultBossX))
+            : Math.max(220, Math.min(worldW - 180, worldW * 0.74));
+        const targetY = isP2ToP3Transition
+            ? Math.max(55, Math.min(worldD - 45, defaultBossY))
+            : Math.max(55, Math.min(worldD - 45, worldD * 0.50));
         const dx = targetX - (parseFloat(m.x) || 0);
         const dy = targetY - (parseFloat(m.y) || 0);
         const moveDist = Math.sqrt(dx * dx + dy * dy);
@@ -182,7 +246,7 @@ const BossPhaseSystem = {
         if (gameState.targetUI && gameState.targetUI.monster === m) gameState.targetUI.timer = 999999;
 
         if (typeof pushSystemNotice === 'function') {
-            pushSystemNotice('카시야스가 차원을 열기 시작합니다', '#c0392b', 1.8);
+            pushSystemNotice(isP2ToP3Transition ? '카시야스가 두 검을 버립니다' : '카시야스가 차원을 열기 시작합니다', '#c0392b', 1.8);
         }
         if (typeof this.pushBossDebugLog === 'function') {
             this.pushBossDebugLog(gameState, 'PHASE', String(transition.fromPhaseId || '') + ' → ' + String(transition.nextPhaseId || ''), transition.type);
@@ -231,7 +295,10 @@ const BossPhaseSystem = {
                 m.y = Number.isFinite(ty) ? ty : m.y;
                 if (gameState) gameState.screenHitFlash = { life: 0.20, maxLife: 0.20, strength: 0.30, mode: 'red' };
                 if (typeof pushSystemNotice === 'function') {
-                    pushSystemNotice('카시야스가 두 번째 검을 불러냅니다', '#c0392b', 1.4);
+                    const cutsceneNotice = String(transition.type || '').trim().toUpperCase() === 'KASIYAS_P2_TO_P3'
+                        ? '카시야스가 새로운 검을 꺼내기 시작합니다'
+                        : '카시야스가 두 번째 검을 불러냅니다';
+                    pushSystemNotice(cutsceneNotice, '#c0392b', 1.4);
                 }
             }
             return true;
@@ -299,6 +366,12 @@ const BossPhaseSystem = {
         if (gameState.targetUI) {
             gameState.targetUI.monster = m;
             gameState.targetUI.timer = 999999;
+        }
+        gameState.bossBattle = { boss: m, phase: nextPhase };
+        if (gameState.bossDebug) {
+            gameState.bossDebug.patternCheck = null;
+            gameState.bossDebug.currentAction = null;
+            gameState.bossDebug.currentObjectAction = null;
         }
         if (gameState.camera) {
             gameState.camera.zoom = 1;

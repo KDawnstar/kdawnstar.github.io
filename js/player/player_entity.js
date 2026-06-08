@@ -203,22 +203,46 @@ const PlayerManager = {
     takeDamage: function(gameState, finalDmg, srcX, srcY, sType, sDur, sProb, guardInfo = null) {
         let p = gameState.player; if (p.state === 'Die') return;
 
-        if (this.isGuardableHit(p, srcX, srcY, guardInfo)) {
+        // 피격 판정/넉백 기준(srcX/srcY)은 기존 공격 범위 중심을 유지하되,
+        // 가드 방향 판정은 공격을 시전한 본체/분신/잔상/오브젝트 위치를 우선 사용한다.
+        const guardSrcXRaw = guardInfo && guardInfo.guardSourceX;
+        const guardSrcYRaw = guardInfo && guardInfo.guardSourceY;
+        const guardSrcX = Number.isFinite(parseFloat(guardSrcXRaw)) ? parseFloat(guardSrcXRaw) : srcX;
+        const guardSrcY = Number.isFinite(parseFloat(guardSrcYRaw)) ? parseFloat(guardSrcYRaw) : srcY;
+
+        if (this.isGuardableHit(p, guardSrcX, guardSrcY, guardInfo)) {
             p.guardSuccessTimer = 0.32;
             p.kbVx = 0;
             p.kbVy = 0;
 
             const guardResult = String(guardInfo && guardInfo.guardResult || '').trim().toUpperCase();
             const reduceRateRaw = parseFloat(guardInfo && guardInfo.guardDmgReduceRate);
-            const reduceRate = !isNaN(reduceRateRaw) && reduceRateRaw >= 0 ? reduceRateRaw : 0;
+            // Guard_DMG_Reduce_Rate는 이제 '가드로 막아내는 피해 비율'로 해석한다.
+            // 예: 0.8 = 80% 방어, 실제 피해 20%.
+            const baseBlockRate = !isNaN(reduceRateRaw) ? Math.max(0, Math.min(1, reduceRateRaw)) : 0;
             const apostleGuardBonus = this.getKasiyasApostleGuardReduceBonus(p, guardInfo);
             const temperedCrossGuard = this.isKasiyasTemperedBladeCrossGuardActive(p, guardInfo, gameState);
-            const finalReduceRate = temperedCrossGuard ? 0 : Math.max(0, reduceRate - apostleGuardBonus);
+            let specialSpiritBlock = false;
+            let specialSpiritCost = 0;
+            const specialType = String(guardInfo && guardInfo.guardSpecialResultType || '').trim().toUpperCase();
+            const specialCond = String(guardInfo && guardInfo.guardSpecialResultOccurrenceCond || '').trim().toUpperCase();
+            if (specialType === 'USE_FIGHTING_SPIRIT_BLOCK_ALL') {
+                const rawCost = parseFloat(guardInfo && guardInfo.guardSpecialResultCostValue);
+                specialSpiritCost = !isNaN(rawCost) && rawCost > 0 ? rawCost : 50;
+                const enough = (parseFloat(p.fightingSpirit) || 0) >= specialSpiritCost;
+                const condOk = !specialCond || specialCond === 'FIGHTING_SPIRIT_OVER_OR_EQUAL_50' ? enough : enough;
+                if (condOk) {
+                    p.fightingSpirit = Math.max(0, (parseFloat(p.fightingSpirit) || 0) - specialSpiritCost);
+                    specialSpiritBlock = true;
+                }
+            }
+            const finalBlockRate = (temperedCrossGuard || specialSpiritBlock) ? 1 : Math.max(0, Math.min(1, baseBlockRate + apostleGuardBonus));
+            const finalDamageRate = Math.max(0, Math.min(1, 1 - finalBlockRate));
             let guardDamage = 0;
             if (guardResult === 'DAMAGE_REDUCE') {
-                guardDamage = finalReduceRate <= 0
+                guardDamage = finalDamageRate <= 0
                     ? 0
-                    : Math.max(1, ((finalDmg || 1) * finalReduceRate) - p.def);
+                    : Math.max(1, ((finalDmg || 1) * finalDamageRate) - p.def);
                 if (guardDamage > 0 && !this.isPracticeModeHpInvincible(gameState) && !gameState.isTestMode) p.hp -= guardDamage;
             }
 
@@ -244,9 +268,9 @@ const PlayerManager = {
                 y: p.y,
                 z: p.z + p.bodyZ + 42,
                 text: guardResult === 'DAMAGE_REDUCE'
-                    ? (temperedCrossGuard ? '연단 가드' : (apostleGuardBonus > 0 ? `기운 가드 ${guardDamage.toFixed(0)}` : `GUARD ${guardDamage.toFixed(0)}`))
+                    ? (specialSpiritBlock ? `투기 가드 -${specialSpiritCost.toFixed(0)}` : (temperedCrossGuard ? '연단 가드' : (apostleGuardBonus > 0 ? `기운 가드 ${guardDamage.toFixed(0)}` : `GUARD ${guardDamage.toFixed(0)}`)))
                     : 'GUARD',
-                color: guardResult === 'DAMAGE_REDUCE' ? (temperedCrossGuard ? '#fff2a3' : (apostleGuardBonus > 0 ? '#ffe45c' : '#ffd166')) : '#8fd3ff',
+                color: guardResult === 'DAMAGE_REDUCE' ? (specialSpiritBlock ? '#ffef88' : (temperedCrossGuard ? '#fff2a3' : (apostleGuardBonus > 0 ? '#ffe45c' : '#ffd166'))) : '#8fd3ff',
                 size: '26px',
                 timer: 0.65,
                 isBubble: false
@@ -267,9 +291,12 @@ const PlayerManager = {
                 guarded: true,
                 guardResult: guardResult,
                 damage: guardDamage,
-                baseGuardDmgReduceRate: reduceRate,
-                guardDmgReduceRate: finalReduceRate,
-                apostleGuardBonus: apostleGuardBonus
+                baseGuardDmgReduceRate: baseBlockRate,
+                guardDmgReduceRate: finalBlockRate,
+                guardDamageRate: finalDamageRate,
+                apostleGuardBonus: apostleGuardBonus,
+                specialSpiritBlock: specialSpiritBlock,
+                specialSpiritCost: specialSpiritCost
             };
         }
         
@@ -282,6 +309,19 @@ const PlayerManager = {
         }
 
         this.loseFightingSpirit(gameState, p.hitLoseFightingSpirit || 0);
+
+        const makeHitAction = !(guardInfo && guardInfo.makeHitAction === false);
+        if (!makeHitAction) {
+            p.kbVx = 0;
+            p.kbVy = 0;
+            p.invincibleTimer = 0;
+            p.noHitFloatTimer = Math.max(0, (parseFloat(p.noHitFloatTimer) || 0) - 0.1);
+            if ((parseFloat(p.noHitFloatTimer) || 0) <= 0) {
+                p.noHitFloatTimer = 0.30;
+                gameState.floatingTexts.push({x: p.x, y: p.y, z: p.z + p.bodyZ + 20, text: `${actualDmg.toFixed(0)}`, color: '#ff5252', size: "26px", timer: 0.45});
+            }
+            return { guarded: false, damage: actualDmg, makeHitAction: false };
+        }
 
         if (String(sType).toLowerCase() === 'freeze' && Math.random() <= (sProb||0) && p.state !== 'Freeze') {
             p.state = 'Freeze'; p.freezeTimer = sDur; p.maxFreezeTimer = sDur; p.mashReduced = 0; p.rapidAtkCount = 0; p.rapidAtkAllowTimer = 0; 

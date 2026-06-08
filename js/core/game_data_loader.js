@@ -16,7 +16,11 @@ const GameDataLoader = {
         bossPatternActionData: './GameData/Boss_Pattern_Action_info.json',
         bossPatternObjectData: './GameData/Boss_Pattern_Object_info.json',
         bossPatternObjectActionData: './GameData/Boss_Pattern_Object_Action_info.json',
-        stageData: './GameData/Stage_info.json'
+        stageData: './GameData/Stage_info.json',
+        p2M3PlayerData: './GameData/P2_M3_Player_info.json',
+        p2M3WaveData: './GameData/P2_M3_Wave_info.json',
+        p2M3WaveSpawnData: './GameData/P2_M3_Wave_Spawn_info.json',
+        p2M3SlashData: './GameData/P2_M3_Slash_info.json'
     },
 
     async fetchJson(path) {

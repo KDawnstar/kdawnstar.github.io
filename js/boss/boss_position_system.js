@@ -171,8 +171,9 @@ const BossPositionSystem = {
     isBossFixedMapPlaceType: function(placeType) {
         const key = String(placeType || '').trim().toUpperCase();
         return [
-            'PLACE_MAP_CENTER','MAP_CENTER','CENTER',
-            'PLACE_MAP_EAST','MAP_EAST','EAST','PLACE_MAP_WEST','MAP_WEST','WEST',
+            'PLACE_MAP_CENTER','MAP_CENTER','CENTER','PLACE_MAP_CENTER_AIR','MAP_CENTER_AIR','CENTER_AIR',
+            'PLACE_MAP_EAST','MAP_EAST','EAST','PLACE_MAP_EDGE_EAST','MAP_EDGE_EAST','EDGE_EAST','PLACE_MAP_RIGHT_AIR','MAP_RIGHT_AIR','RIGHT_AIR','PLACE_MAP_LEFT_AIR','MAP_LEFT_AIR','LEFT_AIR','PLACE_MAP_WEST','MAP_WEST','WEST','PLACE_MAP_TOP_CENTER','MAP_TOP_CENTER','TOP_CENTER',
+            'PLACE_MAP_TOP_RIGHT','MAP_TOP_RIGHT','TOP_RIGHT','PLACE_MAP_BOTTOM_LEFT','MAP_BOTTOM_LEFT','BOTTOM_LEFT',
             'PLACE_MAP_NE','MAP_NE','NE','PLACE_MAP_SE','MAP_SE','SE','PLACE_MAP_SW','MAP_SW','SW','PLACE_MAP_NW','MAP_NW','NW',
             'PLACE_MAP_EDGE_NE','MAP_EDGE_NE','EDGE_NE','PLACE_MAP_EDGE_SE','MAP_EDGE_SE','EDGE_SE','PLACE_MAP_EDGE_SW','MAP_EDGE_SW','EDGE_SW','PLACE_MAP_EDGE_NW','MAP_EDGE_NW','EDGE_NW',
             'PLACE_MAP_INNER_NE','MAP_INNER_NE','INNER_NE','PLACE_MAP_INNER_SE','MAP_INNER_SE','INNER_SE','PLACE_MAP_INNER_SW','MAP_INNER_SW','INNER_SW','PLACE_MAP_INNER_NW','MAP_INNER_NW','INNER_NW'
@@ -180,6 +181,9 @@ const BossPositionSystem = {
     },
     normalizeBossFixedMapPlaceType: function(placeType) {
         const key = String(placeType || '').trim().toUpperCase();
+        if (key === 'TOP_CENTER' || key === 'MAP_TOP_CENTER') return 'PLACE_MAP_TOP_CENTER';
+        if (key === 'TOP_RIGHT' || key === 'MAP_TOP_RIGHT') return 'PLACE_MAP_TOP_RIGHT';
+        if (key === 'BOTTOM_LEFT' || key === 'MAP_BOTTOM_LEFT') return 'PLACE_MAP_BOTTOM_LEFT';
         if (key === 'NE' || key === 'MAP_NE') return 'PLACE_MAP_NE';
         if (key === 'SE' || key === 'MAP_SE') return 'PLACE_MAP_SE';
         if (key === 'SW' || key === 'MAP_SW') return 'PLACE_MAP_SW';
@@ -192,8 +196,12 @@ const BossPositionSystem = {
         if (key === 'INNER_SE' || key === 'MAP_INNER_SE') return 'PLACE_MAP_INNER_SE';
         if (key === 'INNER_SW' || key === 'MAP_INNER_SW') return 'PLACE_MAP_INNER_SW';
         if (key === 'INNER_NW' || key === 'MAP_INNER_NW') return 'PLACE_MAP_INNER_NW';
+        if (key === 'EDGE_EAST' || key === 'MAP_EDGE_EAST') return 'PLACE_MAP_EDGE_EAST';
+        if (key === 'RIGHT_AIR' || key === 'MAP_RIGHT_AIR') return 'PLACE_MAP_RIGHT_AIR';
+        if (key === 'LEFT_AIR' || key === 'MAP_LEFT_AIR') return 'PLACE_MAP_LEFT_AIR';
         if (key === 'EAST' || key === 'MAP_EAST') return 'PLACE_MAP_EAST';
         if (key === 'WEST' || key === 'MAP_WEST') return 'PLACE_MAP_WEST';
+        if (key === 'CENTER_AIR' || key === 'MAP_CENTER_AIR') return 'PLACE_MAP_CENTER_AIR';
         if (key === 'CENTER' || key === 'MAP_CENTER') return 'PLACE_MAP_CENTER';
         return key;
     },
@@ -213,13 +221,14 @@ const BossPositionSystem = {
         dx /= len;
         dy /= len;
         if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) dx = m.faceDir === -1 ? -1 : 1;
+        const targetZ = Number.isFinite(parseFloat(target.z)) ? parseFloat(target.z) : (parseFloat(m.z) || 0);
         return {
             startX: sx,
             startY: sy,
             startZ: parseFloat(m.z) || 0,
             endX: ex,
             endY: ey,
-            endZ: parseFloat(m.z) || 0,
+            endZ: targetZ,
             dirX: dx,
             dirY: dy,
             length: Math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2) || 0,
@@ -266,13 +275,14 @@ const BossPositionSystem = {
         if (!isFinite(t) || t <= 0) t = Math.max(worldW, worldD);
         const ex = Math.max(0, Math.min(worldW, sx + dx * t));
         const ey = Math.max(0, Math.min(worldD, sy + dy * t));
+        const targetZ = Number.isFinite(parseFloat(target.z)) ? parseFloat(target.z) : (parseFloat(m.z) || 0);
         return {
             startX: sx,
             startY: sy,
             startZ: parseFloat(m.z) || 0,
             endX: ex,
             endY: ey,
-            endZ: parseFloat(m.z) || 0,
+            endZ: targetZ,
             dirX: dx,
             dirY: dy,
             length: Math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2) || 0
@@ -385,6 +395,59 @@ const BossPositionSystem = {
         };
     },
 
+    computeBossFixedLineDashPath: function(m, actionOrDirection, gameState) {
+        if (!gameState) return null;
+        const direction = typeof actionOrDirection === 'string'
+            ? actionOrDirection
+            : String(actionOrDirection && (actionOrDirection.Action_Move_Direction || actionOrDirection.Move_Direction || '') || '').trim();
+        const key = String(direction || '').trim().toUpperCase();
+        const worldW = Math.max(1, parseFloat(gameState.WORLD_WIDTH) || 1400);
+        const worldD = Math.max(1, parseFloat(gameState.WORLD_DEPTH) || 400);
+        const marginX = Math.max(64, worldW * 0.055);
+        const clampY = y => Math.max(28, Math.min(worldD - 28, y));
+        let startX = null;
+        let endX = null;
+        let y = null;
+        let lineKey = '';
+
+        if (key === 'MAP_RIGHT_UPPER_TO_LEFT_UPPER' || key === 'RIGHT_UPPER_TO_LEFT_UPPER') {
+            startX = worldW - marginX;
+            endX = marginX;
+            y = clampY(worldD * 0.29);
+            lineKey = 'RIGHT_UPPER_TO_LEFT_UPPER';
+        } else if (key === 'MAP_LEFT_LOWER_TO_RIGHT_LOWER' || key === 'LEFT_LOWER_TO_RIGHT_LOWER') {
+            startX = marginX;
+            endX = worldW - marginX;
+            y = clampY(worldD * 0.71);
+            lineKey = 'LEFT_LOWER_TO_RIGHT_LOWER';
+        } else if (key === 'MAP_RIGHT_CENTER_TO_LEFT_CENTER' || key === 'RIGHT_CENTER_TO_LEFT_CENTER') {
+            startX = worldW - marginX;
+            endX = marginX;
+            y = clampY(worldD * 0.50);
+            lineKey = 'RIGHT_CENTER_TO_LEFT_CENTER';
+        } else {
+            return null;
+        }
+
+        const dx = endX - startX;
+        const dy = 0;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        return {
+            startX: startX,
+            startY: y,
+            startZ: parseFloat(m && m.z) || 0,
+            endX: endX,
+            endY: y,
+            endZ: parseFloat(m && m.z) || 0,
+            dirX: dx / len,
+            dirY: dy,
+            length: len,
+            fixedLineRush: true,
+            targetPlaceType: key,
+            lineKey: lineKey
+        };
+    },
+
     computeSafeDashPathForActionDirection: function(m, actionOrDirection, gameState, options = {}) {
         const minLength = Math.max(8, parseFloat(options.minLength) || 64);
         const direction = typeof actionOrDirection === 'string'
@@ -404,8 +467,10 @@ const BossPositionSystem = {
         const candidates = [];
 
         if (p) {
-            const pdx = (parseFloat(p.x) || sx) - sx;
-            const pdy = (parseFloat(p.y) || sy) - sy;
+            const rawPx = parseFloat(p.x);
+            const rawPy = parseFloat(p.y);
+            const pdx = (Number.isFinite(rawPx) ? rawPx : sx) - sx;
+            const pdy = (Number.isFinite(rawPy) ? rawPy : sy) - sy;
             if (Math.sqrt(pdx * pdx + pdy * pdy) >= 12) candidates.push([pdx, pdy]);
         }
 
@@ -420,7 +485,11 @@ const BossPositionSystem = {
         // 고정 대상이 지정된 경우, 대상 좌표에서 반대편으로 가는 실패 보정도 후보에 넣는다.
         if (this.isBossFixedMapPlaceType(direction)) {
             const target = this.getBossFixedMapPosition(gameState, this.normalizeBossFixedMapPlaceType(direction));
-            if (target) candidates.unshift([(parseFloat(target.x) || sx) - sx, (parseFloat(target.y) || sy) - sy]);
+            if (target) {
+                const tx = parseFloat(target.x);
+                const ty = parseFloat(target.y);
+                candidates.unshift([(Number.isFinite(tx) ? tx : sx) - sx, (Number.isFinite(ty) ? ty : sy) - sy]);
+            }
         }
 
         for (const c of candidates) {
@@ -434,16 +503,27 @@ const BossPositionSystem = {
         const direction = typeof actionOrDirection === 'string'
             ? actionOrDirection
             : String(actionOrDirection && (actionOrDirection.Action_Move_Direction || actionOrDirection.Move_Direction || '') || '').trim();
+        if (typeof this.computeBossFixedLineDashPath === 'function') {
+            const fixedLinePath = this.computeBossFixedLineDashPath(m, actionOrDirection, gameState);
+            if (fixedLinePath) return fixedLinePath;
+        }
         if (this.isBossFixedMapPlaceType(direction)) {
             return this.computeDashPathToFixedMapPosition(m, gameState, direction);
         }
         return this.computeDashPathToMapEdge(m, gameState);
     },
     computeDashPathToMapEdge: function(m, gameState) {
-        const sx = parseFloat(m.x) || 0;
-        const sy = parseFloat(m.y) || 0;
-        const px = gameState.player ? (parseFloat(gameState.player.x) || sx + (m.faceDir || 1)) : sx + (m.faceDir || 1);
-        const py = gameState.player ? (parseFloat(gameState.player.y) || sy) : sy;
+        const sxRaw = parseFloat(m && m.x);
+        const syRaw = parseFloat(m && m.y);
+        const sx = Number.isFinite(sxRaw) ? sxRaw : 0;
+        const sy = Number.isFinite(syRaw) ? syRaw : 0;
+        const p = gameState && gameState.player ? gameState.player : null;
+        const rawPx = p ? parseFloat(p.x) : NaN;
+        const rawPy = p ? parseFloat(p.y) : NaN;
+        // player.x/y가 0에 가까운 맵 끝 좌표여도 유효값으로 처리한다.
+        // 기존의 || fallback은 player.y === 0일 때 sy로 대체되어 상단 추격 돌진이 수평화될 수 있었다.
+        const px = Number.isFinite(rawPx) ? rawPx : sx + ((m && m.faceDir) || 1);
+        const py = Number.isFinite(rawPy) ? rawPy : sy;
 
         let dx = px - sx;
         let dy = py - sy;
@@ -469,13 +549,14 @@ const BossPositionSystem = {
         const ex = Math.max(0, Math.min(worldW, sx + dx * t));
         const ey = Math.max(0, Math.min(worldD, sy + dy * t));
 
+        const targetZ = Number.isFinite(parseFloat(target.z)) ? parseFloat(target.z) : (parseFloat(m.z) || 0);
         return {
             startX: sx,
             startY: sy,
             startZ: parseFloat(m.z) || 0,
             endX: ex,
             endY: ey,
-            endZ: parseFloat(m.z) || 0,
+            endZ: targetZ,
             dirX: dx,
             dirY: dy,
             length: Math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2) || 0
