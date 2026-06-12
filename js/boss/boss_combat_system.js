@@ -325,7 +325,10 @@ const BossCombatSystem = {
         const boss = m && m.boss ? m.boss : null;
         if (!boss || !action || !gameState) return false;
 
-        const groggyTime = Math.max(0.2, parseFloat(action.Groggy_Time) || 2);
+        // 강인한 의지 가드 성공은 히든 보상 루트이므로 Groggy_Time(긴 그로기)을 우선 사용한다.
+        const groggyTimeData = parseFloat(action.Groggy_Time);
+        const parryResultValue = parseFloat(action.Parry_Result_Value);
+        const groggyTime = Math.max(0.2, (!isNaN(groggyTimeData) && groggyTimeData > 0) ? groggyTimeData : ((!isNaN(parryResultValue) && parryResultValue > 0) ? parryResultValue : 2));
         const groggyPose = String(action.Groggy_Pose_Type || 'POSE_KASIYAS_P1_GROGGY').trim() || 'POSE_KASIYAS_P1_GROGGY';
         const pattern = boss.activePattern;
 
@@ -349,6 +352,9 @@ const BossCombatSystem = {
             this.clearKasiyasMajorPattern3Runtime(gameState, { removeActors: true, clearMark: true });
         } else if (typeof BossObjectSystem !== 'undefined' && BossObjectSystem.clearKasiyasMajorPattern3Runtime) {
             BossObjectSystem.clearKasiyasMajorPattern3Runtime(gameState, { removeActors: true, clearMark: true });
+        }
+        if (typeof PlayerManager !== 'undefined' && PlayerManager.clearP3OniCurse) {
+            PlayerManager.clearP3OniCurse(gameState, { reason: 'GROGGY', keepBuff: true });
         }
 
         boss.activePattern = null;
@@ -397,25 +403,7 @@ const BossCombatSystem = {
             color: 'rgba(255,232,95,0.98)',
             accentColor: 'rgba(255,90,64,0.96)'
         });
-        gameState.floatingTexts.push({
-            x: m.x,
-            y: m.y,
-            z: m.z + bodyZ + 34,
-            text: '완전 파훼!',
-            color: '#ffe45c',
-            size: '30px',
-            timer: 1.0
-        });
-        gameState.floatingTexts.push({
-            x: m.x,
-            y: m.y,
-            z: m.z + bodyZ + 6,
-            text: '카시야스 그로기',
-            color: '#ffb84a',
-            size: '22px',
-            timer: 1.0
-        });
-        try { pushSystemNotice('완전 파훼! 카시야스 그로기', '#ffe45c', 1.0); } catch(e) {}
+
         return true;
     },
 
@@ -634,7 +622,6 @@ const BossCombatSystem = {
                 const textX = isPortalBreak ? ex : m.x;
                 const textY = isPortalBreak ? ey : m.y;
                 const textZ = isPortalBreak ? ez + 90 : m.z + bodyZForEffect + 76;
-                gameState.floatingTexts.push({ x: textX, y: textY, z: textZ, text: '완전 파훼!', color: '#86f4ff', size: '30px', timer: 1.15 });
             }
             try { pushSystemNotice(isPortalBreak ? '거대한 검이 차원문을 붕괴시켰다!' : '거대한 검이 카시야스를 저지했다!', '#86f4ff', 1.1); } catch(e) {}
         }
@@ -755,10 +742,8 @@ const BossCombatSystem = {
             });
         }
         if (Array.isArray(gameState.floatingTexts)) {
-            gameState.floatingTexts.push({ x: m.x, y: m.y, z: m.z + bodyZ + 40, text: perfect ? '완전 파훼!' : '부분 파훼!', color: perfect ? '#86f4ff' : '#ffe45c', size: '30px', timer: 1.0 });
-            gameState.floatingTexts.push({ x: m.x, y: m.y, z: m.z + bodyZ + 10, text: '카시야스 그로기', color: '#ffb84a', size: '22px', timer: 1.0 });
         }
-        try { pushSystemNotice(perfect ? '완전 파훼! 카시야스 그로기' : '부분 파훼! 카시야스 그로기', perfect ? '#86f4ff' : '#ffe45c', 1.0); } catch(e) {}
+
         this.ensureBossDebug(gameState).currentAction = null;
         this.ensureBossDebug(gameState).currentObjectAction = null;
         return true;
@@ -788,8 +773,37 @@ const BossCombatSystem = {
         if (!m || !action || !guardResult || !guardResult.guarded || !gameState) return false;
         const boss = m && m.boss ? m.boss : null;
         const specialType = String(action.Guard_Special_Result_Type || '').trim().toUpperCase();
+        const specialValue = String(action.Guard_Special_Result_Value || '').trim();
         const cond = String(action.Guard_Special_Result_Occurrence_Cond || '').trim().toUpperCase();
+        const groggyCond = String(action.Groggy_Occurrence_Cond || '').trim().toUpperCase();
+        const actionCond = String(action.Action_Condition_Type || '').trim().toUpperCase();
+
+        // 데이터 기반 그로기 조건. Guard_Special_Result_Type이 BOSS_GROGGY가 아니어도,
+        // Groggy_Occurrence_Cond=ATK_GUARD이면 가드 성공 시 그로기 처리를 수행한다.
+        if (groggyCond === 'ATK_GUARD') {
+            if (specialType === 'PLAYER_GET_OBJECT' && specialValue) {
+                const objData = gameState && gameState.DB_BOSS_PATTERN_OBJECT ? gameState.DB_BOSS_PATTERN_OBJECT[specialValue] : null;
+                const objType = String(objData && objData.Object_Type || '').trim().toUpperCase();
+                if (objType === 'PLAYER_BUFF') {
+                    const renderType = String(objData.Object_Render_Type || '').trim().toUpperCase();
+                    if (renderType === 'OBJ_P3_PLAYER_BUFF_02' && typeof PlayerManager !== 'undefined' && PlayerManager.grantP3TrialBodyBuff) {
+                        PlayerManager.grantP3TrialBodyBuff(gameState, objData);
+                    } else if (typeof PlayerManager !== 'undefined' && PlayerManager.grantP3TrialWillBuff) {
+                        PlayerManager.grantP3TrialWillBuff(gameState, objData);
+                    }
+                }
+            }
+            if (actionCond === 'P3_M2_ONLY_CENTER_DISTORTION_EXISTS' && typeof BossObjectSystem !== 'undefined' && BossObjectSystem.removeKasiyasP3M2CenterDistortionSilently) {
+                BossObjectSystem.removeKasiyasP3M2CenterDistortionSilently.call(this, gameState);
+            }
+            return this.enterBossGroggyFromGuardSpecial(m, action, gameState, guardResult);
+        }
+
         if (specialType !== 'BOSS_GROGGY' && specialType !== 'CLONE_OWNER_GROGGY') return false;
+
+        if (cond === 'ATK_GUARD') {
+            return this.enterBossGroggyFromGuardSpecial(m, action, gameState, guardResult);
+        }
 
         if (cond === 'ATK_GUARD_TWO_SAME_APOSTLE_ENERGY') {
             if (!this.hasTwoSameKasiyasApostleEnergies(gameState.player)) return false;
@@ -806,6 +820,12 @@ const BossCombatSystem = {
             const p = gameState && gameState.player ? gameState.player : null;
             if (!p || !p.hasP2M2ApostleSwordEnergy) return false;
             return this.enterKasiyasP2M2FinalGroggy(m, action, gameState, 'PARTIAL');
+        }
+
+        if (cond === 'ATK_GUARD_WITH_P3_PLAYER_BUFF_01') {
+            const p = gameState && gameState.player ? gameState.player : null;
+            if (!p || !p.p3TrialWillBuff) return false;
+            return this.enterBossGroggyFromGuardSpecial(m, action, gameState, guardResult);
         }
 
         return false;
@@ -829,15 +849,6 @@ const BossCombatSystem = {
             if (kind === 'CLONE') mark.cloneGuardCount = (parseInt(mark.cloneGuardCount) || 0) + 1;
             else mark.bossGuardCount = (parseInt(mark.bossGuardCount) || 0) + 1;
             mark.flashTimer = Math.max(parseFloat(mark.flashTimer) || 0, 0.45);
-            gameState.floatingTexts.push({
-                x: p.x,
-                y: p.y,
-                z: p.z + (p.bodyZ || 100) + 72,
-                text: `낙인 가드 ${mark.bossGuardCount || 0}/${mark.requireBossGuard || 2} · ${mark.cloneGuardCount || 0}/${mark.requireCloneGuard || 2}`,
-                color: kind === 'CLONE' ? '#ffb0ff' : '#ff665c',
-                size: '18px',
-                timer: 0.65
-            });
             if ((mark.bossGuardCount || 0) >= (mark.requireBossGuard || 2) && (mark.cloneGuardCount || 0) >= (mark.requireCloneGuard || 2)) {
                 mark.active = false;
                 p.kasiyasTemperedBladeReady = true;
@@ -872,37 +883,19 @@ const BossCombatSystem = {
                     color: 'rgba(255,232,104,0.98)',
                     accentColor: 'rgba(170,238,255,0.86)'
                 });
-                gameState.floatingTexts.push({
-                    x: p.x,
-                    y: p.y,
-                    z: p.z + (p.bodyZ || 100) + 98,
-                    text: '낙인 해제!',
-                    color: '#ffe45c',
-                    size: '26px',
-                    timer: 0.9
-                });
-                try { pushSystemNotice('낙인 해제! 연단된 칼날 준비', '#ffe45c', 1.0); } catch(e) {}
+
             }
             return;
         }
 
         mark.stack = (parseInt(mark.stack) || 0) + 1;
         mark.flashTimer = Math.max(parseFloat(mark.flashTimer) || 0, 0.75);
-        gameState.floatingTexts.push({
-            x: p.x,
-            y: p.y,
-            z: p.z + (p.bodyZ || 100) + 70,
-            text: `낙인 ${mark.stack}/${mark.maxStack || 3}`,
-            color: '#ff4646',
-            size: '22px',
-            timer: 0.75
-        });
         if ((mark.stack || 0) >= (mark.maxStack || 3)) {
             const owner = attacker && attacker.owner ? attacker.owner : attacker;
             const atk = owner && owner.d ? (parseFloat(owner.d.atk) || 50) : 50;
             const dmgRate = Math.max(1, parseFloat(mark.burstDamageRate) || 5);
             const damage = Math.max(1, atk * dmgRate - (parseFloat(p.def) || 0));
-            if (!(typeof PlayerManager !== 'undefined' && PlayerManager.isPracticeModeHpInvincible ? PlayerManager.isPracticeModeHpInvincible(gameState) : false) && !gameState.isTestMode) p.hp = Math.max(0, (parseFloat(p.hp) || 0) - damage);
+            if (!(typeof PlayerManager !== 'undefined' && PlayerManager.isPracticeModeHpInvincible ? PlayerManager.isPracticeModeHpInvincible(gameState) : false)) p.hp = Math.max(0, (parseFloat(p.hp) || 0) - damage);
             if (typeof PlayerManager !== 'undefined' && PlayerManager.loseFightingSpirit) PlayerManager.loseFightingSpirit(gameState, p.fightingSpirit || 0);
             gameState.effects.push({
                 type: 'hitSpark',
@@ -956,7 +949,10 @@ const BossCombatSystem = {
         const boss = m && m.boss ? m.boss : null;
         if (!boss || !action) return;
 
-        const groggyTime = Math.max(0.2, parseFloat(action.Groggy_Time) || 2);
+        // 저주 상태에서 공격으로 받아내는 일반 루트는 Parry_Result_Value(짧은 그로기)를 우선 사용한다.
+        const parryResultValue = parseFloat(action.Parry_Result_Value);
+        const groggyTimeData = parseFloat(action.Groggy_Time);
+        const groggyTime = Math.max(0.2, (!isNaN(parryResultValue) && parryResultValue > 0) ? parryResultValue : ((!isNaN(groggyTimeData) && groggyTimeData > 0) ? groggyTimeData : 2));
         const groggyPose = String(action.Groggy_Pose_Type || 'POSE_KASIYAS_P1_GROGGY').trim() || 'POSE_KASIYAS_P1_GROGGY';
         const successEffect = String(action.Parry_Success_EFT_Type || 'EFT_SUCCESS_PARRY').trim() || 'EFT_SUCCESS_PARRY';
         const pattern = boss.activePattern;
@@ -970,6 +966,9 @@ const BossCombatSystem = {
                 `${patternId} ${this.getBossDebugName(pattern)}`,
                 `success / groggy ${groggyTime.toFixed(1)}s`
             );
+        }
+        if (typeof PlayerManager !== 'undefined' && PlayerManager.clearP3OniCurse) {
+            PlayerManager.clearP3OniCurse(gameState, { reason: 'GROGGY', keepBuff: true });
         }
 
         boss.activePattern = null;
@@ -1017,16 +1016,7 @@ const BossCombatSystem = {
             color: 'rgba(255,238,90,0.98)',
             accentColor: 'rgba(255,255,255,0.96)'
         });
-        gameState.floatingTexts.push({
-            x: m.x,
-            y: m.y,
-            z: m.z + bodyZ + 28,
-            text: 'PARRY!',
-            color: '#ffe45c',
-            size: '30px',
-            timer: 0.9
-        });
-        try { pushSystemNotice('패링 성공! 카시야스 그로기', '#ffe45c', 1.0); } catch(e) {}
+
     },
     tryResolveBossParryByPlayerHit: function(m, gameState) {
         const boss = m && m.boss ? m.boss : null;
@@ -1425,6 +1415,9 @@ const BossCombatSystem = {
             guardRewardKey: rewardKey ? `${rewardKey}` : '',
             guardRewardLockTime: hitCount > 1 ? duration + 0.35 : 0.45,
             attackType: data.Attack_Type || data.Action_Attack_Type || data.Object_Type || data.Action_Type || '',
+            sourcePatternId: String(data.Pattern_ID || (source && source.boss && source.boss.activePattern && source.boss.activePattern.Pattern_ID) || '').trim(),
+            sourceActionId: String(data.Action_ID || data.Object_Action_ID || '').trim(),
+            sourceObjectId: String(data.Object_ID || data.Attack_Object_ID || (source && source.data && (source.data.Object_ID || source.data.Attack_Object_ID)) || '').trim(),
             guardSourceX: guardSourceX,
             guardSourceY: guardSourceY,
             makeKnockback: data.ATK_Make_Knockback === true || String(data.ATK_Make_Knockback || '').trim().toLowerCase() === 'true',

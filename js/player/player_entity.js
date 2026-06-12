@@ -33,6 +33,18 @@ const PlayerManager = {
             hitLoseFightingSpiritCooldown: Math.max(0, parseFloat(pd.Hit_Lose_Fighting_Spirit_Cooltime) || 0), fightingSpiritHitLoseCooldownTimer: 0,
             fightingSpiritDmgBuffRate: Math.max(0, parseFloat(pd.Fighting_Spirit_DMG_Buff_Rate) || 0),
             fightingSpiritMoveSpeedBuffRate: Math.max(0, parseFloat(pd.Fighting_Spirit_Move_Speed_Buff_Rate) || 0),
+            oniCurseMoveSpeedRate: Math.max(1, parseFloat(pd.Oni_Curse_Move_Speed_Rate) || 1.5),
+            oniCurseDecreaseHpPerSec: Math.max(0, parseFloat(pd.Oni_Curse_Decrease_HP_Per_Sec) || 0),
+            oniCurseControlLimit: String(pd.Oni_Curse_Control_Limit || '').trim().toUpperCase(),
+            oniCurseLifeStealPerAtkDmg: Math.max(0, parseFloat(pd.Oni_Curse_Life_Steal_Per_ATK_DMG) || 0),
+            oniCurseRapidAtkCooltime: Math.max(0, parseFloat(pd.Oni_Curse_Rapid_ATK_Cooltime) || 0),
+            p3OniCurse: null,
+            p3OniCurseHpFlashTimer: 0,
+            p3OniCurseBleedTimer: 0,
+            p3TrialWillBuff: false,
+            p3TrialWillBuffFlashTimer: 0,
+            p3TrialBodyBuff: false,
+            p3TrialBodyBuffFlashTimer: 0,
             fightingSpiritRewardLocks: {},
             kasiyasApostleEnergies: [], kasiyasApostleGuardBuffs: [], kasiyasApostleEnergyGetLockTimer: 0, kasiyasApostleEnergyFlashTimer: 0,
             kasiyasOniMark: null, kasiyasTemperedBladeReady: false, kasiyasTemperedBladeFlashTimer: 0,
@@ -51,10 +63,44 @@ const PlayerManager = {
     },
 
     revive: function(gameState) {
-        let p = gameState.player; if (p.hp > 0) return; 
-        p.hp = p.maxHp; p.state = 'Idle'; p.atkTimer = 0; p.invincibleTimer = 0; 
-        let go = document.getElementById('gameOverScreen'); if(go) go.style.display = 'none'; 
-        gameState.floatingTexts.push({x: p.x, y: p.y, z: p.z + p.bodyZ, text: "✨ 부활!", color: "#f1c40f", size: "32px", timer: 1.0});
+        const p = gameState && gameState.player ? gameState.player : null;
+        if (!p) return;
+        // 연습 모드에서는 실제 피해 테스트 후에도 R/버튼으로 즉시 복귀할 수 있어야 한다.
+        // HP가 0보다 크더라도 Die 상태/게임오버 UI가 남은 경우를 함께 복구한다.
+        if (p.hp > 0 && p.state !== 'Die') return;
+        if (typeof this.clearP3OniCurse === 'function') {
+            this.clearP3OniCurse(gameState, { reason: 'REVIVE', silent: true });
+        }
+        p.active = true;
+        p.hp = Math.max(1, parseFloat(p.maxHp) || p.hp || 1);
+        p.state = 'Idle';
+        p.atkTimer = 0;
+        p.invincibleTimer = 0;
+        p.invinTime = 0;
+        p.kbVx = 0;
+        p.kbVy = 0;
+        p.vz = 0;
+        p.z = Math.max(0, parseFloat(p.z) || 0);
+        p.isGrounded = true;
+        p.freezeTimer = 0;
+        p.maxFreezeTimer = 0;
+        p.mashReduced = 0;
+        p.guardTimer = 0;
+        p.guardCooldownTimer = 0;
+        p.guardSuccessTimer = 0;
+        p.dashTimer = 0;
+        p.dashSpeedX = 0;
+        p.dashSpeedY = 0;
+        p.isRunning = false;
+        p.runDirection = null;
+        p.p3OniCurseHpFlashTimer = 0;
+        p.p3OniCurseBleedTimer = 0;
+        let go = document.getElementById('gameOverScreen'); if(go) go.style.display = 'none';
+        if (gameState) {
+            gameState.screenHitFlash = null;
+            gameState.screenShakeTimer = 0;
+            gameState.screenShakeStrength = 0;
+        }
     },
 
     getFightingSpiritRatio: function(player) {
@@ -75,6 +121,302 @@ const PlayerManager = {
         const gauge = Math.max(0, parseFloat(player.fightingSpirit) || 0);
         const ratePercent = Math.max(0, parseFloat(player.fightingSpiritMoveSpeedBuffRate) || 0);
         return 1 + (gauge * ratePercent / 100);
+    },
+
+    isP3OniCurseActive: function(player) {
+        const curse = player && player.p3OniCurse ? player.p3OniCurse : null;
+        return !!(curse && curse.active !== false);
+    },
+
+    getP3OniCurseMoveMultiplier: function(player) {
+        return this.isP3OniCurseActive(player) ? Math.max(1, parseFloat(player.oniCurseMoveSpeedRate) || 1.5) : 1;
+    },
+
+    applyP3OniCurseFromObject: function(gameState, objData = {}, caster = null, sourceAction = null) {
+        const p = gameState && gameState.player ? gameState.player : null;
+        if (!p) return false;
+        const condValue = Math.max(0.1, parseFloat(objData.Object_Interact_Cond_Value) || 5);
+        p.p3OniCurse = {
+            active: true,
+            timer: 0,
+            hpDrainTick: 0,
+            conditionTime: condValue,
+            noHit: true,
+            noAttack: true,
+            hiddenFailed: false,
+            sourceObjectId: String(objData.Object_ID || '').trim(),
+            resultObjectId: String(objData.Object_Interact_Result_Value || '').trim(),
+            sourceActionId: String(sourceAction && sourceAction.Action_ID || '').trim()
+        };
+        p.stance = 'Mode_Melee';
+        if (p.state === 'Guard') p.state = 'Idle';
+        p.guardTimer = 0;
+        // 저주 중에도 방향키 연타 달리기는 허용한다.
+        p.rapidAtkCooldownTimer = 0;
+        p.rapidAtkAllowTimer = 0;
+        p.rapidAtkCount = 0;
+
+        if (gameState.effects) {
+            gameState.effects.push({
+                type: 'hitSpark',
+                renderType: 'EFT_P3_ONI_CURSE',
+                x: p.x,
+                y: p.y,
+                z: p.z + (p.bodyZ || 100) * 0.70,
+                w: Math.max(160, (p.bodyX || 60) * 2.8),
+                h: Math.max(150, (p.bodyZ || 100) * 1.15),
+                life: 0.55,
+                maxLife: 0.55,
+                color: 'rgba(156,76,255,0.94)',
+                accentColor: 'rgba(255,44,36,0.92)',
+                darkColor: 'rgba(0,0,0,0.96)'
+            });
+        }
+        if (gameState.floatingTexts) {
+        }
+        try { pushSystemNotice('귀면족의 저주: 공격하거나 피격되면 히든 조건 실패', '#ff6868', 1.2); } catch(e) {}
+        return true;
+    },
+
+    clearP3OniCurse: function(gameState, options = {}) {
+        const p = gameState && gameState.player ? gameState.player : null;
+        if (!p || !p.p3OniCurse) return false;
+        const wasActive = p.p3OniCurse.active !== false;
+        p.p3OniCurse.active = false;
+        p.p3OniCurse = null;
+        p.p3OniCurseHpFlashTimer = 0;
+        p.p3OniCurseBleedTimer = 0;
+        p.rapidAtkCooldownTimer = Math.max(0, parseFloat(p.rapidAtkCooldownTimer) || 0);
+        if (wasActive && !options.silent) {
+            if (gameState && Array.isArray(gameState.effects)) {
+                gameState.effects.push({
+                    type: 'hitSpark',
+                    renderType: 'EFT_P3_ONI_CURSE_BREAK',
+                    x: p.x,
+                    y: p.y,
+                    z: p.z + (p.bodyZ || 100) * 0.64,
+                    w: Math.max(190, (p.bodyX || 60) * 3.2),
+                    h: Math.max(170, (p.bodyZ || 100) * 1.25),
+                    life: 0.75,
+                    maxLife: 0.75,
+                    color: 'rgba(170,96,255,0.92)',
+                    accentColor: 'rgba(255,64,54,0.82)',
+                    darkColor: 'rgba(0,0,0,0.92)'
+                });
+            }
+            try { pushSystemNotice(options.reason === 'HIDDEN_SUCCESS' ? '귀면족의 저주 해제' : '귀면족의 저주 종료', '#c49cff', 0.8); } catch(e) {}
+        }
+        return wasActive;
+    },
+
+    grantP3TrialWillBuff: function(gameState, objData = null) {
+        const p = gameState && gameState.player ? gameState.player : null;
+        if (!p) return false;
+        let buffData = objData;
+        if (!buffData && gameState && gameState.DB_BOSS_PATTERN_OBJECT) {
+            buffData = gameState.DB_BOSS_PATTERN_OBJECT['253013'] || gameState.DB_BOSS_PATTERN_OBJECT[253013] || null;
+        }
+        const firstGain = !p.p3TrialWillBuff;
+        p.p3TrialWillBuff = true;
+        p.p3TrialWillBuffFlashTimer = Math.max(parseFloat(p.p3TrialWillBuffFlashTimer) || 0, 1.5);
+
+        // 최신 데이터: 시련을 극복한 강인한 의지 획득 시 HP를 지정 비율만큼 1회 회복한다.
+        const interactType = String(buffData && buffData.Object_Interact_Type || '').trim().toUpperCase();
+        const restoreValue = Math.max(0, parseFloat(buffData && buffData.Object_Interact_Value) || 0);
+        let restored = 0;
+        if (interactType === 'PLAYER_HP_PER_RESTORE' && restoreValue > 0) {
+            const maxHp = Math.max(1, parseFloat(p.maxHp) || 1);
+            const before = Math.max(0, parseFloat(p.hp) || 0);
+            p.hp = Math.min(maxHp, before + maxHp * restoreValue / 100);
+            restored = Math.max(0, p.hp - before);
+            p.p3OniCurseHpFlashTimer = Math.max(parseFloat(p.p3OniCurseHpFlashTimer) || 0, 0.35);
+        }
+
+        if (firstGain) {
+            if (gameState && Array.isArray(gameState.effects)) {
+                gameState.effects.push({
+                    type: 'hitSpark',
+                    renderType: 'EFT_P3_TRIAL_WILL_GAIN',
+                    x: p.x,
+                    y: p.y,
+                    z: p.z + (p.bodyZ || 100) * 0.72,
+                    w: Math.max(250, (p.bodyX || 60) * 4.1),
+                    h: Math.max(230, (p.bodyZ || 100) * 1.58),
+                    life: 1.15,
+                    maxLife: 1.15,
+                    color: 'rgba(255,246,210,0.98)',
+                    accentColor: 'rgba(255,214,96,0.96)'
+                });
+            }
+            if (gameState.floatingTexts && restored > 0) {
+            }
+            try { pushSystemNotice('시련을 극복한 강인한 의지 획득', '#ffe9a6', 1.2); } catch(e) {}
+        }
+        return true;
+    },
+
+    grantP3TrialBodyBuff: function(gameState, objData = null) {
+        const p = gameState && gameState.player ? gameState.player : null;
+        if (!p) return false;
+        let buffData = objData;
+        if (!buffData && gameState && gameState.DB_BOSS_PATTERN_OBJECT) {
+            buffData = gameState.DB_BOSS_PATTERN_OBJECT['253017'] || gameState.DB_BOSS_PATTERN_OBJECT[253017] || null;
+        }
+        const firstGain = !p.p3TrialBodyBuff;
+        p.p3TrialBodyBuff = true;
+        p.p3TrialBodyBuffFlashTimer = Math.max(parseFloat(p.p3TrialBodyBuffFlashTimer) || 0, 1.5);
+
+        const interactType = String(buffData && buffData.Object_Interact_Type || '').trim().toUpperCase();
+        const restoreValue = Math.max(0, parseFloat(buffData && buffData.Object_Interact_Value) || 0);
+        let restored = 0;
+        if (interactType === 'PLAYER_HP_PER_RESTORE' && restoreValue > 0) {
+            const maxHp = Math.max(1, parseFloat(p.maxHp) || 1);
+            const before = Math.max(0, parseFloat(p.hp) || 0);
+            p.hp = Math.min(maxHp, before + maxHp * restoreValue / 100);
+            restored = Math.max(0, p.hp - before);
+            p.p3OniCurseHpFlashTimer = Math.max(parseFloat(p.p3OniCurseHpFlashTimer) || 0, 0.35);
+        }
+
+        if (firstGain) {
+            if (gameState && Array.isArray(gameState.effects)) {
+                gameState.effects.push({
+                    type: 'hitSpark',
+                    renderType: 'EFT_P3_TRIAL_BODY_GAIN',
+                    x: p.x,
+                    y: p.y,
+                    z: p.z + (p.bodyZ || 100) * 0.72,
+                    w: Math.max(260, (p.bodyX || 60) * 4.2),
+                    h: Math.max(230, (p.bodyZ || 100) * 1.58),
+                    life: 1.15,
+                    maxLife: 1.15,
+                    color: 'rgba(255,112,92,0.98)',
+                    accentColor: 'rgba(255,224,140,0.92)'
+                });
+            }
+            if (gameState.floatingTexts && restored > 0) {
+            }
+            try { pushSystemNotice('역경을 이겨낸 강인한 육체 획득', '#ffd0a0', 1.2); } catch(e) {}
+        }
+        return true;
+    },
+
+    markP3OniCurseAttack: function(gameState) {
+        const p = gameState && gameState.player ? gameState.player : null;
+        const curse = p && p.p3OniCurse ? p.p3OniCurse : null;
+        if (!curse || curse.active === false) return false;
+        curse.noAttack = false;
+        curse.hiddenFailed = true;
+        return true;
+    },
+
+    markP3OniCurseHit: function(gameState, guardInfo = null) {
+        const p = gameState && gameState.player ? gameState.player : null;
+        const curse = p && p.p3OniCurse ? p.p3OniCurse : null;
+        if (!curse || curse.active === false) return false;
+        const patternId = String(guardInfo && guardInfo.sourcePatternId || '').trim();
+        const actionId = parseInt(guardInfo && guardInfo.sourceActionId, 10);
+        const isCurseSlash = patternId === '233006' && actionId >= 243037 && actionId <= 243043;
+        if (!isCurseSlash) return false;
+        curse.noHit = false;
+        curse.hiddenFailed = true;
+        return true;
+    },
+
+    applyP3OniCurseLifeSteal: function(gameState, dealtDamage, target = null) {
+        const p = gameState && gameState.player ? gameState.player : null;
+        if (!p || !this.isP3OniCurseActive(p)) return false;
+        const dealt = Math.max(0, parseFloat(dealtDamage) || 0);
+        if (dealt <= 0) return false;
+        const rate = Math.max(0, parseFloat(p.oniCurseLifeStealPerAtkDmg) || 0) / 100;
+        const heal = dealt * rate;
+        if (heal <= 0) return false;
+        const before = Math.max(0, parseFloat(p.hp) || 0);
+        p.hp = Math.min(Math.max(1, parseFloat(p.maxHp) || before || 1), before + heal);
+        const actual = p.hp - before;
+        if (actual > 0) {
+            p.p3OniCurseHpFlashTimer = Math.max(parseFloat(p.p3OniCurseHpFlashTimer) || 0, 0.30);
+            if (gameState && Array.isArray(gameState.effects)) {
+                const src = target || (gameState.monsters || []).find(m => m && m.active && m.boss) || null;
+                const sx = src ? (parseFloat(src.x) || p.x) : p.x + (p.faceDir || 1) * 120;
+                const sy = src ? (parseFloat(src.y) || p.y) : p.y;
+                const sz = src ? ((parseFloat(src.z) || 0) + (((src.d && src.d.bodyZ) || 160) * (src.scale || 1)) * 0.58) : (p.z + (p.bodyZ || 100) * 0.6);
+                gameState.effects.push({
+                    type: 'hitSpark',
+                    renderType: 'EFT_P3_ONI_CURSE_LIFE_STEAL',
+                    x: sx,
+                    y: sy,
+                    z: sz,
+                    toX: p.x,
+                    toY: p.y,
+                    toZ: p.z + (p.bodyZ || 100) * 0.72,
+                    w: 180,
+                    h: 170,
+                    life: 0.55,
+                    maxLife: 0.55,
+                    color: 'rgba(154,74,255,0.86)',
+                    accentColor: 'rgba(255,48,50,0.92)',
+                    darkColor: 'rgba(12,0,26,0.96)'
+                });
+            }
+            if (gameState.floatingTexts) {
+                gameState.floatingTexts.push({ x: p.x, y: p.y, z: p.z + (p.bodyZ || 100) + 46, text: `흡혈 +${actual.toFixed(0)}`, color: '#ff8a86', size: '20px', timer: 0.55 });
+            }
+        }
+        return actual > 0;
+    },
+
+    updateP3OniCurse: function(deltaTime, gameState) {
+        const p = gameState && gameState.player ? gameState.player : null;
+        if (!p) return;
+        if (p.p3TrialWillBuffFlashTimer > 0) p.p3TrialWillBuffFlashTimer = Math.max(0, p.p3TrialWillBuffFlashTimer - deltaTime);
+        if (p.p3TrialBodyBuffFlashTimer > 0) p.p3TrialBodyBuffFlashTimer = Math.max(0, p.p3TrialBodyBuffFlashTimer - deltaTime);
+        if (p.p3OniCurseHpFlashTimer > 0) p.p3OniCurseHpFlashTimer = Math.max(0, p.p3OniCurseHpFlashTimer - deltaTime);
+        if (p.p3OniCurseBleedTimer > 0) p.p3OniCurseBleedTimer = Math.max(0, p.p3OniCurseBleedTimer - deltaTime);
+        const curse = p.p3OniCurse || null;
+        if (!curse || curse.active === false) return;
+
+        p.stance = 'Mode_Melee';
+        if (p.state === 'Guard') p.state = 'Idle';
+        p.guardTimer = 0;
+        p.guardCooldownTimer = 0;
+        p.rapidAtkCooldownTimer = 0;
+
+        curse.timer = Math.max(0, (parseFloat(curse.timer) || 0) + deltaTime);
+        curse.hpDrainTick = Math.max(0, (parseFloat(curse.hpDrainTick) || 0) + deltaTime);
+        const drainPct = Math.max(0, parseFloat(p.oniCurseDecreaseHpPerSec) || 0) / 100;
+        while (curse.hpDrainTick >= 1.0) {
+            curse.hpDrainTick -= 1.0;
+            const drain = Math.max(0, (parseFloat(p.maxHp) || 0) * drainPct);
+            if (drain > 0 && !this.isPracticeModeHpInvincible(gameState)) {
+                p.hp = Math.max(1, (parseFloat(p.hp) || 1) - drain);
+                p.p3OniCurseHpFlashTimer = Math.max(parseFloat(p.p3OniCurseHpFlashTimer) || 0, 0.38);
+                p.p3OniCurseBleedTimer = Math.max(parseFloat(p.p3OniCurseBleedTimer) || 0, 0.45);
+                if (gameState && Array.isArray(gameState.effects)) {
+                    gameState.effects.push({
+                        type: 'hitSpark',
+                        renderType: 'EFT_P3_ONI_CURSE_BLEED',
+                        x: p.x,
+                        y: p.y,
+                        z: p.z + (p.bodyZ || 100) * 0.58,
+                        w: Math.max(110, (p.bodyX || 60) * 2.0),
+                        h: Math.max(120, (p.bodyZ || 100) * 1.05),
+                        life: 0.48,
+                        maxLife: 0.48,
+                        color: 'rgba(126,58,210,0.86)',
+                        accentColor: 'rgba(255,42,50,0.82)',
+                        darkColor: 'rgba(18,0,28,0.92)'
+                    });
+                }
+            }
+            if (drain > 0 && gameState.floatingTexts) {
+                gameState.floatingTexts.push({ x: p.x, y: p.y, z: p.z + (p.bodyZ || 100) + 22, text: `저주 -${drain.toFixed(0)}`, color: '#bb6cff', size: '18px', timer: 0.45 });
+            }
+        }
+
+        if (!curse.hiddenFailed && curse.noHit && curse.noAttack && curse.timer >= Math.max(0.1, parseFloat(curse.conditionTime) || 5)) {
+            this.grantP3TrialWillBuff(gameState, null);
+            this.clearP3OniCurse(gameState, { reason: 'HIDDEN_SUCCESS' });
+        }
     },
 
     addFightingSpirit: function(gameState, amount, options = {}) {
@@ -162,7 +504,9 @@ const PlayerManager = {
     },
 
     isPracticeModeHpInvincible: function(gameState) {
-        return !!(gameState && gameState.bossPractice && gameState.bossPractice.enabled);
+        // F9 연습 모드는 패턴 호출용이며, 실제 피격 피해를 확인할 수 있어야 한다.
+        // 무적은 F12 슈퍼 모드에서만 적용한다.
+        return !!(gameState && gameState.superDamageMode);
     },
 
     getKasiyasApostleGuardReduceBonus: function(player, guardInfo) {
@@ -202,6 +546,7 @@ const PlayerManager = {
 
     takeDamage: function(gameState, finalDmg, srcX, srcY, sType, sDur, sProb, guardInfo = null) {
         let p = gameState.player; if (p.state === 'Die') return;
+        if (guardInfo && typeof this.markP3OniCurseHit === 'function') this.markP3OniCurseHit(gameState, guardInfo);
 
         // 피격 판정/넉백 기준(srcX/srcY)은 기존 공격 범위 중심을 유지하되,
         // 가드 방향 판정은 공격을 시전한 본체/분신/잔상/오브젝트 위치를 우선 사용한다.
@@ -243,7 +588,7 @@ const PlayerManager = {
                 guardDamage = finalDamageRate <= 0
                     ? 0
                     : Math.max(1, ((finalDmg || 1) * finalDamageRate) - p.def);
-                if (guardDamage > 0 && !this.isPracticeModeHpInvincible(gameState) && !gameState.isTestMode) p.hp -= guardDamage;
+                if (guardDamage > 0 && !this.isPracticeModeHpInvincible(gameState)) p.hp -= guardDamage;
             }
 
             const guardSpirit = Math.max(0, parseFloat(guardInfo && guardInfo.guardGetFightingSpirit) || 0);
@@ -303,8 +648,8 @@ const PlayerManager = {
         // 방어력 단순 뺄셈 공식 적용 (최소 피해량 1 보장)
         let actualDmg = Math.max(1, (finalDmg || 1) - p.def);
         
-        // 연습 모드에서는 패턴 판정은 유지하되 HP 감소만 막는다.
-        if (!this.isPracticeModeHpInvincible(gameState) && !gameState.isTestMode) {
+        // F12 슈퍼 모드에서는 패턴 판정은 유지하되 HP 감소만 막는다.
+        if (!this.isPracticeModeHpInvincible(gameState)) {
             p.hp -= actualDmg; 
         }
 
@@ -385,10 +730,21 @@ update: function(deltaTime, keys, gameState) {
         player.isGrounded = true;
     }
 
+    if (typeof this.updateP3OniCurse === 'function') this.updateP3OniCurse(deltaTime, gameState);
+
     if (player.hp <= 0 && player.state !== 'Die') {
+        if (typeof this.clearP3OniCurse === 'function') {
+            this.clearP3OniCurse(gameState, { reason: 'PLAYER_DIE', silent: true });
+        }
         player.state = 'Die';
         player.atkTimer = 999;
         player.hp = 0;
+        player.kbVx = 0;
+        player.kbVy = 0;
+        player.guardTimer = 0;
+        player.dashTimer = 0;
+        player.isRunning = false;
+        player.runDirection = null;
         let go = document.getElementById('gameOverScreen');
         if (go) go.style.display = 'flex';
     }

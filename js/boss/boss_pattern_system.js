@@ -13,6 +13,15 @@ const BossPatternSystem = {
         return !!(m && m.boss && this.isBossPatternData(m.d));
     },
 
+    isBossPatternRepeatAllowed: function(pattern) {
+        const raw = pattern ? pattern.Pattern_Repeat : undefined;
+        if (raw === undefined || raw === null || String(raw).trim() === '') return true;
+        if (raw === false) return false;
+        if (raw === true) return true;
+        const s = String(raw).trim().toUpperCase();
+        return !(s === 'FALSE' || s === '0' || s === 'NO' || s === 'N');
+    },
+
 
     getPatternLoopCount: function(pattern, boss) {
         const lateValue = parseInt(pattern.Late_Phase_Action_Sequence_Loop_Count);
@@ -156,6 +165,12 @@ const BossPatternSystem = {
         const cond = String(action && action.Action_Condition_Type || '').trim().toUpperCase();
         if (!cond || cond === 'NONE') return false;
         if ((cond === 'LATE_PHASE' || cond === 'LATE_PHASE_START') && !(m && m.boss && m.boss.isLatePhase)) return true;
+        if (cond === 'P3_M2_ONLY_CENTER_DISTORTION_EXISTS' || cond === 'P3_M2_NO_SPACE_DISTORTION' || cond === 'P3_M2_SPACE_DISTORTION_REMAIN') {
+            if (typeof BossObjectSystem !== 'undefined' && BossObjectSystem.isKasiyasP3M2ActionConditionMet) {
+                return !BossObjectSystem.isKasiyasP3M2ActionConditionMet(action, gameState);
+            }
+            return true;
+        }
 
         const value = parseFloat(action && action.Action_Condition_Value);
         const threshold = Number.isFinite(value) ? value : 0;
@@ -449,13 +464,21 @@ const BossPatternSystem = {
         return 0.001;
     },
 
-    isBossPatternConditionMet: function(pattern, boss) {
+    isBossPatternConditionMet: function(pattern, boss, m = null) {
         const condType = String(pattern.Pattern_Cond_Type || '').trim().toUpperCase();
 
         if (!condType || condType === 'COOLDOWN_READY') return true;
         if (condType === 'LATE_PHASE') return !!boss.isLatePhase;
         if (condType === 'LATE_PHASE_START') return !!boss.isLatePhase && !boss.lateOpeningPatternUsed;
         if (condType === 'LATE_PHASE_MAJOR_PATTERN') return !!boss.isLatePhase && !!boss.lateOpeningPatternUsed;
+        if (condType === 'KASIYAS_P3_HP_UNDER') {
+            const raw = parseFloat(pattern.Pattern_Cond_Value);
+            const threshold = !isNaN(raw) ? (raw > 1 ? raw / 100 : raw) : 1;
+            const hp = parseFloat(m && m.hp);
+            const maxHp = Math.max(1, parseFloat(m && m.maxHp) || parseFloat(m && m.d && m.d.hp) || 1);
+            const hpRate = !isNaN(hp) ? hp / maxHp : 1;
+            return hpRate <= threshold;
+        }
 
         return true;
     },
@@ -513,6 +536,13 @@ const BossPatternSystem = {
                 continue;
             }
 
+            boss.usedPatternIds = boss.usedPatternIds || {};
+            if (!this.isBossPatternRepeatAllowed(pattern) && boss.usedPatternIds[patternId]) {
+                check.reason = 'USED_ONCE';
+                checks.push(check);
+                continue;
+            }
+
             if (!pattern.Runtime_Actions || pattern.Runtime_Actions.length <= 0) {
                 check.reason = 'NO_ACTIONS';
                 checks.push(check);
@@ -536,7 +566,7 @@ const BossPatternSystem = {
                 continue;
             }
 
-            if (!this.isBossPatternConditionMet(pattern, boss)) {
+            if (!this.isBossPatternConditionMet(pattern, boss, m)) {
                 check.reason = 'CONDITION';
                 checks.push(check);
                 continue;
@@ -603,6 +633,11 @@ const BossPatternSystem = {
         if (!boss || !pattern) return;
 
         boss.activePattern = pattern;
+        const startedPatternId = String(pattern.Pattern_ID || '').trim();
+        boss.usedPatternIds = boss.usedPatternIds || {};
+        if (startedPatternId && !this.isBossPatternRepeatAllowed(pattern)) {
+            boss.usedPatternIds[startedPatternId] = true;
+        }
         if (String(pattern.Pattern_ID || '').trim() === String(boss.phase && boss.phase.Late_Opening_Pattern_ID || '').trim()) {
             boss.lateOpeningPatternStarted = true;
             boss.lateOpeningPatternUsed = true;
@@ -672,6 +707,13 @@ const BossPatternSystem = {
             boss.majorPattern3Runtime = { randomRushStarted: true, randomRushPaths: {} };
         }
 
+        if (String(pattern.Pattern_ID || '').trim() === '233006') {
+            boss.p3MajorPattern1Runtime = { active: true, startedAt: 0 };
+            if (typeof PlayerManager !== 'undefined' && PlayerManager.clearP3OniCurse) {
+                PlayerManager.clearP3OniCurse(gameState, { silent: true, keepBuff: true });
+            }
+        }
+
         this.ensureBossDebug(gameState).currentObjectAction = null;
         this.pushBossDebugLog(
             gameState,
@@ -719,6 +761,12 @@ const BossPatternSystem = {
                     BossObjectSystem.clearKasiyasP2Pattern3Runtime.call(this, gameState, { clearAllHitboxes: true, forceResetBossState: true });
                 }
             }
+            if (patternId === '233006') {
+                boss.p3MajorPattern1Runtime = null;
+                if (typeof PlayerManager !== 'undefined' && PlayerManager.clearP3OniCurse) {
+                    PlayerManager.clearP3OniCurse(gameState, { reason: 'PATTERN_END', keepBuff: true, silent: true });
+                }
+            }
             boss.patternCooldowns[patternId] = parseFloat(pattern.Pattern_Cooldown) || 1;
             this.pushBossDebugLog(
                 gameState,
@@ -748,6 +796,9 @@ const BossPatternSystem = {
         boss.actionMove = null;
         boss.kasiyasP2M2Hidden = false;
         boss.kasiyasP1M3RushHidden = false;
+        boss.kasiyasP3M2Hidden = false;
+        boss.kasiyasP3M2HiddenStarted = false;
+        boss.kasiyasP3M2LandingActionId = '';
         boss.noPatternWaitTimer = parseFloat(boss.phase && boss.phase.No_Pattern_Wait_Time) || 0.2;
 
         m.state = 'IDLE';

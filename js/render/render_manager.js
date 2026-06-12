@@ -241,8 +241,10 @@ const GameRenderer = {
                 obj.kind === 'dimensionPortal' ||
                 obj.kind === 'fallingSwordRain' ||
                 objectTypeRaw === 'DIMENSION_PORTAL' ||
+                objectTypeRaw === 'GIANT_DIMENSION_PORTAL_SKY' ||
                 objectTypeRaw === 'FALLING_SWORD_RAIN' ||
                 objectRenderTypeRaw === 'OBJ_DIMENSION_PORTAL' ||
+                objectRenderTypeRaw === 'OBJ_P3_M2_GIANT_DIMENSION_PORTAL_SKY' ||
                 objectRenderTypeRaw === 'OBJ_DIMENSION_PORTAL_SWORD_RAIN'
             );
             if (isAirborneBossObject) {
@@ -289,6 +291,12 @@ const GameRenderer = {
                 obj.kind === 'p3SpaceBurst' ||
                 obj.kind === 'p3DimensionCrack' ||
                 obj.kind === 'p3DimensionCrackBurst' ||
+                obj.kind === 'p3M2GiantSwordDrop' ||
+                obj.kind === 'p3M2ApostleEnergyEruption' ||
+                objectRenderTypeRaw === 'OBJ_P3_M2_GIANT_SWORD_DROP' ||
+                objectRenderTypeRaw === 'OBJ_P3_M2_APOSTLE_ENERGY_ERUPTION' ||
+                objectTypeRaw === 'GIANT_SWORD_DROP' ||
+                objectTypeRaw === 'APOSTLE_ENERGY_ERUPTION' ||
                 objectRenderTypeRaw.indexOf('P2_M2_BROKEN_GIANT_SWORD') >= 0 ||
                 objectRenderTypeRaw.indexOf('P2_M2_AIMING_GIANT_SWORD') >= 0 ||
                 objectRenderTypeRaw.indexOf('P2_M2_FIRE_GIANT_SWORD') >= 0

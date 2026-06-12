@@ -30,6 +30,11 @@
     "Hit_Lose_Fighting_Spirit": 10,
     "Hit_Lose_Fighting_Spirit_Cooltime": 2,
     "Fighting_Spirit_DMG_Buff_Rate": 0.2,
-    "Fighting_Spirit_Move_Speed_Buff_Rate": 0.15
+    "Fighting_Spirit_Move_Speed_Buff_Rate": 0.15,
+    "Oni_Curse_Move_Speed_Rate": 1.6,
+    "Oni_Curse_Decrease_HP_Per_Sec": 7,
+    "Oni_Curse_Control_Limit": "ONLY_ATK_MELEE",
+    "Oni_Curse_Life_Steal_Per_ATK_DMG": 250,
+    "Oni_Curse_Rapid_ATK_Cooltime": 0
   }
 ]

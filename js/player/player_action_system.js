@@ -294,10 +294,18 @@ const PlayerAction = {
         let runAct = gameState.actions.find(a => String(a.Action_Type || '').trim() === 'ACT_RUN');
         let guardAct = gameState.actions.find(a => String(a.Action_Type || '').trim() === 'ACT_GUARD');
         let dashReqLv = dashAct ? parseFloat(dashAct.Require_Level) || 0 : 0;
+        const oniCurseActive = typeof PlayerManager !== 'undefined' && PlayerManager.isP3OniCurseActive && PlayerManager.isP3OniCurseActive(player);
+        if (oniCurseActive) {
+            player.stance = 'Mode_Melee';
+            if (player.state === 'Guard') player.state = 'Idle';
+            player.guardTimer = 0;
+        }
 
+        // 방향키 연타 달리기는 스킬이 아닌 기본 이동 동작으로 취급한다.
+        // 귀면족의 저주 중에도 5회 검격을 회피할 수 있도록 달리기 입력은 유지한다.
         this.updateDoubleTapRun(deltaTime, keys, player, runAct);
 
-        if (guardAct) {
+        if (guardAct && !oniCurseActive) {
             const guardKey = getEngineKeyCode(guardAct.Input_Key);
             const isGuardHeld = !!(guardKey && keys[guardKey]);
             const guardMaxHold = Math.max(
@@ -356,6 +364,7 @@ const PlayerAction = {
 
         if (
             dashAct &&
+            !oniCurseActive &&
             keys[gameState.dashKeyEngine] &&
             player.level >= dashReqLv &&
             player.dashCooldownTimer <= 0 &&
@@ -422,7 +431,8 @@ const PlayerAction = {
             if (player.state === 'Idle' || player.state === 'Walk' || player.state === 'Run' || player.state === 'Atk') {
                 let moved = false;
                 const runRate = player.isRunning ? (player.runSpeedRate || (runAct ? parseFloat(runAct.Move_Speed_Rate) || 1.5 : 1.5)) : 1;
-                const moveSpeed = player.speed * this.getFightingSpiritMoveMultiplier(player) * runRate;
+                const oniMoveRate = typeof PlayerManager !== 'undefined' && PlayerManager.getP3OniCurseMoveMultiplier ? PlayerManager.getP3OniCurseMoveMultiplier(player) : 1;
+                const moveSpeed = player.speed * this.getFightingSpiritMoveMultiplier(player) * oniMoveRate * runRate;
 
                 if (keys['KeyLeft'] || keys['ArrowLeft']) {
                     player.x -= moveSpeed * deltaTime;
@@ -453,6 +463,8 @@ const PlayerAction = {
                     player.state = moved ? (player.isRunning ? 'Run' : 'Walk') : 'Idle';
                 }
 
+                // 점프는 스킬이 아닌 기본 동작으로 취급한다.
+                // 귀면족의 저주 중에도 검격 회피에 사용할 수 있도록 허용한다.
                 if (
                     keys[gameState.jumpKeyEngine] &&
                     player.isGrounded &&
@@ -486,6 +498,7 @@ const PlayerAction = {
                     const actionTypeRaw = String(act.Action_Type || '').trim();
 
                     if (actionTypeRaw === 'ACT_RUN' || actionTypeRaw === 'ACT_GUARD') continue;
+                    if (oniCurseActive && actionType !== 'Normal_ATK_Melee') continue;
 
                     let isOnCd = player.skillCooldowns[act.Action_Name] > 0;
 
@@ -523,6 +536,9 @@ const PlayerAction = {
                             if (isNormal && player.stanceSwapTimer <= 0 && player.rapidAtkCooldownTimer <= 0 && player.atkTimer <= 0) canUse = true;
 
                             if (canUse) {
+                                if (oniCurseActive && actionType === 'Normal_ATK_Melee' && typeof PlayerManager !== 'undefined' && PlayerManager.markP3OniCurseAttack) {
+                                    PlayerManager.markP3OniCurseAttack(gameState);
+                                }
                                 player.state = 'Atk';
                                 player.isRunning = false;
                                 player.runDirection = null;
@@ -536,6 +552,7 @@ const PlayerAction = {
                                     let maxCount = parseInt(act.Rapid_ATK_Max_Count) || 1;
                                     let allowTime = parseFloat(act.Rapid_ATK_Allow_Time) || 1.5;
                                     let coolTime = parseFloat(act.Rapid_ATK_Cooltime) || 0.5;
+                                    if (oniCurseActive && actionType === 'Normal_ATK_Melee') coolTime = Math.max(0, parseFloat(player.oniCurseRapidAtkCooltime) || 0);
                                     player.rapidAtkAllowTimer = allowTime;
                                     player.maxRapidAllow = allowTime;
 
@@ -620,7 +637,12 @@ const PlayerAction = {
 
                                             if (checkAABB3D(atkX, atkY, atkZ, atkW, atkD, atkH, m.x, m.y, m.z, mW, mD, mH)) {
                                                 try {
+                                                    const hpBefore = parseFloat(m.hp) || 0;
                                                     MonsterManager.takeDamage(m, baseDmg, gameState);
+                                                    const hpAfter = parseFloat(m.hp) || 0;
+                                                    if (typeof PlayerManager !== 'undefined' && PlayerManager.applyP3OniCurseLifeSteal) {
+                                                        PlayerManager.applyP3OniCurseLifeSteal(gameState, Math.max(0, hpBefore - hpAfter), m);
+                                                    }
                                                     if (typeof PlayerManager !== 'undefined' && PlayerManager.addFightingSpirit && (player.fightingSpiritAtkGainCooldownTimer || 0) <= 0) {
                                                         if (PlayerManager.addFightingSpirit(gameState, player.atkGetFightingSpirit || 0, { lockTime: player.atkGetFightingSpiritCooldown || 0.3 })) {
                                                             player.fightingSpiritAtkGainCooldownTimer = Math.max(0, player.atkGetFightingSpiritCooldown || 0);

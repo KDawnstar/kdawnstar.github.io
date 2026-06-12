@@ -1,4 +1,57 @@
 // [카시야스 보스전] 플레이어 렌더링 (player_renderer.js)
+
+GameRenderer.drawP3OniCursePlayerAura = function(ctx, player) {
+    if (!player || !player.p3OniCurse || player.p3OniCurse.active === false) return;
+    const pw = Math.max(46, (parseFloat(player.bodyX) || 50) * (parseFloat(player.scale) || 1));
+    const ph = Math.max(92, (parseFloat(player.bodyZ) || 100) * (parseFloat(player.scale) || 1));
+    const t = Date.now() / 1000;
+    const pulse = 0.5 + Math.sin(t * 6.2) * 0.5;
+    const slow = 0.5 + Math.sin(t * 2.1) * 0.5;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.shadowBlur = 26 + pulse * 18;
+    ctx.shadowColor = 'rgba(115,28,190,0.86)';
+
+    const auraW = pw * (2.30 + pulse * 0.18);
+    const auraH = ph * (1.38 + slow * 0.12);
+    const yOff = -ph * 0.44;
+
+    const backGrad = ctx.createRadialGradient(0, yOff, 4, 0, yOff, auraH * 0.58);
+    backGrad.addColorStop(0, `rgba(202,150,255,${0.12 + pulse * 0.05})`);
+    backGrad.addColorStop(0.34, `rgba(114,44,190,${0.22 + pulse * 0.05})`);
+    backGrad.addColorStop(0.70, `rgba(118,0,26,${0.13 + slow * 0.04})`);
+    backGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = backGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, yOff, auraW * 0.50, auraH * 0.54, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.74;
+    for (let i = 0; i < 7; i++) {
+        const phase = t * (1.2 + i * 0.12) + i * 1.77;
+        const x = Math.sin(phase) * auraW * (0.16 + (i % 3) * 0.04);
+        const y = yOff + Math.cos(phase * 0.7) * auraH * 0.20 + (i - 3) * auraH * 0.052;
+        const len = auraH * (0.24 + (i % 2) * 0.07);
+        ctx.strokeStyle = i % 2 ? `rgba(28,0,38,${0.52})` : `rgba(255,48,58,${0.34})`;
+        ctx.lineWidth = i % 2 ? 5.2 : 3.1;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x - Math.sin(phase * 0.8) * 12, y + len * 0.42);
+        ctx.bezierCurveTo(x - 20, y + len * 0.12, x + 16, y - len * 0.16, x + Math.sin(phase) * 18, y - len * 0.48);
+        ctx.stroke();
+    }
+
+    ctx.globalAlpha = 0.90;
+    ctx.strokeStyle = `rgba(214,164,255,${0.24 + pulse * 0.14})`;
+    ctx.lineWidth = 2.0;
+    ctx.beginPath();
+    ctx.ellipse(0, yOff + ph * 0.34, auraW * (0.26 + pulse * 0.025), ph * 0.105, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
+};
+
 GameRenderer.drawPlayerEntity = function(ctx, player) {
     const renderer = this;
     const GROUND_BASE_Y = this.GROUND_BASE_Y;
@@ -16,6 +69,7 @@ GameRenderer.drawPlayerEntity = function(ctx, player) {
 
     ctx.save();
     ctx.translate(player.x, bodyY);
+    this.drawP3OniCursePlayerAura(ctx, player);
 
     if (player.state === 'Dash') ctx.rotate(player.faceDir * 15 * Math.PI / 180);
     else if (player.state === 'Run') ctx.rotate(player.faceDir * 5 * Math.PI / 180);

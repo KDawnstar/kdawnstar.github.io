@@ -1024,6 +1024,51 @@
     box-shadow: inset 0 0 16px rgba(255,255,255,0.08);
 }
 
+.hud-orb.hp.oni-curse-corrupted {
+    border-color: rgba(150, 78, 255, 0.58);
+    background:
+        radial-gradient(circle at 42% 24%, rgba(195,126,255,0.22), rgba(64,10,80,0.18) 38%, rgba(0,0,0,0.70) 100%),
+        rgba(38, 8, 28, 0.96);
+    box-shadow:
+        inset 0 8px 20px rgba(198,112,255,0.11),
+        inset 0 -16px 22px rgba(0,0,0,0.48),
+        0 0 20px rgba(111,42,190,0.36),
+        0 8px 16px rgba(0,0,0,0.30);
+}
+
+.hud-orb.hp.oni-curse-corrupted .hud-orb-fill {
+    background:
+        radial-gradient(circle at 50% 28%, rgba(214,156,255,0.24), rgba(214,156,255,0) 48%),
+        linear-gradient(180deg, rgba(190,82,255,0.88), rgba(112,20,156,0.96) 48%, rgba(155,18,44,0.95));
+    box-shadow:
+        inset 0 0 18px rgba(255,70,76,0.22),
+        inset 0 0 26px rgba(0,0,0,0.34);
+}
+
+.hud-orb.hp.oni-curse-corrupted .hud-orb-fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        repeating-linear-gradient(105deg, rgba(0,0,0,0.22) 0 5px, rgba(255,60,70,0.12) 6px 8px, transparent 9px 18px);
+    opacity: 0.62;
+    mix-blend-mode: multiply;
+}
+
+.hud-orb.hp.oni-curse-corrupted .hud-orb-text {
+    color: #f2dcff;
+    text-shadow: 0 0 8px rgba(178,94,255,0.82), 0 0 12px rgba(255,54,60,0.42), 0 2px 2px rgba(0,0,0,0.85);
+}
+
+.hud-orb.hp.oni-curse-corrupted.oni-curse-flash {
+    animation: oniCurseHpFlash 0.34s ease-out 1;
+}
+
+@keyframes oniCurseHpFlash {
+    0% { filter: brightness(1.35) saturate(1.35); box-shadow: 0 0 28px rgba(255,46,64,0.62), inset 0 0 18px rgba(255,38,54,0.30); }
+    100% { filter: brightness(1) saturate(1); }
+}
+
 .hud-orb.exp .hud-orb-fill {
     background:
         radial-gradient(circle at 50% 30%, rgba(210,240,255,0.24), rgba(210,240,255,0) 48%),

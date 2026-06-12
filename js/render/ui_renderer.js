@@ -463,6 +463,158 @@ GameRenderer.drawTargetUI = function(ctx, canvas, targetUI, gameState = null) {
             });
         }
 
+        let belowBossUiOffset = 0;
+        const p3Player = gameState && gameState.player ? gameState.player : null;
+        const p3BossPhase = tm && tm.boss ? String(tm.boss.phaseId || tm.boss.phase && tm.boss.phase.Phase_ID || '').trim() : '';
+
+        // 3페이즈 대형 1번 히든 보상은 보스 HP 상태창 아래가 아니라,
+        // 던파식 좌측 상태 패널처럼 별도 표기한다. 미획득 상태는 표시하지 않는다.
+        if (p3Player && p3Player.p3TrialWillBuff) {
+            const flash = Math.max(0, Math.min(1, parseFloat(p3Player.p3TrialWillBuffFlashTimer) || 0));
+            const willW = 292;
+            const willH = 40;
+            const willX = 8;
+            const willY = Math.min(canvas.height - willH - 88, y + uiH + 58);
+            ctx.save();
+            ctx.globalAlpha = alpha;
+
+            // 기존 게임 UI 톤에 맞춘 좌측 상태 패널. 위치/표기 방식은 던파식 기믹 상태 UI처럼 두되,
+            // 단순 검은 박스가 아니라 보라/검붉은 테두리와 작은 아이콘으로 장식한다.
+            const bg = ctx.createLinearGradient(willX, willY, willX + willW, willY + willH);
+            bg.addColorStop(0.00, 'rgba(8, 3, 12, 0.94)');
+            bg.addColorStop(0.48, 'rgba(22, 6, 28, 0.92)');
+            bg.addColorStop(1.00, 'rgba(12, 3, 8, 0.91)');
+            ctx.fillStyle = bg;
+            ctx.fillRect(willX, willY, willW, willH);
+
+            ctx.strokeStyle = flash > 0 ? `rgba(255,224,118,${0.45 + flash * 0.42})` : 'rgba(160, 88, 255, 0.56)';
+            ctx.lineWidth = flash > 0 ? 2 : 1.4;
+            ctx.strokeRect(willX + 0.5, willY + 0.5, willW - 1, willH - 1);
+            ctx.strokeStyle = 'rgba(255, 58, 64, 0.36)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(willX + 3.5, willY + 3.5, willW - 7, willH - 7);
+
+            ctx.fillStyle = 'rgba(92, 22, 28, 0.72)';
+            ctx.fillRect(willX + 1, willY + 1, 5, willH - 2);
+            ctx.fillStyle = 'rgba(120, 72, 255, 0.45)';
+            ctx.fillRect(willX + 6, willY + 1, 2, willH - 2);
+
+            if (flash > 0) {
+                ctx.globalCompositeOperation = 'lighter';
+                const g = ctx.createLinearGradient(willX, willY, willX + willW, willY);
+                g.addColorStop(0, 'rgba(255,230,130,0)');
+                g.addColorStop(0.44, `rgba(255,230,130,${0.16 * flash})`);
+                g.addColorStop(1, 'rgba(255,230,130,0)');
+                ctx.fillStyle = g;
+                ctx.fillRect(willX, willY, willW, willH);
+            }
+            ctx.globalCompositeOperation = 'source-over';
+
+            const iconX = willX + 23;
+            const iconY = willY + willH / 2;
+            drawDiamond(iconX, iconY, 7.0, flash > 0 ? 'rgba(255,218,108,0.98)' : 'rgba(178, 72, 255, 0.96)', 'rgba(255, 72, 68, 0.72)');
+            ctx.strokeStyle = 'rgba(255, 232, 150, 0.55)';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(iconX - 11, iconY);
+            ctx.lineTo(iconX - 4, iconY);
+            ctx.moveTo(iconX + 4, iconY);
+            ctx.lineTo(iconX + 11, iconY);
+            ctx.stroke();
+
+            drawText('시련을 극복한 강인한 의지', willX + 42, willY + willH / 2 + 1, {
+                font: makeFont('900', 13),
+                fill: '#ffffff',
+                strokeStyle: 'rgba(0,0,0,0.95)',
+                strokeWidth: 3
+            });
+            const countW = 42;
+            const countX = willX + willW - countW - 9;
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.52)';
+            ctx.fillRect(countX, willY + 9, countW, willH - 18);
+            ctx.strokeStyle = 'rgba(255, 211, 95, 0.66)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(countX + 0.5, willY + 9.5, countW - 1, willH - 19);
+            drawText('1/1', countX + countW / 2, willY + willH / 2 + 1, {
+                font: makeFont('900', 13),
+                align: 'center',
+                fill: flash > 0 ? '#ffe58a' : '#f4d27a',
+                strokeStyle: 'rgba(0,0,0,0.95)',
+                strokeWidth: 3
+            });
+            ctx.restore();
+        }
+
+
+        if (p3Player && p3Player.p3TrialBodyBuff) {
+            const flash = Math.max(0, Math.min(1, parseFloat(p3Player.p3TrialBodyBuffFlashTimer) || 0));
+            const bodyW = 292;
+            const bodyH = 40;
+            const bodyX = 8;
+            const baseBuffY = Math.min(canvas.height - bodyH - 88, y + uiH + 58);
+            const bodyY = baseBuffY + (p3Player.p3TrialWillBuff ? 44 : 0);
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            const bg = ctx.createLinearGradient(bodyX, bodyY, bodyX + bodyW, bodyY + bodyH);
+            bg.addColorStop(0.00, 'rgba(13, 3, 6, 0.94)');
+            bg.addColorStop(0.48, 'rgba(32, 7, 14, 0.92)');
+            bg.addColorStop(1.00, 'rgba(12, 3, 8, 0.91)');
+            ctx.fillStyle = bg;
+            ctx.fillRect(bodyX, bodyY, bodyW, bodyH);
+            ctx.strokeStyle = flash > 0 ? `rgba(255,196,112,${0.45 + flash * 0.42})` : 'rgba(255, 95, 82, 0.56)';
+            ctx.lineWidth = flash > 0 ? 2 : 1.4;
+            ctx.strokeRect(bodyX + 0.5, bodyY + 0.5, bodyW - 1, bodyH - 1);
+            ctx.strokeStyle = 'rgba(160, 88, 255, 0.30)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(bodyX + 3.5, bodyY + 3.5, bodyW - 7, bodyH - 7);
+            ctx.fillStyle = 'rgba(120, 28, 22, 0.72)';
+            ctx.fillRect(bodyX + 1, bodyY + 1, 5, bodyH - 2);
+            ctx.fillStyle = 'rgba(255, 180, 80, 0.32)';
+            ctx.fillRect(bodyX + 6, bodyY + 1, 2, bodyH - 2);
+            if (flash > 0) {
+                ctx.globalCompositeOperation = 'lighter';
+                const g = ctx.createLinearGradient(bodyX, bodyY, bodyX + bodyW, bodyY);
+                g.addColorStop(0, 'rgba(255,160,110,0)');
+                g.addColorStop(0.44, `rgba(255,198,120,${0.16 * flash})`);
+                g.addColorStop(1, 'rgba(255,160,110,0)');
+                ctx.fillStyle = g;
+                ctx.fillRect(bodyX, bodyY, bodyW, bodyH);
+            }
+            ctx.globalCompositeOperation = 'source-over';
+            const iconX = bodyX + 23;
+            const iconY = bodyY + bodyH / 2;
+            drawDiamond(iconX, iconY, 7.0, flash > 0 ? 'rgba(255,190,104,0.98)' : 'rgba(255, 94, 82, 0.96)', 'rgba(255, 222, 146, 0.74)');
+            ctx.strokeStyle = 'rgba(255, 232, 150, 0.48)';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(iconX - 11, iconY);
+            ctx.lineTo(iconX - 4, iconY);
+            ctx.moveTo(iconX + 4, iconY);
+            ctx.lineTo(iconX + 11, iconY);
+            ctx.stroke();
+            drawText('역경을 이겨낸 강인한 육체', bodyX + 42, bodyY + bodyH / 2 + 1, {
+                font: makeFont('900', 13),
+                fill: '#ffffff',
+                strokeStyle: 'rgba(0,0,0,0.95)',
+                strokeWidth: 3
+            });
+            const countW = 42;
+            const countX = bodyX + bodyW - countW - 9;
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.52)';
+            ctx.fillRect(countX, bodyY + 9, countW, bodyH - 18);
+            ctx.strokeStyle = 'rgba(255, 190, 95, 0.66)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(countX + 0.5, bodyY + 9.5, countW - 1, bodyH - 19);
+            drawText('1/1', countX + countW / 2, bodyY + bodyH / 2 + 1, {
+                font: makeFont('900', 13),
+                align: 'center',
+                fill: flash > 0 ? '#ffd89a' : '#f4c27a',
+                strokeStyle: 'rgba(0,0,0,0.95)',
+                strokeWidth: 3
+            });
+            ctx.restore();
+        }
+
         // 대형 패턴 3번: 귀면족의 낙인 해제 조건은 HP 상태창에 붙이지 않고,
         // 하단에 별도 기믹 게이지 패널처럼 표시한다.
         const playerMark = gameState && gameState.player ? gameState.player.kasiyasOniMark : null;
@@ -476,7 +628,7 @@ GameRenderer.drawTargetUI = function(ctx, canvas, targetUI, gameState = null) {
             const markW = Math.min(430, Math.max(330, infoW * 0.62));
             const markH = bossDone && cloneDone ? 34 : 50;
             const markX = infoX + 10;
-            const markY = y + uiH + 8;
+            const markY = y + uiH + 8 + belowBossUiOffset;
             drawSharpPanel(markX, markY, markW, markH, 'rgba(13, 4, 8, 0.90)', 'rgba(255, 205, 83, 0.70)');
             ctx.strokeStyle = playerMark.pulse ? 'rgba(255, 64, 64, 0.96)' : 'rgba(150, 45, 54, 0.55)';
             ctx.lineWidth = playerMark.pulse ? 2 : 1;
@@ -536,7 +688,7 @@ GameRenderer.drawTargetUI = function(ctx, canvas, targetUI, gameState = null) {
             const markW = Math.min(390, Math.max(310, infoW * 0.56));
             const markH = 36;
             const markX = infoX + 10;
-            const markY = y + uiH + 8;
+            const markY = y + uiH + 8 + belowBossUiOffset;
             const pulse = 0.5 + Math.sin(Date.now() / 130) * 0.5;
             drawSharpPanel(markX, markY, markW, markH, 'rgba(18, 12, 4, 0.92)', 'rgba(255, 230, 116, 0.82)');
             ctx.strokeStyle = `rgba(255, 244, 155, ${0.55 + pulse * 0.30})`;

@@ -1127,7 +1127,7 @@ const P2M3DimensionDefenseSystem = {
         rt.outroFlashFired = false;
         rt.activeSlashes = [];
         rt.skillWaves = [];
-        rt.message = result === 'PERFECT_SUCCESS' ? '완전 파훼!' : (result === 'GUARD_SUCCESS' ? '일반 파훼!' : '패턴 실패');
+        rt.message = ''; // 결과 텍스트는 표시하지 않고 그로기/게이지로만 전달
         rt.messageTimer = 1.0;
         rt.resultMessage = true;
     },
@@ -1229,10 +1229,8 @@ const P2M3DimensionDefenseSystem = {
         boss.boss.noPatternWaitTimer = Math.max(boss.boss.noPatternWaitTimer || 0, time);
         if (Array.isArray(gameState.floatingTexts)) {
             const bodyZ = ((boss.d && boss.d.bodyZ) || 170) * (boss.scale || 1);
-            gameState.floatingTexts.push({ x: boss.x, y: boss.y, z: boss.z + bodyZ + 42, text: perfect ? '완전 파훼!' : '일반 파훼!', color: perfect ? '#86f4ff' : '#ffe45c', size: '30px', timer: 1.0 });
-            gameState.floatingTexts.push({ x: boss.x, y: boss.y, z: boss.z + bodyZ + 12, text: '카시야스 그로기', color: '#ffb84a', size: '22px', timer: 1.0 });
         }
-        try { pushSystemNotice(perfect ? '완전 파훼! 카시야스 그로기' : '일반 파훼! 카시야스 그로기', perfect ? '#86f4ff' : '#ffe45c', 1.1); } catch (e) {}
+        
         return true;
     },
 

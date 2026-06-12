@@ -514,7 +514,6 @@ function updateStageFlow() {
         if (!bossAlive && gameState.currentStage) {
             gameState.stageClearPending = true;
             gameState.isStageCleared = true;
-            pushSystemNotice('🏆 카시야스 1페이즈 격파!', '#2ecc71', 2.0);
             buildUIButtons();
         }
         return;
@@ -714,7 +713,7 @@ window.addEventListener('keydown', e => {
     if (e.code === 'F12' && !e.repeat) {
         e.preventDefault();
         gameState.superDamageMode = !gameState.superDamageMode;
-        try { pushSystemNotice(gameState.superDamageMode ? 'F12 슈퍼 모드 ON · 보스 피해 x10' : 'F12 슈퍼 모드 OFF', gameState.superDamageMode ? '#ffe27c' : '#bbbbbb', 1.35); } catch (err) {}
+        try { pushSystemNotice(gameState.superDamageMode ? 'F12 슈퍼 모드 ON · 보스 피해 x10 · 플레이어 무적' : 'F12 슈퍼 모드 OFF', gameState.superDamageMode ? '#ffe27c' : '#bbbbbb', 1.35); } catch (err) {}
         return;
     }
     if (e.code === 'F11') {
@@ -2421,6 +2420,13 @@ function updateHUD() {
         if (hudHpText) {
             hudHpText.innerText = `${safeHp.toFixed(0)} / ${safeMaxHp.toFixed(0)}\n${hpRatio.toFixed(1)}%`;
         }
+        const hudHpOrb = hudHpFill ? hudHpFill.closest('.hud-orb.hp') : document.querySelector('.hud-orb.hp');
+        if (hudHpOrb) {
+            const oniCurseActive = !!(p.p3OniCurse && p.p3OniCurse.active !== false);
+            const oniCurseFlash = oniCurseActive && (parseFloat(p.p3OniCurseHpFlashTimer) || 0) > 0;
+            hudHpOrb.classList.toggle('oni-curse-corrupted', oniCurseActive);
+            hudHpOrb.classList.toggle('oni-curse-flash', oniCurseFlash);
+        }
 
         const maxSpirit = Math.max(1, parseFloat(p.maxFightingSpirit) || 100);
         const safeSpirit = clamp(parseFloat(p.fightingSpirit) || 0, 0, maxSpirit);
@@ -2885,6 +2891,107 @@ function updateHUD() {
                     const hitStart = Math.max(0.01, getHitStartForGauge(castAction, 0.3));
                     if (timer <= hitStart + 0.04) {
                         applyBossCastGauge((timer / hitStart) * 100, hitStart - timer, '지면 충격파 준비', '⚠ 지면 충격파 발동');
+                    }
+                }
+            }
+
+            // 3페이즈 대형 패턴 1번 바닥 내려찍기는 충격파 타이밍을 명확히 보여준다.
+            const isP3M1SlamShockwave = castPatternId === '233006' && (
+                castActionId === '243042'
+                || pose === 'POSE_KASIYAS_P3_SLAM_THE_SWORD_DOWN'
+                || effect === 'EFT_KASIYAS_P3_SLAM_THE_SWORD_DOWN'
+                || effect === 'EFT_KASIYAS_P3_M1_SLAM_THE_SWORD_DOWN'
+                || actionName.indexOf('바닥 내려') >= 0
+            );
+            if (!showBossCastGauge && isP3M1SlamShockwave) {
+                const timer = Math.max(0, parseFloat(activeBossForCast.timer) || 0);
+                const hitStart = Math.max(0.01, getHitStartForGauge(castAction, 0.8));
+                if (timer <= hitStart + 0.05) {
+                    applyBossCastGauge((timer / hitStart) * 100, hitStart - timer, '저주 충격파 준비', '⚠ 충격파 발생');
+                }
+            }
+
+            // 3페이즈 대형 패턴 1번 최종 대각선 베기는 대기 액션부터 실제 공격 판정 발생까지 하나의 게이지로 표시한다.
+            const isP3M1FinalCharge = castPatternId === '233006' && (
+                castActionId === '243044'
+                || pose === 'POSE_KASIYAS_P3_M1_FINAL_SLASH_CHARGE'
+                || effect === 'EFT_KASIYAS_P3_M1_FINAL_SLASH_CHARGE'
+                || actionName.indexOf('마무리 대각선 베기 대기') >= 0
+            );
+            const isP3M1FinalAttack = castPatternId === '233006' && (
+                castActionId === '243045'
+                || pose === 'POSE_KASIYAS_P3_M1_FINAL_DIAGONAL_SLASH'
+                || effect === 'EFT_KASIYAS_P3_M1_FINAL_DIAGONAL_SLASH'
+                || actionName.indexOf('마무리 대각선 베기') >= 0
+            );
+            if (!showBossCastGauge && (isP3M1FinalCharge || isP3M1FinalAttack)) {
+                const timer = Math.max(0, parseFloat(activeBossForCast.timer) || 0);
+                if (isP3M1FinalCharge) {
+                    const nextAction = isFinite(currentActionIndex) ? actionsForCast[currentActionIndex + 1] : null;
+                    const chargeDuration = getActionDurationForGauge(castAction, 2.0);
+                    const hitStart = Math.max(0.01, getHitStartForGauge(nextAction, 1.3));
+                    const total = Math.max(0.01, chargeDuration + hitStart);
+                    applyBossCastGauge((timer / total) * 100, total - timer, '저주 마무리 베기 준비', '⚠ 마무리 베기 발동');
+                } else {
+                    const prevAction = isFinite(currentActionIndex) ? actionsForCast[currentActionIndex - 1] : null;
+                    const prevId = String(prevAction && prevAction.Action_ID || '').trim();
+                    const prevPose = String(prevAction && prevAction.Action_Pose_Type || '').trim().toUpperCase();
+                    const chargeDuration = (prevId === '243044' || prevPose === 'POSE_KASIYAS_P3_M1_FINAL_SLASH_CHARGE') ? getActionDurationForGauge(prevAction, 2.0) : 0;
+                    const hitStart = Math.max(0.01, getHitStartForGauge(castAction, 1.3));
+                    if (timer <= hitStart + 0.05) {
+                        const total = Math.max(0.01, chargeDuration + hitStart);
+                        const elapsed = chargeDuration + Math.min(timer, hitStart);
+                        applyBossCastGauge((elapsed / total) * 100, total - elapsed, '저주 마무리 베기 준비', '⚠ 마무리 베기 발동');
+                    }
+                }
+            }
+
+
+            // 3페이즈 대형 패턴 2번 카시야스 지면 낙하는 충격파형 공격이므로, 착지 타이밍까지 게이지를 표시한다.
+            const isP3M2LandingImpact = castPatternId === '233007'
+                && castActionId === '243060'
+                && String(castAction && castAction.Action_Type || '').trim().toUpperCase() === 'ATK';
+            if (!showBossCastGauge && isP3M2LandingImpact) {
+                const timer = Math.max(0, parseFloat(activeBossForCast.timer) || 0);
+                const hitStart = Math.max(0.01, getHitStartForGauge(castAction, 1.0));
+                if (timer <= hitStart + 0.05) {
+                    applyBossCastGauge((timer / hitStart) * 100, hitStart - timer, '지면 낙하 준비', '⚠ 지면 충격파 발생');
+                }
+            }
+
+            // 3페이즈 대형 패턴 2번 마무리 참격은 대기 액션부터 실제 참격 판정 발생까지 하나의 연속 게이지로 표시한다.
+            const isP3M2FinalCharge = castPatternId === '233007' && (
+                castActionId === '243065'
+                || pose === 'POSE_KASIYAS_P3_M2_FINAL_SLASH_CHARGE'
+                || effect === 'EFT_KASIYAS_P3_M2_FINAL_SLASH_CHARGE'
+                || actionName.indexOf('마무리 참격 대기') >= 0
+            );
+            const isP3M2FinalAttack = castPatternId === '233007' && (
+                castActionId === '243066'
+                || castActionId === '243067'
+                || castActionId === '243068'
+                || pose === 'POSE_KASIYAS_P3_M2_FINAL_SLASH'
+                || effect === 'EFT_KASIYAS_P3_M2_FINAL_SLASH'
+                || actionName.indexOf('마무리 참격') >= 0
+            );
+            if (!showBossCastGauge && (isP3M2FinalCharge || isP3M2FinalAttack)) {
+                const timer = Math.max(0, parseFloat(activeBossForCast.timer) || 0);
+                if (isP3M2FinalCharge) {
+                    const nextAction = isFinite(currentActionIndex) ? actionsForCast[currentActionIndex + 1] : null;
+                    const chargeDuration = getActionDurationForGauge(castAction, 2.5);
+                    const hitStart = Math.max(0.01, getHitStartForGauge(nextAction, 0.8));
+                    const total = Math.max(0.01, chargeDuration + hitStart);
+                    applyBossCastGauge((timer / total) * 100, total - timer, '마무리 참격 준비', '⚠ 마무리 참격 발동');
+                } else {
+                    const prevAction = isFinite(currentActionIndex) ? actionsForCast[currentActionIndex - 1] : null;
+                    const prevId = String(prevAction && prevAction.Action_ID || '').trim();
+                    const prevPose = String(prevAction && prevAction.Action_Pose_Type || '').trim().toUpperCase();
+                    const chargeDuration = (prevId === '243065' || prevPose === 'POSE_KASIYAS_P3_M2_FINAL_SLASH_CHARGE') ? getActionDurationForGauge(prevAction, 2.5) : 0;
+                    const hitStart = Math.max(0.01, getHitStartForGauge(castAction, 0.8));
+                    if (timer <= hitStart + 0.05) {
+                        const total = Math.max(0.01, chargeDuration + hitStart);
+                        const elapsed = chargeDuration + Math.min(timer, hitStart);
+                        applyBossCastGauge((elapsed / total) * 100, total - elapsed, '마무리 참격 준비', '⚠ 마무리 참격 발동');
                     }
                 }
             }

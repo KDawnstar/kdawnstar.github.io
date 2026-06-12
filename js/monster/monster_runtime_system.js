@@ -282,6 +282,10 @@ const MonsterManager = {
         return BossPatternSystem.isBossPatternConditionMet.apply(this, arguments);
     },
 
+    isBossPatternRepeatAllowed: function() {
+        return BossPatternSystem.isBossPatternRepeatAllowed.apply(this, arguments);
+    },
+
     ensureBossDebug: function() {
         return BossDebugSystem.ensureBossDebug.apply(this, arguments);
     },

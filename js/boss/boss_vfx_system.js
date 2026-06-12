@@ -556,6 +556,111 @@ const BossVFXSystem = {
             return;
         }
 
+        if (upperEff === 'EFT_KASIYAS_P3_DASH_SLASH' || upperEff === 'EFT_KASIYAS_P3_M1_DASH_SLASH') {
+            gameState.effects.push({
+                type: 'p3HighSpeedRushLeafSlash',
+                renderType: upperEff,
+                x: atkX,
+                y: atkY,
+                z: atkZ + Math.max(12, atkH * 0.48),
+                dir: m.faceDir || 1,
+                w: Math.max(120 * effectScale, atkW * 0.96),
+                d: Math.max(70 * effectScale, atkD * 0.88),
+                h: Math.max(90 * effectScale, atkH * 0.52),
+                life: 0.54,
+                maxLife: 0.54,
+                color: 'rgba(158,78,255,0.98)',
+                accentColor: 'rgba(255,54,44,0.95)',
+                darkColor: 'rgba(0,0,0,0.98)',
+                hotColor: 'rgba(236,220,255,0.86)',
+                oniMajor: true
+            });
+            this.triggerScreenShake(gameState, 9.5, 0.24);
+            return;
+        }
+
+        if (upperEff === 'EFT_KASIYAS_P3_SLAM_THE_SWORD_DOWN' || upperEff === 'EFT_KASIYAS_P3_M1_SLAM_THE_SWORD_DOWN') {
+            gameState.effects.push({
+                type: 'stompDust',
+                renderType: upperEff,
+                strong: true,
+                x: atkX,
+                y: atkY,
+                z: 8,
+                w: Math.max(160 * effectScale, atkW * 0.66),
+                d: Math.max(90 * effectScale, atkD * 0.86),
+                h: Math.max(46, atkH * 0.22),
+                life: 0.66,
+                maxLife: 0.66,
+                color: 'rgba(154,76,255,0.90)',
+                accentColor: 'rgba(255,50,42,0.95)',
+                darkColor: 'rgba(0,0,0,0.98)',
+                oniMajor: true
+            });
+            this.triggerScreenShake(gameState, 13.0, 0.38);
+            return;
+        }
+
+        if (upperEff === 'EFT_KASIYAS_P3_ATK_ROAR' || upperEff === 'EFT_KASIYAS_P3_M1_ATK_ROAR') {
+            gameState.effects.push({
+                type: 'shockwave',
+                renderType: upperEff,
+                x: atkX,
+                y: atkY,
+                z: atkZ + Math.max(20, atkH * 0.48),
+                w: Math.max(160 * effectScale, atkW * 0.68),
+                d: Math.max(80 * effectScale, atkD * 0.72),
+                h: Math.max(120 * effectScale, atkH * 0.72),
+                life: 0.52,
+                maxLife: 0.52,
+                color: 'rgba(154,76,255,0.82)',
+                accentColor: 'rgba(255,50,42,0.90)',
+                darkColor: 'rgba(0,0,0,0.96)',
+                pulseCount: 3,
+                oniMajor: true
+            });
+            gameState.effects.push({
+                type: 'hitSpark',
+                renderType: upperEff,
+                x: m.x,
+                y: m.y,
+                z: (parseFloat(m.z) || 0) + (((m.d && m.d.bodyZ) || 170) * (m.scale || 1)) * 0.70,
+                w: Math.max(260, ((m.d && m.d.bodyX) || 90) * (m.scale || 1) * 3.1),
+                h: Math.max(260, ((m.d && m.d.bodyZ) || 170) * (m.scale || 1) * 1.55),
+                life: 0.44,
+                maxLife: 0.44,
+                color: 'rgba(168,86,255,0.88)',
+                accentColor: 'rgba(255,58,48,0.88)',
+                darkColor: 'rgba(0,0,0,0.96)'
+            });
+            this.triggerScreenShake(gameState, 10.5, 0.30);
+            return;
+        }
+
+        if (upperEff === 'EFT_KASIYAS_P3_M1_FINAL_DIAGONAL_SLASH') {
+            gameState.effects.push({
+                type: 'kasiyasP3M1Slash',
+                renderType: upperEff,
+                slashMode: 'FINAL_DIAGONAL',
+                x: atkX,
+                y: atkY,
+                z: atkZ + atkH * 0.48,
+                dir: m.faceDir || 1,
+                w: Math.max(220 * effectScale, atkW * 0.90),
+                d: Math.max(90 * effectScale, atkD * 0.86),
+                h: Math.max(160 * effectScale, atkH * 0.86),
+                life: 0.84,
+                maxLife: 0.84,
+                color: 'rgba(162,78,255,0.98)',
+                accentColor: 'rgba(255,44,34,0.98)',
+                darkColor: 'rgba(0,0,0,0.98)',
+                hotColor: 'rgba(240,218,255,0.92)',
+                oniMajor: true
+            });
+            this.triggerScreenShake(gameState, 14.0, 0.40);
+            return;
+        }
+
         if (upperEff === 'EFT_KASIYAS_P3_HIGH_SPEED_RUSH_SLASH') {
             gameState.effects.push({
                 type: 'p3HighSpeedRushLeafSlash',
@@ -598,9 +703,35 @@ const BossVFXSystem = {
             return;
         }
 
-        if (upperEff === 'EFT_KASIYAS_P3_HORIZONTAL_SLASH' || upperEff === 'EFT_KASIYAS_P3_SLASH_UP' || upperEff === 'EFT_KASIYAS_P3_SLASH_DOWN' || upperEff === 'EFT_KASIYAS_P3_AIR_SLASH_DOWN' || upperEff === 'EFT_KASIYAS_P3_DIAGONAL_SLASH' || upperEff === 'EFT_KASIYAS_P3_AURA_CUT_OFF_SLASH') {
+        if (upperEff === 'EFT_KASIYAS_P3_M1_HORIZONTAL_SLASH' || upperEff === 'EFT_KASIYAS_P3_M1_SLASH_DOWN') {
+            const mode = upperEff === 'EFT_KASIYAS_P3_M1_HORIZONTAL_SLASH' ? 'HORIZONTAL' : 'DOWN';
+            gameState.effects.push({
+                type: 'kasiyasP3M1Slash',
+                renderType: upperEff,
+                slashMode: mode,
+                x: atkX,
+                y: atkY,
+                z: atkZ + atkH * 0.52,
+                dir: m.faceDir || 1,
+                w: Math.max(180 * effectScale, atkW * (mode === 'HORIZONTAL' ? 1.05 : 0.92)),
+                d: Math.max(70 * effectScale, atkD * (mode === 'HORIZONTAL' ? 0.92 : 0.86)),
+                h: Math.max(120 * effectScale, atkH * (mode === 'HORIZONTAL' ? 0.90 : 0.86)),
+                life: 0.82,
+                maxLife: 0.82,
+                color: 'rgba(168,76,255,1.0)',
+                accentColor: 'rgba(255,42,34,1.0)',
+                darkColor: 'rgba(0,0,0,0.98)',
+                hotColor: 'rgba(248,228,255,0.95)',
+                oniMajor: true
+            });
+            this.triggerScreenShake(gameState, mode === 'HORIZONTAL' ? 9.5 : 11.0, mode === 'HORIZONTAL' ? 0.24 : 0.30);
+            return;
+        }
+
+        if (upperEff === 'EFT_KASIYAS_P3_HORIZONTAL_SLASH' || upperEff === 'EFT_KASIYAS_P3_M1_HORIZONTAL_SLASH' || upperEff === 'EFT_KASIYAS_P3_SLASH_UP' || upperEff === 'EFT_KASIYAS_P3_SLASH_DOWN' || upperEff === 'EFT_KASIYAS_P3_M1_SLASH_DOWN' || upperEff === 'EFT_KASIYAS_P3_AIR_SLASH_DOWN' || upperEff === 'EFT_KASIYAS_P3_DIAGONAL_SLASH' || upperEff === 'EFT_KASIYAS_P3_AURA_CUT_OFF_SLASH') {
             const isAuraCut = upperEff === 'EFT_KASIYAS_P3_AURA_CUT_OFF_SLASH';
             const isAirDown = upperEff === 'EFT_KASIYAS_P3_AIR_SLASH_DOWN';
+            const isP3Major1 = String(action && action.Pattern_ID || '').trim() === '233006' || upperEff.indexOf('EFT_KASIYAS_P3_M1_') === 0;
             const mode = isAirDown ? 'AIR_DOWN' : (upperEff.indexOf('HORIZONTAL') >= 0 ? 'HORIZONTAL' : (upperEff.indexOf('UP') >= 0 ? 'UP' : (upperEff.indexOf('DIAGONAL') >= 0 || isAuraCut ? 'DIAGONAL' : 'DOWN')));
             gameState.effects.push({
                 type: 'kasiyasP3HeavySlash',
@@ -610,17 +741,61 @@ const BossVFXSystem = {
                 y: atkY,
                 z: atkZ + atkH * 0.50,
                 dir: m.faceDir || 1,
-                w: Math.max(120, atkW),
-                d: Math.max(70, atkD),
-                h: Math.max(90, atkH),
-                life: (mode === 'DIAGONAL' || isAuraCut || isAirDown) ? 0.48 : 0.34,
-                maxLife: (mode === 'DIAGONAL' || isAuraCut || isAirDown) ? 0.48 : 0.34,
-                color: isAuraCut ? 'rgba(255,42,28,1.0)' : 'rgba(255,64,48,0.98)',
-                accentColor: isAuraCut ? 'rgba(20,0,0,0.96)' : 'rgba(184,84,255,0.88)',
-                darkColor: isAuraCut ? 'rgba(0,0,0,0.98)' : 'rgba(20,0,28,0.92)',
-                auraCut: isAuraCut
+                w: Math.max(120, atkW * (isP3Major1 ? 1.08 : 1.0)),
+                d: Math.max(70, atkD * (isP3Major1 ? 1.05 : 1.0)),
+                h: Math.max(90, atkH * (isP3Major1 ? 1.10 : 1.0)),
+                life: isP3Major1 ? ((mode === 'DIAGONAL' || isAuraCut || isAirDown) ? 0.62 : 0.52) : ((mode === 'DIAGONAL' || isAuraCut || isAirDown) ? 0.48 : 0.34),
+                maxLife: isP3Major1 ? ((mode === 'DIAGONAL' || isAuraCut || isAirDown) ? 0.62 : 0.52) : ((mode === 'DIAGONAL' || isAuraCut || isAirDown) ? 0.48 : 0.34),
+                color: isAuraCut ? 'rgba(255,42,28,1.0)' : (isP3Major1 ? 'rgba(158,78,255,0.98)' : 'rgba(255,64,48,0.98)'),
+                accentColor: isAuraCut ? 'rgba(20,0,0,0.96)' : (isP3Major1 ? 'rgba(255,54,44,0.94)' : 'rgba(184,84,255,0.88)'),
+                darkColor: isAuraCut ? 'rgba(0,0,0,0.98)' : (isP3Major1 ? 'rgba(0,0,0,0.98)' : 'rgba(20,0,28,0.92)'),
+                hotColor: isP3Major1 ? 'rgba(236,220,255,0.88)' : undefined,
+                auraCut: isAuraCut,
+                oniMajor: isP3Major1
             });
             this.triggerScreenShake(gameState, (mode === 'DIAGONAL' || isAuraCut || isAirDown) ? 10.0 : 6.0, (mode === 'DIAGONAL' || isAuraCut || isAirDown) ? 0.26 : 0.18);
+            return;
+        }
+
+        if (upperEff === 'EFT_KASIYAS_P3_M2_OVERHEAD_STRIKE') {
+            gameState.effects.push({
+                type: 'p3M2OverheadImpact',
+                renderType: upperEff,
+                x: atkX,
+                y: atkY,
+                z: atkZ + Math.max(12, atkH * 0.12),
+                dir: m.faceDir || 1,
+                w: Math.max(atkW * 1.25, 720 * effectScale),
+                d: Math.max(atkD * 1.20, 260 * effectScale),
+                h: Math.max(atkH * 0.45, 120 * effectScale),
+                life: 0.66,
+                maxLife: 0.66,
+                color: 'rgba(255,72,56,0.96)',
+                accentColor: 'rgba(24,0,0,0.98)',
+                darkColor: 'rgba(0,0,0,0.98)'
+            });
+            this.triggerScreenShake(gameState, 11.0, 0.34);
+            return;
+        }
+
+        if (upperEff === 'EFT_KASIYAS_P3_M2_FINAL_SLASH') {
+            gameState.effects.push({
+                type: 'p3M2FinalSlash',
+                renderType: upperEff,
+                x: atkX,
+                y: atkY,
+                z: atkZ + Math.max(24, atkH * 0.16),
+                dir: m.faceDir || 1,
+                w: Math.max(atkW * 1.55, 2850 * effectScale),
+                d: Math.max(atkD * 1.45, 980 * effectScale),
+                h: Math.max(atkH * 0.98, 760 * effectScale),
+                life: 1.05,
+                maxLife: 1.05,
+                color: 'rgba(160,76,255,0.94)',
+                accentColor: 'rgba(255,52,42,0.96)',
+                darkColor: 'rgba(0,0,0,0.98)'
+            });
+            this.triggerScreenShake(gameState, 18.0, 0.58);
             return;
         }
 
@@ -878,6 +1053,101 @@ const BossVFXSystem = {
     pushBossCastEffect: function(m, action, gameState) {
         const eff = String(action && (action.VFX_Type || action.Effect_Render_Type) || '').trim().toUpperCase();
         if (!eff) return;
+
+        if (eff === 'EFT_KASIYAS_P3_CAST_EXTEND_HAND' || eff === 'EFT_KASIYAS_P3_M1_CAST_EXTEND_HAND') {
+            const duration = Math.max(0.75, parseFloat(action.Action_Anim_Duration) || 1.0);
+            const bodyX = ((m.d && parseFloat(m.d.bodyX)) || 90) * (parseFloat(m.scale) || 1);
+            const bodyZ = ((m.d && parseFloat(m.d.bodyZ)) || 170) * (parseFloat(m.scale) || 1);
+            const dir = m.faceDir || 1;
+            const startX = m.x + dir * bodyX * 0.74;
+            const startY = m.y;
+            const startZ = (parseFloat(m.z) || 0) + bodyZ * 0.66;
+
+            // 위치가 어긋나는 연결형 사슬 대신, 검 끝에서 스산한 저주 기운이 분출되는 형태로 표현한다.
+            // 실제 저주 적용 피드백은 플레이어에게 붙는 지속 오라/획득 이펙트가 담당한다.
+            gameState.effects.push({
+                type: 'p3OniCurseBladeBurst',
+                renderType: eff,
+                x: startX,
+                y: startY,
+                z: startZ,
+                dir,
+                w: Math.max(330, bodyX * 3.55),
+                h: Math.max(260, bodyZ * 1.35),
+                life: Math.min(duration, 1.25),
+                maxLife: Math.min(duration, 1.25),
+                color: 'rgba(156,76,255,0.94)',
+                accentColor: 'rgba(255,46,38,0.92)',
+                darkColor: 'rgba(0,0,0,0.98)',
+                oniMajor: true
+            });
+            gameState.effects.push({
+                type: 'hitSpark',
+                renderType: eff,
+                x: startX,
+                y: startY,
+                z: startZ,
+                dir,
+                w: Math.max(250, bodyX * 2.75),
+                h: Math.max(230, bodyZ * 1.18),
+                life: Math.min(duration, 0.82),
+                maxLife: Math.min(duration, 0.82),
+                color: 'rgba(154,76,255,0.76)',
+                accentColor: 'rgba(255,48,40,0.76)',
+                darkColor: 'rgba(0,0,0,0.94)',
+                oniMajor: true
+            });
+            this.triggerScreenShake(gameState, 4.0, 0.16);
+            return;
+        }
+
+        if (eff === 'EFT_KASIYAS_P3_M1_FINAL_SLASH_CHARGE') {
+            const duration = Math.max(0.8, parseFloat(action.Action_Anim_Duration) || 2.0);
+            const bodyX = ((m.d && parseFloat(m.d.bodyX)) || 90) * (parseFloat(m.scale) || 1);
+            const bodyZ = ((m.d && parseFloat(m.d.bodyZ)) || 170) * (parseFloat(m.scale) || 1);
+            gameState.effects.push({
+                type: 'kasiyasP3RushSlashCharge',
+                renderType: eff,
+                x: m.x,
+                y: m.y,
+                z: (parseFloat(m.z) || 0) + bodyZ * 0.54,
+                dir: m.faceDir || 1,
+                w: Math.max(340, bodyX * 3.4),
+                h: Math.max(340, bodyZ * 1.75),
+                life: duration,
+                maxLife: duration,
+                color: 'rgba(154,76,255,0.88)',
+                accentColor: 'rgba(255,48,40,0.82)',
+                darkColor: 'rgba(0,0,0,0.98)',
+                oniMajor: true
+            });
+            this.triggerScreenShake(gameState, 5.0, Math.min(0.35, duration));
+            return;
+        }
+
+        if (eff === 'EFT_KASIYAS_P3_M2_HAND_TO_SKY' || eff === 'EFT_KASIYAS_P3_M2_FINAL_SLASH_CHARGE') {
+            const duration = Math.max(0.8, parseFloat(action.Action_Anim_Duration) || 1.4);
+            const bodyX = ((m.d && parseFloat(m.d.bodyX)) || 90) * (parseFloat(m.scale) || 1);
+            const bodyZ = ((m.d && parseFloat(m.d.bodyZ)) || 170) * (parseFloat(m.scale) || 1);
+            gameState.effects.push({
+                type: eff === 'EFT_KASIYAS_P3_M2_HAND_TO_SKY' ? 'p3M2SkyCast' : 'p3M2FinalSlashCharge',
+                renderType: eff,
+                x: m.x,
+                y: m.y,
+                z: (parseFloat(m.z) || 0) + bodyZ * 0.56,
+                dir: m.faceDir || 1,
+                w: Math.max(520, bodyX * 5.0),
+                d: Math.max(300, bodyX * 3.2),
+                h: Math.max(520, bodyZ * 2.75),
+                life: duration,
+                maxLife: duration,
+                color: 'rgba(160,74,255,0.90)',
+                accentColor: 'rgba(255,56,46,0.90)',
+                darkColor: 'rgba(0,0,0,0.98)'
+            });
+            this.triggerScreenShake(gameState, eff === 'EFT_KASIYAS_P3_M2_FINAL_SLASH_CHARGE' ? 9.0 : 4.0, Math.min(0.58, duration));
+            return;
+        }
 
         if (eff === 'EFT_KASIYAS_P3_SLASH_UP' || eff === 'EFT_KASIYAS_P3_HORIZONTAL_SLASH' || eff === 'EFT_KASIYAS_P3_SLASH_DOWN' || eff === 'EFT_KASIYAS_P3_AIR_SLASH_DOWN') {
             const duration = Math.max(0.35, parseFloat(action.Action_Anim_Duration) || 0.9);

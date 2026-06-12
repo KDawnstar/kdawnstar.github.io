@@ -115,6 +115,19 @@ GameRenderer.normalizeKasiyasPoseType = function(value) {
         POSE_KASIYAS_P3_AIM_SWORD_PLAYER: 'POSE_KASIYAS_P3_AIM_SWORD_PLAYER',
         POSE_KASIYAS_P3_WALK_WITH_AURA: 'POSE_KASIYAS_P3_WALK_WITH_AURA',
         POSE_KASIYAS_P3_AURA_CUT_OFF_SLASH: 'POSE_KASIYAS_P3_AURA_CUT_OFF_SLASH',
+        POSE_KASIYAS_P3_CAST_EXTEND_HAND: 'POSE_KASIYAS_P3_CAST_EXTEND_HAND',
+        POSE_KASIYAS_P3_DASH_SLASH: 'POSE_KASIYAS_P3_DASH_SLASH',
+        POSE_KASIYAS_P3_SLAM_THE_SWORD_DOWN: 'POSE_KASIYAS_P3_SLAM_THE_SWORD_DOWN',
+        POSE_KASIYAS_P3_ATK_ROAR: 'POSE_KASIYAS_P3_ATK_ROAR',
+        POSE_KASIYAS_P3_M1_FINAL_SLASH_CHARGE: 'POSE_KASIYAS_P3_M1_FINAL_SLASH_CHARGE',
+        POSE_KASIYAS_P3_M1_FINAL_DIAGONAL_SLASH: 'POSE_KASIYAS_P3_M1_FINAL_DIAGONAL_SLASH',
+        POSE_KASIYAS_P3_GROGGY: 'POSE_P2_GROGGY',
+        POSE_KASIYAS_P3_M2_HAND_TO_SKY: 'POSE_KASIYAS_P3_M2_HAND_TO_SKY',
+        POSE_KASIYAS_P3_M2_JUMP_TO_SKY: 'POSE_KASIYAS_P3_M2_JUMP_TO_SKY',
+        POSE_KASIYAS_P3_M2_AIRBORNE_HOLD: 'POSE_KASIYAS_P3_M2_AIRBORNE_HOLD',
+        POSE_KASIYAS_P3_M2_OVERHEAD_STRIKE: 'POSE_KASIYAS_P3_M2_OVERHEAD_STRIKE',
+        POSE_KASIYAS_P3_M2_FINAL_SLASH_CHARGE: 'POSE_KASIYAS_P3_M2_FINAL_SLASH_CHARGE',
+        POSE_KASIYAS_P3_M2_FINAL_SLASH: 'POSE_KASIYAS_P3_M2_FINAL_SLASH',
         POSE_DEFAULT: 'POSE_DEFAULT'
     };
 
@@ -158,6 +171,19 @@ GameRenderer.resolveKasiyasPoseType = function(m) {
     if (vfx === 'EFT_KASIYAS_P3_CAST_DIMENSION_CRACK_SLASH') return 'POSE_KASIYAS_P3_CAST_DIMENSION_CRACK_SLASH';
     if (vfx === 'EFT_KASIYAS_P3_RUSH_SLASH_CHARGE') return 'POSE_KASIYAS_P3_RUSH_SLASH_CHARGE';
     if (vfx === 'EFT_KASIYAS_P3_HIGH_SPEED_RUSH_SLASH') return 'POSE_KASIYAS_P3_HIGH_SPEED_RUSH_SLASH';
+    if (vfx === 'EFT_KASIYAS_P3_DASH_SLASH' || vfx === 'EFT_KASIYAS_P3_M1_DASH_SLASH') return 'POSE_KASIYAS_P3_DASH_SLASH';
+    if (vfx === 'EFT_KASIYAS_P3_SLAM_THE_SWORD_DOWN' || vfx === 'EFT_KASIYAS_P3_M1_SLAM_THE_SWORD_DOWN') return 'POSE_KASIYAS_P3_SLAM_THE_SWORD_DOWN';
+    if (vfx === 'EFT_KASIYAS_P3_ATK_ROAR' || vfx === 'EFT_KASIYAS_P3_M1_ATK_ROAR') return 'POSE_KASIYAS_P3_ATK_ROAR';
+    if (vfx === 'EFT_KASIYAS_P3_M1_CAST_EXTEND_HAND') return 'POSE_KASIYAS_P3_CAST_EXTEND_HAND';
+    if (vfx === 'EFT_KASIYAS_P3_M1_HORIZONTAL_SLASH') return 'POSE_KASIYAS_P3_HORIZONTAL_SLASH';
+    if (vfx === 'EFT_KASIYAS_P3_M1_SLASH_DOWN') return 'POSE_KASIYAS_P3_SLASH_DOWN';
+    if (vfx === 'EFT_KASIYAS_P3_M1_FINAL_SLASH_CHARGE') return 'POSE_KASIYAS_P3_M1_FINAL_SLASH_CHARGE';
+    if (vfx === 'EFT_KASIYAS_P3_M2_HAND_TO_SKY') return 'POSE_KASIYAS_P3_M2_HAND_TO_SKY';
+    if (vfx === 'EFT_KASIYAS_P3_M2_JUMP_TO_SKY') return 'POSE_KASIYAS_P3_M2_JUMP_TO_SKY';
+    if (vfx === 'EFT_KASIYAS_P3_M2_OVERHEAD_STRIKE') return 'POSE_KASIYAS_P3_M2_OVERHEAD_STRIKE';
+    if (vfx === 'EFT_KASIYAS_P3_M2_FINAL_SLASH_CHARGE') return 'POSE_KASIYAS_P3_M2_FINAL_SLASH_CHARGE';
+    if (vfx === 'EFT_KASIYAS_P3_M2_FINAL_SLASH') return 'POSE_KASIYAS_P3_M2_FINAL_SLASH';
+    if (vfx === 'EFT_KASIYAS_P3_M1_FINAL_DIAGONAL_SLASH') return 'POSE_KASIYAS_P3_M1_FINAL_DIAGONAL_SLASH';
     if (vfx === 'EFT_KASIYAS_P2_DOUBLE_SWORD_ANOTHER_ENERGY') return 'POSE_P2_DOUBLE_SWORD_UP_DOWN_SLASH';
     if (vfx === 'EFT_KASIYAS_P2_M1_LEFT_SWORD_SLASH_WITH_RED_ENERGY') return 'POSE_P2_M1_LEFT_INWARD_SLASH';
     if (vfx === 'EFT_KASIYAS_P2_M1_RIGHT_SWORD_SLASH_WITH_YELLOW_ENERGY') return 'POSE_P2_M1_RIGHT_INWARD_SLASH';
@@ -386,6 +412,18 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         poseType === 'POSE_KASIYAS_P3_SLASH_DOWN' ? 0.12 :
         poseType === 'POSE_KASIYAS_P3_DIAGONAL_SLASH' ? 0.16 :
         poseType === 'POSE_KASIYAS_P3_AURA_CUT_OFF_SLASH' ? 0.18 :
+        poseType === 'POSE_KASIYAS_P3_CAST_EXTEND_HAND' ? (0.10 + attackPulse * 0.03) :
+        poseType === 'POSE_KASIYAS_P3_DASH_SLASH' ? (0.24 + attackPulse * 0.06) :
+        poseType === 'POSE_KASIYAS_P3_SLAM_THE_SWORD_DOWN' ? (0.12 + attackPulse * 0.08) :
+        poseType === 'POSE_KASIYAS_P3_ATK_ROAR' ? (-0.14 - attackPulse * 0.03) :
+        poseType === 'POSE_KASIYAS_P3_M1_FINAL_SLASH_CHARGE' ? -0.06 :
+        poseType === 'POSE_KASIYAS_P3_M1_FINAL_DIAGONAL_SLASH' ? (0.22 + attackPulse * 0.05) :
+        poseType === 'POSE_KASIYAS_P3_M2_HAND_TO_SKY' ? -0.04 :
+        poseType === 'POSE_KASIYAS_P3_M2_JUMP_TO_SKY' ? -0.10 :
+        poseType === 'POSE_KASIYAS_P3_M2_AIRBORNE_HOLD' ? -0.12 :
+        poseType === 'POSE_KASIYAS_P3_M2_OVERHEAD_STRIKE' ? (0.24 + attackPulse * 0.03) :
+        poseType === 'POSE_KASIYAS_P3_M2_FINAL_SLASH_CHARGE' ? -0.08 :
+        poseType === 'POSE_KASIYAS_P3_M2_FINAL_SLASH' ? (0.18 + attackPulse * 0.05) :
         poseType === 'POSE_SLASH_DOWN' || poseType === 'POSE_HEAVY_SLASH_DOWN' ? 0.06 : 0));
 
     const drawLimb = (x1, y1, x2, y2, width, color, outline = true) => {
@@ -1302,6 +1340,12 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
                 offHandX = -w * 0.08;
                 offHandY = -h * 0.40;
             }
+        } else if (poseType === 'POSE_KASIYAS_P3_CAST_EXTEND_HAND') {
+            // 귀면족의 저주 부여: 플레이어를 향해 검을 겨누는 자세.
+            offElbowX = w * 0.16;
+            offElbowY = -h * 0.62;
+            offHandX = w * (0.46 + 0.03 * attackPulse);
+            offHandY = -h * (0.62 + 0.01 * attackPulse);
         } else if (poseType === 'POSE_KASIYAS_P3_AIM_SWORD_PLAYER') {
             offElbowX = -w * 0.04;
             offElbowY = -h * 0.62;
@@ -1312,6 +1356,47 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
             offElbowY = -h * 0.57;
             offHandX = w * 0.10;
             offHandY = -h * 0.53;
+        } else if (poseType === 'POSE_KASIYAS_P3_DASH_SLASH') {
+            offElbowX = -w * 0.18;
+            offElbowY = -h * 0.58;
+            offHandX = w * (0.00 + 0.24 * smooth);
+            offHandY = -h * (0.55 - 0.03 * attackPulse);
+        } else if (poseType === 'POSE_KASIYAS_P3_SLAM_THE_SWORD_DOWN') {
+            const slamT = Math.max(0, Math.min(1, smooth));
+            offElbowX = -w * 0.08;
+            offElbowY = -h * (0.82 - 0.28 * slamT);
+            offHandX = w * (0.10 + 0.02 * attackPulse);
+            offHandY = -h * (0.96 - 0.54 * slamT);
+        } else if (poseType === 'POSE_KASIYAS_P3_ATK_ROAR') {
+            offElbowX = -w * (0.34 + 0.05 * attackPulse);
+            offElbowY = -h * 0.70;
+            offHandX = -w * (0.56 + 0.04 * attackPulse);
+            offHandY = -h * (0.64 - 0.04 * attackPulse);
+        } else if (poseType === 'POSE_KASIYAS_P3_M1_FINAL_SLASH_CHARGE' || poseType === 'POSE_KASIYAS_P3_M1_FINAL_DIAGONAL_SLASH') {
+            offElbowX = -w * 0.10;
+            offElbowY = -h * 0.78;
+            offHandX = w * (0.02 + 0.08 * smooth);
+            offHandY = -h * (0.88 - 0.22 * smooth);
+        } else if (poseType === 'POSE_KASIYAS_P3_M2_HAND_TO_SKY') {
+            offElbowX = -w * 0.18;
+            offElbowY = -h * 0.66;
+            offHandX = w * 0.00;
+            offHandY = -h * 0.94;
+        } else if (poseType === 'POSE_KASIYAS_P3_M2_JUMP_TO_SKY' || poseType === 'POSE_KASIYAS_P3_M2_AIRBORNE_HOLD') {
+            offElbowX = -w * 0.10;
+            offElbowY = -h * 0.64;
+            offHandX = w * 0.05;
+            offHandY = -h * 0.78;
+        } else if (poseType === 'POSE_KASIYAS_P3_M2_OVERHEAD_STRIKE') {
+            offElbowX = -w * 0.02;
+            offElbowY = -h * 0.82;
+            offHandX = w * 0.10;
+            offHandY = -h * 0.96;
+        } else if (poseType === 'POSE_KASIYAS_P3_M2_FINAL_SLASH_CHARGE' || poseType === 'POSE_KASIYAS_P3_M2_FINAL_SLASH') {
+            offElbowX = -w * 0.08;
+            offElbowY = -h * 0.76;
+            offHandX = w * 0.04;
+            offHandY = -h * 0.88;
         } else if (poseType === 'POSE_KASIYAS_P3_HORIZONTAL_SLASH' || poseType === 'POSE_KASIYAS_P3_SLASH_UP' || poseType === 'POSE_KASIYAS_P3_JUMP') {
             offElbowX = -w * 0.12;
             offElbowY = -h * 0.56;
@@ -1721,6 +1806,13 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
                 swordAngle = -2.15 + prepT * 1.70;
                 swordLen = h * 1.22;
                 curve = 3.0;
+            } else if (poseType === 'POSE_KASIYAS_P3_CAST_EXTEND_HAND') {
+                // 귀면족의 저주 부여: 검 끝을 플레이어 방향으로 겨누고, 검에서 스산한 저주 기운을 분출한다.
+                handX = w * (0.44 + 0.04 * Math.sin(Date.now() / 90));
+                handY = -h * (0.62 + 0.012 * Math.sin(Date.now() / 110));
+                swordAngle = -0.08 + 0.03 * Math.sin(Date.now() / 120);
+                swordLen = h * 1.18;
+                curve = 2.0;
             } else if (poseType === 'POSE_KASIYAS_P3_RUSH_SLASH_CHARGE') {
                 // 돌진 발도 준비: 검을 낮게 잡고 몸 앞에 기운을 압축한다.
                 handX = w * (0.02 + 0.03 * Math.sin(Date.now() / 75));
@@ -1735,6 +1827,73 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
                 swordAngle = -1.08;
                 swordLen = h * 1.22;
                 curve = 2.8;
+            } else if (poseType === 'POSE_KASIYAS_P3_DASH_SLASH') {
+                // 귀면족의 저주 3차: 몸을 낮춰 돌진한 뒤, 이동 종료와 함께 크게 횡베기를 긋는다.
+                const slashT = Math.max(0, Math.min(1, smooth));
+                handX = w * (-0.26 + 0.88 * slashT);
+                handY = -h * (0.58 - 0.05 * Math.sin(slashT * Math.PI));
+                swordAngle = -0.86 + slashT * 1.52;
+                swordLen = h * 1.18;
+                curve = 3.2;
+            } else if (poseType === 'POSE_KASIYAS_P3_SLAM_THE_SWORD_DOWN') {
+                // 귀면족의 저주 4차: 검을 세워 끌어올렸다가 바닥에 내리찍는 실루엣.
+                const slamT = Math.max(0, Math.min(1, smooth));
+                handX = w * (0.02 + 0.10 * Math.sin(slamT * Math.PI));
+                handY = -h * (1.04 - 0.66 * slamT);
+                swordAngle = Math.PI / 2 - 0.08 * Math.sin(slamT * Math.PI);
+                swordLen = h * 1.30;
+                curve = 0.8;
+            } else if (poseType === 'POSE_KASIYAS_P3_ATK_ROAR') {
+                // 귀면족의 저주 5차: 상체를 뒤로 젖히고 포효하며 검은 몸 옆으로 내려 둔다.
+                handX = w * (0.54 + 0.06 * attackPulse);
+                handY = -h * (0.62 - 0.04 * attackPulse);
+                swordAngle = -0.08 + attackPulse * 0.08;
+                swordLen = h * 0.96;
+                curve = 3.4;
+            } else if (poseType === 'POSE_KASIYAS_P3_M1_FINAL_SLASH_CHARGE') {
+                handX = w * (0.02 + 0.02 * Math.sin(Date.now() / 80));
+                handY = -h * (0.98 + 0.02 * attackPulse);
+                swordAngle = -1.64;
+                swordLen = h * 1.32;
+                curve = 1.2;
+            } else if (poseType === 'POSE_KASIYAS_P3_M1_FINAL_DIAGONAL_SLASH') {
+                const finalT = Math.max(0, Math.min(1, smooth));
+                handX = w * (-0.16 + 0.78 * finalT);
+                handY = -h * (0.98 - 0.52 * finalT);
+                swordAngle = -2.18 + finalT * 1.88;
+                swordLen = h * 1.34;
+                curve = 2.3;
+            } else if (poseType === 'POSE_KASIYAS_P3_M2_HAND_TO_SKY') {
+                handX = w * (-0.02 + 0.02 * Math.sin(Date.now() / 90));
+                handY = -h * 1.02;
+                swordAngle = -1.58;
+                swordLen = h * 1.26;
+                curve = 1.0;
+            } else if (poseType === 'POSE_KASIYAS_P3_M2_JUMP_TO_SKY' || poseType === 'POSE_KASIYAS_P3_M2_AIRBORNE_HOLD') {
+                handX = w * 0.16;
+                handY = -h * 0.86;
+                swordAngle = -1.20;
+                swordLen = h * 1.18;
+                curve = 2.4;
+            } else if (poseType === 'POSE_KASIYAS_P3_M2_OVERHEAD_STRIKE') {
+                handX = w * (0.02 + 0.02 * Math.sin(Date.now() / 120));
+                handY = -h * 1.04;
+                swordAngle = Math.PI / 2 - 0.04;
+                swordLen = h * 1.40;
+                curve = 0.7;
+            } else if (poseType === 'POSE_KASIYAS_P3_M2_FINAL_SLASH_CHARGE') {
+                handX = w * (-0.04 + 0.01 * Math.sin(Date.now() / 80));
+                handY = -h * 1.00;
+                swordAngle = -1.56;
+                swordLen = h * 1.34;
+                curve = 1.0;
+            } else if (poseType === 'POSE_KASIYAS_P3_M2_FINAL_SLASH') {
+                const final2T = Math.max(0, Math.min(1, smooth));
+                handX = w * (-0.26 + 0.86 * final2T);
+                handY = -h * (0.96 - 0.26 * final2T);
+                swordAngle = -1.78 + final2T * 1.40;
+                swordLen = h * 1.34;
+                curve = 1.6;
             } else if (poseType === 'POSE_KASIYAS_P3_DASH') {
                 handX = w * (0.26 + 0.10 * attackPulse);
                 handY = -h * (0.58 - 0.02 * attackPulse);
@@ -1753,7 +1912,27 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
                 swordAngle = -1.22;
                 swordLen = h * 1.04;
                 curve = 2.4;
-            } else if (poseType === 'POSE_KASIYAS_P3_HORIZONTAL_SLASH' || poseType === 'POSE_KASIYAS_P3_SLASH_UP' || poseType === 'POSE_KASIYAS_P3_JUMP') {
+            } else if (poseType === 'POSE_KASIYAS_P3_M2_HAND_TO_SKY') {
+            offElbowX = -w * 0.18;
+            offElbowY = -h * 0.66;
+            offHandX = w * 0.00;
+            offHandY = -h * 0.94;
+        } else if (poseType === 'POSE_KASIYAS_P3_M2_JUMP_TO_SKY' || poseType === 'POSE_KASIYAS_P3_M2_AIRBORNE_HOLD') {
+            offElbowX = -w * 0.10;
+            offElbowY = -h * 0.64;
+            offHandX = w * 0.05;
+            offHandY = -h * 0.78;
+        } else if (poseType === 'POSE_KASIYAS_P3_M2_OVERHEAD_STRIKE') {
+            offElbowX = -w * 0.02;
+            offElbowY = -h * 0.82;
+            offHandX = w * 0.10;
+            offHandY = -h * 0.96;
+        } else if (poseType === 'POSE_KASIYAS_P3_M2_FINAL_SLASH_CHARGE' || poseType === 'POSE_KASIYAS_P3_M2_FINAL_SLASH') {
+            offElbowX = -w * 0.08;
+            offElbowY = -h * 0.76;
+            offHandX = w * 0.04;
+            offHandY = -h * 0.88;
+        } else if (poseType === 'POSE_KASIYAS_P3_HORIZONTAL_SLASH' || poseType === 'POSE_KASIYAS_P3_SLASH_UP' || poseType === 'POSE_KASIYAS_P3_JUMP') {
                 handX = w * (0.06 + 0.64 * smooth);
                 handY = -h * (0.64 - 0.04 * attackPulse);
                 swordAngle = -0.72 + smooth * 1.18;
@@ -2791,6 +2970,10 @@ GameRenderer.drawBossOverheadShockwaveGauge = function(ctx, m, bodyY, bodyH) {
         || effect === 'EFT_KASIYAS_P2_GROUND_PUNCH_STRONG'
         || name.indexOf('3차 지면 난타') >= 0
         || name.indexOf('강한 지면 난타') >= 0;
+    const patternId = String((boss.activePattern && (boss.activePattern.Pattern_ID || boss.activePattern.Source_Pattern_ID)) || action.Pattern_ID || '').trim();
+    const isP3M2Landing = patternId === '233007'
+        && String(action.Action_ID || '').trim() === '243060'
+        && String(action.Action_Type || '').trim().toUpperCase() === 'ATK';
     const isStomp = pose === 'POSE_KASIYAS_STOMP'
         || effect === 'EFT_KASIYAS_STOMP'
         || pose === 'POSE_KASIYAS_P2_GROUND_PUNCH'
@@ -2800,7 +2983,8 @@ GameRenderer.drawBossOverheadShockwaveGauge = function(ctx, m, bodyY, bodyH) {
         || name.indexOf('지면 난타') >= 0
         || name.indexOf('발 내려찍기') >= 0
         || name.indexOf('발구르기') >= 0
-        || name.indexOf('충격파') >= 0;
+        || name.indexOf('충격파') >= 0
+        || isP3M2Landing;
     if (!isStomp) return;
 
     const getDuration = (act, fallback = 0.7) => {
@@ -2829,7 +3013,7 @@ GameRenderer.drawBossOverheadShockwaveGauge = function(ctx, m, bodyY, bodyH) {
     const currentIndex = parseInt(boss && boss.currentActionIndex, 10);
     let ratio = 0;
     let remain = 0;
-    let labelPrefix = '충격파 발생';
+    let labelPrefix = isP3M2Landing ? '지면 충격파' : '충격파 발생';
 
     if (isCharge) {
         const nextAction = isFinite(currentIndex) ? actions[currentIndex + 1] : null;
@@ -2860,7 +3044,7 @@ GameRenderer.drawBossOverheadShockwaveGauge = function(ctx, m, bodyY, bodyH) {
             remain = Math.max(0, hitStart - timer);
         }
     } else {
-        let hitStart = getHitStart(action, getDuration(action, 0.7));
+        let hitStart = getHitStart(action, isP3M2Landing ? 1.0 : getDuration(action, 0.7));
         const actionTypeForGauge = String(action && action.Action_Type || '').trim().toUpperCase();
         const spawnTimingForGauge = String(action && action.Object_Spawn_Timing || '').trim().toUpperCase();
         // 발 내려찍기는 오브젝트를 ACTION_END에 생성하는 구조라, 직접 히트박스 시간이 없어도
@@ -2948,8 +3132,67 @@ GameRenderer.drawBossOverheadShockwaveGauge = function(ctx, m, bodyY, bodyH) {
     ctx.restore();
 };
 
+
+GameRenderer.drawKasiyasP3M2LandingWarning = function(ctx, m, groundY, bodyY, bodyH) {
+    const boss = m && m.boss;
+    const action = boss && boss.action;
+    if (!m || !boss || !action) return;
+    if ((m.hp || 0) <= 0 || m.state === 'DEAD' || m.state === 'DIE') return;
+    const patternId = String((boss.activePattern && (boss.activePattern.Pattern_ID || boss.activePattern.Source_Pattern_ID)) || action.Pattern_ID || '').trim();
+    const actionId = String(action.Action_ID || '').trim();
+    const pose = String(action.Action_Pose_Type || '').trim().toUpperCase();
+    const effect = String(action.VFX_Type || action.Effect_Render_Type || '').trim().toUpperCase();
+    const name = String(action.Action_Name || '').trim();
+    const isLanding = patternId === '233007'
+        && actionId === '243060'
+        && String(action.Action_Type || '').trim().toUpperCase() === 'ATK';
+    if (!isLanding) return;
+    const getHitStart = (act, fallback = 1.0) => {
+        let hitStart = parseFloat(act && act.Hitbox_Start_Time);
+        try {
+            if (typeof MonsterManager !== 'undefined' && MonsterManager.getBossActionHitWindow) {
+                const hw = MonsterManager.getBossActionHitWindow(m, act);
+                if (hw && isFinite(hw.start) && hw.start >= 0) hitStart = hw.start;
+            }
+        } catch (e) {}
+        return (isFinite(hitStart) && hitStart >= 0) ? hitStart : fallback;
+    };
+    const timer = Math.max(0, parseFloat(m.timer) || 0);
+    const hitStart = Math.max(0.01, getHitStart(action, 1.0));
+    if (timer > hitStart + 0.05) return;
+    const ratio = Math.max(0, Math.min(1, timer / hitStart));
+    const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 65);
+    const rx = Math.max(150, ((m.d && m.d.bodyX ? parseFloat(m.d.bodyX) : 80) * (m.scale || 1)) * (1.45 + ratio * 0.42));
+    const ry = Math.max(56, rx * 0.34);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.22 + 0.12 * pulse;
+    ctx.fillStyle = 'rgba(80,0,20,0.50)';
+    ctx.beginPath();
+    ctx.ellipse(m.x, groundY, rx * 0.92, ry * 0.90, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.78;
+    ctx.strokeStyle = ratio >= 0.82 ? 'rgba(255,88,56,0.98)' : 'rgba(255,214,124,0.96)';
+    ctx.lineWidth = ratio >= 0.82 ? 4.5 : 3.2;
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = ratio >= 0.82 ? 'rgba(255,88,56,0.86)' : 'rgba(255,214,124,0.60)';
+    ctx.beginPath();
+    ctx.ellipse(m.x, groundY, rx, ry, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = 2.4;
+    ctx.strokeStyle = 'rgba(28,0,40,0.96)';
+    for (let i = 0; i < 8; i++) {
+        const a = Math.PI * 2 * i / 8 + ratio * 0.6;
+        ctx.beginPath();
+        ctx.moveTo(m.x + Math.cos(a) * rx * 0.18, groundY + Math.sin(a) * ry * 0.18);
+        ctx.lineTo(m.x + Math.cos(a) * rx * 0.92, groundY + Math.sin(a) * ry * 0.92);
+        ctx.stroke();
+    }
+    ctx.restore();
+};
+
 GameRenderer.drawMonsterEntity = function(ctx, m) {
-    if (m && m.boss && (m.boss.kasiyasP1M3RushHidden || m.boss.kasiyasP2M2Hidden)) return;
+    if (m && m.boss && (m.boss.kasiyasP1M3RushHidden || m.boss.kasiyasP2M2Hidden || m.boss.kasiyasP3M2Hidden)) return;
     const d = m.d;
     const w = d.bodyX * m.scale;
     const dY = d.bodyY * m.scale;
@@ -2963,6 +3206,10 @@ GameRenderer.drawMonsterEntity = function(ctx, m) {
     let bodyY = drawY - m.z;
 
     const isKasiyasBoss = !!(m && m.boss) || String(d && d.renderType || d && d.Model_Render_Type || '').trim().toUpperCase().indexOf('KASIYAS') >= 0;
+    if (isKasiyasBoss && typeof this.drawKasiyasP3M2LandingWarning === 'function') {
+        this.drawKasiyasP3M2LandingWarning(ctx, m, drawY, bodyY, h);
+    }
+
     if (isKasiyasBoss && typeof this.drawKasiyasGroundShadow === 'function') {
         this.drawKasiyasGroundShadow(ctx, m.x, drawY, w, dY, drawScale);
     } else {

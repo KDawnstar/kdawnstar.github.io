@@ -879,6 +879,8 @@ const BossActionSystem = {
 
         // 새 액션 시작 시 이전 액션의 이동 정보가 남아 다음 액션 지속시간/시선에 섞이지 않도록 초기화한다.
         boss.actionMove = null;
+        boss.actionMoveCompleted = false;
+        boss.attackAfterMoveUntil = 0;
         boss.syncedObjectActionDuration = 0;
         boss.syncedObjectActionType = '';
         boss.syncedObjectActionId = '';
@@ -909,6 +911,67 @@ const BossActionSystem = {
             actionName.indexOf('본체 및 분신 사라짐') >= 0 ||
             actionName.indexOf('은신') >= 0
         );
+
+        // 3페이즈 대형 패턴 2번: 데이터 기반 숨김/등장 연출 처리.
+        // 특정 Action_ID에 의존하지 않고 Pattern_ID / Action_Pose_Type / Action_Move_Direction을 해석한다.
+        if (activePatternSourceId === '233007' || String(action.Pattern_ID || '').trim() === '233007') {
+            const worldW = Math.max(1, parseFloat(gameState && gameState.WORLD_WIDTH) || 1400);
+            const worldD = Math.max(1, parseFloat(gameState && gameState.WORLD_DEPTH) || 400);
+            const centerX = worldW * 0.5;
+            const centerY = worldD * 0.5;
+            const poseType = String(action.Action_Pose_Type || '').trim().toUpperCase();
+            const moveDirRaw = String(action.Action_Move_Direction || action.Action_Position_Placement_Type || '').trim().toUpperCase();
+            const isSkyEnterAction = poseType === 'POSE_KASIYAS_P3_M2_JUMP_TO_SKY' || moveDirRaw === 'PLACE_MAP_SKY' || moveDirRaw === 'PLACE_P3_M2_SKY';
+            const isAirborneHoldAction = poseType === 'POSE_KASIYAS_P3_M2_AIRBORNE_HOLD';
+            const isReturnToGroundAction = boss.kasiyasP3M2Hidden && !isSkyEnterAction && !isAirborneHoldAction;
+            const pushP3M2Effect = (kind, life, renderType) => {
+                if (!Array.isArray(gameState.effects)) gameState.effects = [];
+                const bodyX = ((m.d && m.d.bodyX) || 90) * (m.scale || 1);
+                const bodyZ = ((m.d && m.d.bodyZ) || 170) * (m.scale || 1);
+                gameState.effects.push({
+                    type: kind,
+                    renderType: renderType || (kind === 'p3M2KasiyasFall' ? 'EFT_KASIYAS_P3_M2_DESCEND_LANDING' : 'EFT_KASIYAS_P3_M2_ASCEND_HIDE'),
+                    x: centerX,
+                    y: centerY,
+                    z: 0,
+                    w: Math.max(120, bodyX * 1.55),
+                    h: Math.max(210, bodyZ * 1.25),
+                    d: Math.max(160, bodyX * 1.65),
+                    life: life,
+                    maxLife: life,
+                    dir: m.faceDir === -1 ? -1 : 1
+                });
+            };
+
+            // 실제 공중 좌표 이동은 하지 않는다. 데이터상 하늘 진입/체공 포즈를 만나면 중앙 고정 + 렌더 숨김만 적용한다.
+            if (isSkyEnterAction || isAirborneHoldAction) {
+                m.x = centerX;
+                m.y = centerY;
+                m.z = 0;
+                if (!boss.kasiyasP3M2Hidden) {
+                    boss.kasiyasP3M2Hidden = true;
+                    boss.kasiyasP3M2HiddenStarted = true;
+                    pushP3M2Effect('p3M2KasiyasRise', Math.max(0.28, Math.min(1.2, this.getBossActionDuration ? this.getBossActionDuration(m, action, gameState) : 0.85)), action.VFX_Type || 'EFT_KASIYAS_P3_M2_ASCEND_HIDE');
+                    this.pushBossDebugLog && this.pushBossDebugLog(gameState, 'P3_M2', `${actionId} ${this.getBossDebugName ? this.getBossDebugName(action) : actionName}`, '데이터 기반 카시야스 숨김 시작');
+                }
+            } else if (isReturnToGroundAction) {
+                m.x = centerX;
+                m.y = centerY;
+                m.z = 0;
+                boss.kasiyasP3M2Hidden = false;
+                boss.kasiyasP3M2LandingActionId = actionId;
+                pushP3M2Effect('p3M2KasiyasFall', Math.max(0.28, Math.min(1.2, this.getBossActionDuration ? this.getBossActionDuration(m, action, gameState) : 0.9)), action.VFX_Type || 'EFT_KASIYAS_P3_M2_DESCEND_LANDING');
+                this.pushBossDebugLog && this.pushBossDebugLog(gameState, 'P3_M2', `${actionId} ${this.getBossDebugName ? this.getBossDebugName(action) : actionName}`, '데이터 기반 카시야스 표시 복귀/하강');
+            }
+
+            // MOVE_JUMP + PLACE_MAP_SKY는 실제 위치 이동이 아니라 시각 연출로만 사용한다.
+            if (isSkyEnterAction && type === 'MOVE') {
+                boss.actionMove = null;
+                boss.actionMoveCompleted = true;
+                boss.actionHitFired = true;
+                return;
+            }
+        }
 
 
         if (type === 'HIDE') {
@@ -991,6 +1054,16 @@ const BossActionSystem = {
             ? false
             : this.trySpawnBossPatternActionObjectsAtTiming(m, action, gameState, 'ACTION_START');
 
+        if (String(action.Action_Condition_Type || '').trim().toUpperCase() === 'P3_M2_SPACE_DISTORTION_REMAIN') {
+            const burstKey = String(action.Action_ID || '') + ':' + String(boss.currentLoopIndex || 0);
+            if (boss.p3M2FailBurstKey !== burstKey) {
+                boss.p3M2FailBurstKey = burstKey;
+                if (typeof BossObjectSystem !== 'undefined' && BossObjectSystem.forceBurstAllKasiyasP3SpaceDistortions) {
+                    BossObjectSystem.forceBurstAllKasiyasP3SpaceDistortions.call(this, gameState, m);
+                }
+            }
+        }
+
         if ((type === 'WARNING' || type === 'MOVE') && moveType === 'JUMP') {
             this.prepareBossJumpMoveToPlayer(m, action, gameState, { pushEffect: true });
             if (this.isKasiyasP2Pattern3JumpWarningAction && this.isKasiyasP2Pattern3JumpWarningAction(action)) {
@@ -1046,7 +1119,7 @@ const BossActionSystem = {
         this.applyBossActionGaze(m, action, gameState);
         this.startBossPatternDialogue(m, action, gameState);
 
-        if (type === 'WAIT' && (vfxType === 'EFT_KASIYAS_P2_CHARGE_ENERGY' || vfxType === 'EFT_KASIYAS_P2_GROUND_PUNCH_CHARGE' || vfxType === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_STANCE' || vfxType === 'EFT_KASIYAS_P2_ONI_STANCE_ENERGY_CHARGE' || vfxType === 'EFT_KASIYAS_P2_ONI_STANCE_FULL_ENERGY' || vfxType === 'EFT_KASIYAS_P2_DOUBLE_SWORD_ANOTHER_ENERGY' || vfxType === 'EFT_KASIYAS_P2_M1_X_SLASH_CHARGE' || vfxType === 'EFT_KASIYAS_P2_M2_WAIT_IN_DIMENSION_PORTAL' || vfxType === 'EFT_KASIYAS_P3_RUSH_SLASH_CHARGE') && typeof this.pushBossCastEffect === 'function') {
+        if (type === 'WAIT' && (vfxType === 'EFT_KASIYAS_P2_CHARGE_ENERGY' || vfxType === 'EFT_KASIYAS_P2_GROUND_PUNCH_CHARGE' || vfxType === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_STANCE' || vfxType === 'EFT_KASIYAS_P2_ONI_STANCE_ENERGY_CHARGE' || vfxType === 'EFT_KASIYAS_P2_ONI_STANCE_FULL_ENERGY' || vfxType === 'EFT_KASIYAS_P2_DOUBLE_SWORD_ANOTHER_ENERGY' || vfxType === 'EFT_KASIYAS_P2_M1_X_SLASH_CHARGE' || vfxType === 'EFT_KASIYAS_P2_M2_WAIT_IN_DIMENSION_PORTAL' || vfxType === 'EFT_KASIYAS_P3_RUSH_SLASH_CHARGE' || vfxType === 'EFT_KASIYAS_P3_M1_FINAL_SLASH_CHARGE' || vfxType === 'EFT_KASIYAS_P3_M2_HAND_TO_SKY' || vfxType === 'EFT_KASIYAS_P3_M2_FINAL_SLASH_CHARGE') && typeof this.pushBossCastEffect === 'function') {
             this.pushBossCastEffect(m, action, gameState);
             if (vfxType === 'EFT_KASIYAS_P2_ONI_STANCE_FULL_ENERGY') {
                 const nextAtk = (typeof this.getBossPatternNextAttackAction === 'function') ? this.getBossPatternNextAttackAction(m) : null;
@@ -1236,6 +1309,58 @@ const BossActionSystem = {
                 boss.actionMove = null;
                 boss.actionHitFired = true;
                 return;
+            }
+        }
+
+        // ATK 액션에 이동값이 함께 들어간 경우에는 이동을 먼저 수행하고,
+        // 이동 완료 후 현재 위치 기준으로 공격 판정을 열어준다.
+        // 예: 3페이즈 대형1 3차 검격_전진 원형 베기(MOVE_DASH + PLACE_MAP_CENTER).
+        if (type === 'ATK' && moveType === 'DASH') {
+            const moveDirRaw = String(action.Action_Move_Direction || '').trim().toUpperCase();
+            const moveDir = typeof this.normalizeBossFixedMapPlaceType === 'function' ? this.normalizeBossFixedMapPlaceType(moveDirRaw) : moveDirRaw;
+            if (typeof this.isBossFixedMapPlaceType === 'function' && this.isBossFixedMapPlaceType(moveDir)) {
+                const target = this.getBossFixedMapPosition(gameState, moveDir);
+                const distance = Math.sqrt((target.x - m.x) ** 2 + (target.y - m.y) ** 2);
+                const speed = this.getBossActionMoveSpeed(m, action, boss) || 1000;
+                const actionDuration = Math.max(0.05, this.getBossActionDuration(m, action, gameState));
+                const hitStartRaw = parseFloat(action.Hitbox_Start_Time);
+                const moveDuration = (!isNaN(hitStartRaw) && hitStartRaw > 0)
+                    ? Math.min(actionDuration * 0.85, Math.max(0.05, hitStartRaw))
+                    : Math.min(actionDuration * 0.55, Math.max(0.12, distance / Math.max(1, speed)));
+                boss.actionMove = {
+                    type: 'ATK_DASH_FIXED',
+                    sourceMoveType: moveType,
+                    targetPlace: moveDir,
+                    actionId: String(action.Action_ID || '').trim(),
+                    startX: m.x,
+                    startY: m.y,
+                    endX: target.x,
+                    endY: target.y,
+                    duration: Math.max(0.05, moveDuration),
+                    attackAfterMove: true,
+                    faceAfterMove: (String(action.Action_Boss_Gaze || '').trim().toUpperCase() === 'LOOKING_MAP_CENTER' && typeof this.getBossFixedMapPosition === 'function')
+                        ? ((this.getBossFixedMapPosition(gameState, 'PLACE_MAP_CENTER').x >= target.x) ? 1 : -1)
+                        : null
+                };
+                boss.actionMoveCompleted = false;
+                boss.attackAfterMoveUntil = Math.max(0.05, moveDuration);
+                m.faceDir = target.x >= m.x ? 1 : -1;
+                if (Array.isArray(gameState.effects) && (action.VFX_Type || action.Effect_Render_Type)) {
+                    gameState.effects.push({
+                        type: 'afterimageDashTrail',
+                        renderType: action.VFX_Type || action.Effect_Render_Type,
+                        x: m.x,
+                        y: m.y,
+                        z: m.z + ((m.d && m.d.bodyZ) || 160) * 0.42,
+                        dir: m.faceDir,
+                        w: Math.max(90, distance * 0.42),
+                        h: 54,
+                        life: Math.min(0.32, Math.max(0.16, moveDuration)),
+                        maxLife: Math.min(0.32, Math.max(0.16, moveDuration)),
+                        pathAngle: Math.atan2(target.y - m.y, target.x - m.x),
+                        p3RushTrail: true
+                    });
+                }
             }
         }
 
@@ -1510,14 +1635,18 @@ const BossActionSystem = {
             }
             if (!move) return;
 
-            const duration = this.getBossActionDuration(m, action, gameState);
-            const t = Math.max(0, Math.min(1, m.timer / Math.max(0.001, duration)));
+            const duration = Math.max(0.001, parseFloat(move.duration) || this.getBossActionDuration(m, action, gameState));
+            const t = Math.max(0, Math.min(1, m.timer / duration));
             const ease = t * t * (3 - 2 * t);
             m.x = move.startX + (move.endX - move.startX) * ease;
             m.y = move.startY + (move.endY - move.startY) * ease;
             m.x = Math.max(0, Math.min(gameState.WORLD_WIDTH, m.x));
             m.y = Math.max(0, Math.min(gameState.WORLD_DEPTH, m.y));
             m.faceDir = (move.endX - move.startX) >= 0 ? 1 : -1;
+            if (boss && move.attackAfterMove && t >= 0.999) {
+                boss.actionMoveCompleted = true;
+                if (move.faceAfterMove === 1 || move.faceAfterMove === -1) m.faceDir = move.faceAfterMove;
+            }
             return;
         }
 

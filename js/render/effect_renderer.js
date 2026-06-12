@@ -656,62 +656,59 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         ctx.restore();
     } else if (eff.type === 'p3HighSpeedRushLeafSlash') {
         const t = 1 - alpha;
-        const w = Math.max(600, parseFloat(eff.w) || 1600);
-        const d = Math.max(130, parseFloat(eff.d) || 230);
+        const w = Math.max(780, parseFloat(eff.w) || 1500);
+        const d = Math.max(110, parseFloat(eff.d) || 220);
+        const dir = eff.dir === -1 ? -1 : 1;
         const coreColor = eff.color || `rgba(156,78,255,${0.98 * alpha})`;
-        const darkColor = eff.accentColor || `rgba(8,0,34,${0.98 * alpha})`;
+        const darkColor = eff.darkColor || `rgba(0,0,0,${0.98 * alpha})`;
         const hotColor = eff.hotColor || `rgba(232,218,255,${0.88 * alpha})`;
+        const redColor = eff.accentColor || `rgba(255,54,44,${0.92 * alpha})`;
         ctx.save();
+        ctx.scale(dir, 1);
         ctx.globalCompositeOperation = 'lighter';
-        ctx.shadowBlur = 26;
-        ctx.shadowColor = 'rgba(138,68,255,0.92)';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.shadowBlur = 34;
+        ctx.shadowColor = 'rgba(138,68,255,0.95)';
 
-        // 공격 박스 안을 거의 채우는 길고 날카로운 나뭇잎형 검흔.
-        const grad = ctx.createLinearGradient(-w * 0.52, 0, w * 0.52, 0);
-        grad.addColorStop(0, 'rgba(0,0,0,0)');
-        grad.addColorStop(0.08, darkColor);
-        grad.addColorStop(0.34, `rgba(78,20,142,${0.78 * alpha})`);
-        grad.addColorStop(0.50, hotColor);
-        grad.addColorStop(0.66, coreColor);
-        grad.addColorStop(0.92, darkColor);
-        grad.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = grad;
+        // 3페이즈 기본 4번 돌진 베기: 원호형 궤적 대신 이동 방향으로 길게 찢기는 직선 검흔.
+        const drawSlashLine = (yOff, lineW, stroke, alphaMul = 1, blur = 24) => {
+            ctx.save();
+            ctx.globalAlpha *= alphaMul;
+            ctx.shadowBlur = blur;
+            ctx.shadowColor = stroke;
+            ctx.strokeStyle = stroke;
+            ctx.lineWidth = lineW;
+            ctx.beginPath();
+            ctx.moveTo(-w * 0.52 - t * 70, yOff);
+            ctx.quadraticCurveTo(-w * 0.12, yOff - d * 0.10, w * 0.52, yOff + d * 0.06);
+            ctx.stroke();
+            ctx.restore();
+        };
+        drawSlashLine(0, Math.max(26, d * 0.22), darkColor, 0.82, 30);
+        drawSlashLine(-d * 0.02, Math.max(15, d * 0.13), coreColor, 0.96, 34);
+        drawSlashLine(-d * 0.04, Math.max(8, d * 0.07), redColor, 0.92, 24);
+        drawSlashLine(-d * 0.055, Math.max(3.5, d * 0.030), hotColor, 0.96, 14);
+
+        // 베고 지나간 경로에 남는 검흔/속도선.
+        for (let i = 0; i < 16; i++) {
+            const p = i / 15;
+            const x0 = -w * 0.50 + w * p - t * (36 + i * 2.8);
+            const y0 = d * (-0.44 + (i % 6) * 0.16);
+            const len = w * (0.10 + (i % 4) * 0.025);
+            ctx.strokeStyle = i % 3 === 0 ? `rgba(255,58,46,${0.44 * alpha})` : (i % 3 === 1 ? `rgba(0,0,0,${0.38 * alpha})` : `rgba(192,132,255,${0.42 * alpha})`);
+            ctx.lineWidth = i % 3 === 1 ? 3.4 : 2.1;
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x0 + len, y0 - d * (0.05 + (i % 3) * 0.025));
+            ctx.stroke();
+        }
+
+        // 칼끝이 경로 끝에 남기는 밝은 잔광.
+        ctx.fillStyle = `rgba(255,70,56,${0.72 * alpha})`;
         ctx.beginPath();
-        ctx.moveTo(-w * 0.52, 0);
-        ctx.quadraticCurveTo(-w * 0.26, -d * (0.56 + t * 0.08), 0, -d * 0.36);
-        ctx.quadraticCurveTo(w * 0.28, -d * 0.58, w * 0.52, 0);
-        ctx.quadraticCurveTo(w * 0.28, d * 0.58, 0, d * 0.36);
-        ctx.quadraticCurveTo(-w * 0.26, d * 0.56, -w * 0.52, 0);
-        ctx.closePath();
+        ctx.ellipse(w * (0.42 - t * 0.10), -d * 0.06, 26 + t * 20, 8 + t * 6, -0.08, 0, Math.PI * 2);
         ctx.fill();
-
-        // 검은 외곽을 두껍게 잡아 가시성을 확보한다.
-        ctx.shadowBlur = 8;
-        ctx.shadowColor = 'rgba(0,0,0,0.95)';
-        ctx.strokeStyle = `rgba(6,0,22,${0.96 * alpha})`;
-        ctx.lineWidth = Math.max(9, d * 0.075);
-        ctx.stroke();
-
-        // 중앙 칼날선은 더 굵고 선명하게.
-        ctx.shadowBlur = 18;
-        ctx.shadowColor = 'rgba(176,100,255,0.95)';
-        ctx.strokeStyle = hotColor;
-        ctx.lineWidth = Math.max(4.5, d * 0.035);
-        ctx.beginPath();
-        ctx.moveTo(-w * 0.45, 0);
-        ctx.quadraticCurveTo(0, -d * 0.045, w * 0.45, 0);
-        ctx.stroke();
-
-        ctx.strokeStyle = `rgba(158,78,255,${0.62 * alpha})`;
-        ctx.lineWidth = Math.max(2.2, d * 0.018);
-        ctx.beginPath();
-        ctx.moveTo(-w * 0.40, -d * 0.15);
-        ctx.quadraticCurveTo(0, -d * 0.26, w * 0.40, -d * 0.13);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(-w * 0.40, d * 0.15);
-        ctx.quadraticCurveTo(0, d * 0.26, w * 0.40, d * 0.13);
-        ctx.stroke();
         ctx.restore();
     } else if (eff.type === 'kasiyasP3DimensionCrackCastSlash') {
         const t = 1 - alpha;
@@ -1418,7 +1415,7 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
             ctx.ellipse(0, 0, w * (0.33 + t * 0.18), d * (0.23 + t * 0.14), -0.10, Math.PI * 0.06, Math.PI * 1.92);
             ctx.stroke();
             ctx.strokeStyle = `rgba(255,56,40,${0.92 * alpha})`;
-            ctx.lineWidth = 8;
+            ctx.lineWidth = 12;
             ctx.beginPath();
             ctx.ellipse(0, -3, w * (0.29 + t * 0.16), d * (0.19 + t * 0.12), -0.12, Math.PI * 0.10, Math.PI * 1.82);
             ctx.stroke();
@@ -2321,6 +2318,293 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         ctx.restore();
 
 
+    } else if (eff.type === 'p3OniCurseBladeBurst') {
+        const t = 1 - alpha;
+        const dir = eff.dir === -1 ? -1 : 1;
+        const w = Math.max(180, eff.w || 330);
+        const h = Math.max(150, eff.h || 260);
+        const purple = eff.color || `rgba(156,76,255,${0.92 * alpha})`;
+        const red = eff.accentColor || `rgba(255,46,38,${0.84 * alpha})`;
+        const dark = eff.darkColor || `rgba(0,0,0,${0.94 * alpha})`;
+        ctx.save();
+        ctx.scale(dir, 1);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // 검 끝 주변에서 저주 기운이 응축된 뒤 앞으로 분출된다. 플레이어 위치와 연결하지 않는다.
+        const grad = ctx.createRadialGradient(0, 0, 4, 0, 0, h * 0.62);
+        grad.addColorStop(0.00, `rgba(232,200,255,${0.24 * alpha})`);
+        grad.addColorStop(0.26, `rgba(156,76,255,${0.25 * alpha})`);
+        grad.addColorStop(0.58, `rgba(255,48,42,${0.11 * alpha})`);
+        grad.addColorStop(1.00, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(w * 0.08, 0, w * (0.20 + t * 0.09), h * (0.30 + t * 0.07), -0.16, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.shadowBlur = 26;
+        ctx.shadowColor = 'rgba(122,46,255,0.88)';
+        for (let i = 0; i < 7; i++) {
+            const q = i / 6;
+            const len = w * (0.30 + q * 0.18);
+            const spread = h * (0.08 + q * 0.16);
+            const startY = (i - 3) * h * 0.035 + Math.sin(t * 5 + i) * h * 0.018;
+            const c1x = len * 0.24;
+            const c1y = startY - spread * (0.4 + (i % 2) * 0.35);
+            const c2x = len * 0.62;
+            const c2y = startY + spread * (0.5 - (i % 3) * 0.18);
+            const endX = len * (0.94 + t * 0.16);
+            const endY = startY + Math.sin(i * 1.7 + t * 4.0) * spread;
+            ctx.strokeStyle = i % 3 === 0 ? dark : (i % 3 === 1 ? purple : red);
+            ctx.lineWidth = i % 3 === 0 ? 9.0 : (i % 3 === 1 ? 5.2 : 3.4);
+            ctx.beginPath();
+            ctx.moveTo(0, startY);
+            ctx.bezierCurveTo(c1x, c1y, c2x, c2y, endX, endY);
+            ctx.stroke();
+        }
+
+        // 사슬처럼 보이는 조각은 검 주변에서만 튀어나오게 해, 이동한 플레이어의 빈 위치에 남지 않도록 한다.
+        ctx.shadowBlur = 10;
+        for (let i = 0; i < 12; i++) {
+            const a = -0.70 + i * 0.12 + Math.sin(t * 4 + i) * 0.08;
+            const bx = w * (0.08 + (i % 4) * 0.035 + t * 0.10);
+            const by = Math.sin(i * 1.9 + t * 5.0) * h * 0.18;
+            ctx.save();
+            ctx.translate(bx, by);
+            ctx.rotate(a);
+            ctx.strokeStyle = i % 2 ? `rgba(255,58,52,${0.45 * alpha})` : `rgba(0,0,0,${0.62 * alpha})`;
+            ctx.lineWidth = i % 2 ? 2.4 : 3.8;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 9 + (i % 3) * 1.4, 4.8, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // 검 끝에서 짧게 터지는 광점.
+        ctx.shadowBlur = 22;
+        ctx.shadowColor = 'rgba(255,60,52,0.78)';
+        ctx.fillStyle = `rgba(236,216,255,${0.72 * alpha})`;
+        for (let i = 0; i < 9; i++) {
+            const a = Math.PI * 2 * i / 9 + t * 1.2;
+            const rx = Math.cos(a) * w * (0.035 + (i % 3) * 0.012);
+            const ry = Math.sin(a) * h * (0.050 + (i % 2) * 0.012);
+            ctx.beginPath();
+            ctx.ellipse(rx, ry, 2.2 + (i % 2), 3.8 + (i % 3), a, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+
+    } else if (eff.type === 'p3OniCurseChain') {
+        const t = 1 - alpha;
+        const purple = eff.color || `rgba(156,76,255,${0.95 * alpha})`;
+        const red = eff.accentColor || `rgba(255,46,38,${0.90 * alpha})`;
+        const dark = eff.darkColor || `rgba(0,0,0,${0.98 * alpha})`;
+        const targetX = (parseFloat(eff.targetX) || effectX + (eff.dir === -1 ? -420 : 420));
+        const targetY = (parseFloat(eff.targetY) || effectY);
+        const targetZ = (parseFloat(eff.targetZ) || effectZ);
+        const tx = targetX - effectX;
+        const ty = (this.GROUND_BASE_Y + targetY - targetZ) - drawZ;
+        const len = Math.max(1, Math.hypot(tx, ty));
+        const nx = tx / len;
+        const ny = ty / len;
+        const px = -ny;
+        const py = nx;
+        const pulse = Math.sin(t * Math.PI * 5.0);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        // 검 끝에서 플레이어까지 뻗는 저주 사슬 본체. 검은 외곽을 먼저 그려 실제 사슬처럼 보이게 한다.
+        for (let layer = 0; layer < 3; layer++) {
+            const off = (layer - 1) * 6;
+            ctx.beginPath();
+            ctx.moveTo(px * off, py * off);
+            const c1x = tx * 0.30 + px * (28 + 18 * Math.sin(t * 6 + layer));
+            const c1y = ty * 0.30 + py * (28 + 18 * Math.sin(t * 6 + layer));
+            const c2x = tx * 0.70 - px * (24 + 14 * Math.cos(t * 5 + layer));
+            const c2y = ty * 0.70 - py * (24 + 14 * Math.cos(t * 5 + layer));
+            ctx.bezierCurveTo(c1x, c1y, c2x, c2y, tx - px * off, ty - py * off);
+            ctx.strokeStyle = layer === 0 ? `rgba(0,0,0,${0.78 * alpha})` : (layer === 1 ? purple : red);
+            ctx.lineWidth = layer === 0 ? 13 : (layer === 1 ? 8 : 4.2);
+            ctx.shadowBlur = layer === 0 ? 10 : 24;
+            ctx.shadowColor = layer === 0 ? 'rgba(0,0,0,0.9)' : (layer === 1 ? 'rgba(156,76,255,0.9)' : 'rgba(255,48,40,0.9)');
+            ctx.stroke();
+        }
+        // 사슬 고리: 검은 고리 + 붉은 고리를 번갈아 배치해 "검은 사슬" 느낌을 강조한다.
+        for (let i = 0; i < 13; i++) {
+            const q = (i + 0.5) / 13;
+            const wob = Math.sin(q * Math.PI * 4 + t * 5) * 14;
+            const cx = tx * q + px * wob;
+            const cy = ty * q + py * wob;
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(Math.atan2(ty, tx) + Math.PI / 2 + (i % 2 ? 0.42 : -0.42));
+            ctx.strokeStyle = i % 2 ? `rgba(255,62,52,${0.58 * alpha})` : `rgba(0,0,0,${0.80 * alpha})`;
+            ctx.lineWidth = i % 2 ? 3.2 : 4.6;
+            ctx.shadowBlur = i % 2 ? 12 : 6;
+            ctx.shadowColor = i % 2 ? 'rgba(255,50,42,0.88)' : 'rgba(0,0,0,0.95)';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 11 + 3 * Math.abs(pulse), 5.5, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+        // 도착 지점에서 저주가 감기는 원형 맥동.
+        ctx.save();
+        ctx.translate(tx, ty);
+        ctx.shadowBlur = 26;
+        ctx.shadowColor = 'rgba(255,54,44,0.90)';
+        for (let r=0;r<3;r++) {
+            ctx.strokeStyle = r === 0 ? dark : (r === 1 ? purple : red);
+            ctx.lineWidth = r === 0 ? 8 : (r === 1 ? 4.5 : 2.8);
+            const rr = 24 + r * 15 + t * 28;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, rr, rr * 0.62, 0, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        ctx.restore();
+        ctx.restore();
+
+    } else if (eff.type === 'kasiyasP3M1Slash') {
+        const mode = String(eff.slashMode || 'HORIZONTAL').toUpperCase();
+        const slashW = Math.max(240, eff.w || 900);
+        const slashD = Math.max(90, eff.d || 220);
+        const slashH = Math.max(160, eff.h || 340);
+        const dir = eff.dir === -1 ? -1 : 1;
+        const purple = eff.color || `rgba(168,76,255,${0.98 * alpha})`;
+        const red = eff.accentColor || `rgba(255,42,34,${0.96 * alpha})`;
+        const dark = eff.darkColor || `rgba(0,0,0,${0.98 * alpha})`;
+        const hot = eff.hotColor || `rgba(248,228,255,${0.92 * alpha})`;
+        const halfW = slashW * 0.50;
+        const halfH = slashH * 0.50;
+        const halfD = slashD * 0.50;
+        const pulse = 1 - alpha;
+
+        const strokePath = (drawFn, lineW, stroke, blur, aMul = 1, comp = 'lighter') => {
+            ctx.save();
+            ctx.globalCompositeOperation = comp;
+            ctx.globalAlpha *= aMul;
+            ctx.shadowBlur = blur;
+            ctx.shadowColor = stroke;
+            ctx.strokeStyle = stroke;
+            ctx.lineWidth = lineW;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            drawFn(ctx);
+            ctx.stroke();
+            ctx.restore();
+        };
+        const fillPath = (drawFn, fill, blur = 0, aMul = 1, comp = 'source-over') => {
+            ctx.save();
+            ctx.globalCompositeOperation = comp;
+            ctx.globalAlpha *= aMul;
+            ctx.shadowBlur = blur;
+            ctx.shadowColor = fill;
+            ctx.fillStyle = fill;
+            ctx.beginPath();
+            drawFn(ctx);
+            ctx.fill();
+            ctx.restore();
+        };
+
+        ctx.save();
+        ctx.scale(dir, 1);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        if (mode === 'HORIZONTAL') {
+            // 3페이즈 대형1 전용 횡베기: 기존 기본 베기와 공유하지 않는 굵은 검호.
+            // 전진 원형베기와 마찬가지로 호가 아래쪽으로 오도록 M1 횡베기만 상하 반전한다.
+            ctx.scale(1, -1);
+            const rx = Math.max(halfW * 0.86, 180);
+            const ry = Math.max(halfH * 0.58, halfD * 0.90, 90);
+            const yBase = -ry * 0.03;
+            const arc = (mul = 1, yMul = 0, start = -Math.PI * 0.98, end = Math.PI * 0.20) => (c) => {
+                c.ellipse(0, yBase + ry * yMul, rx * mul, ry * 0.94, -0.02, start, end);
+            };
+            // 검은 외곽은 lighter가 아니라 source-over로 먼저 그려서 실제로 보이게 한다.
+            strokePath(arc(0.98, 0.06, -Math.PI * 1.00, Math.PI * 0.24), Math.max(30, ry * 0.34), `rgba(0,0,0,${0.72 * alpha})`, 8, 0.92, 'source-over');
+            strokePath(arc(0.94, 0.02, -Math.PI * 0.97, Math.PI * 0.22), Math.max(22, ry * 0.25), purple, 28, 0.98, 'lighter');
+            strokePath(arc(0.90, 0.01, -Math.PI * 0.94, Math.PI * 0.18), Math.max(14, ry * 0.16), red, 22, 0.92, 'lighter');
+            strokePath(arc(0.76, -0.05, -Math.PI * 0.80, -Math.PI * 0.06), Math.max(5, ry * 0.050), hot, 14, 0.88, 'lighter');
+            // 넓은 잔광 면
+            const grad = ctx.createRadialGradient(0, yBase, 10, 0, yBase, Math.max(rx, ry) * 1.05);
+            grad.addColorStop(0.00, `rgba(255,60,50,${0.04 * alpha})`);
+            grad.addColorStop(0.42, `rgba(172,76,255,${0.13 * alpha})`);
+            grad.addColorStop(0.74, `rgba(0,0,0,${0.15 * alpha})`);
+            grad.addColorStop(1.00, 'rgba(0,0,0,0)');
+            fillPath((c)=>{ c.ellipse(0, yBase, rx * 0.98, ry * 0.96, 0, 0, Math.PI * 2); }, grad, 0, 0.86, 'lighter');
+            // 검격 끝 파열/흑염
+            for (let i = 0; i < 18; i++) {
+                const a = -Math.PI * 0.94 + i * Math.PI * 0.072;
+                const x0 = Math.cos(a) * rx * 0.74;
+                const y0 = yBase + Math.sin(a) * ry * 0.76;
+                const x1 = Math.cos(a + 0.04) * rx * (0.90 + (i % 3) * 0.02);
+                const y1 = yBase + Math.sin(a + 0.04) * ry * (0.88 + (i % 2) * 0.03);
+                strokePath((c)=>{ c.moveTo(x0, y0); c.lineTo(x1, y1); }, i % 2 ? 3.2 : 4.6, i % 2 ? `rgba(255,54,44,${0.42 * alpha})` : `rgba(0,0,0,${0.50 * alpha})`, 8, 1, i % 2 ? 'lighter' : 'source-over');
+            }
+        } else if (mode === 'DOWN') {
+            // 3페이즈 대형1 전용 내려베기: 좌측 이동 후 중앙을 찍어누르는 두꺼운 절단면.
+            const p0 = [-halfW * 0.90, -halfH * 0.78];
+            const p1 = [ halfW * 0.06, -halfH * 0.18];
+            const p2 = [ halfW * 0.92,  halfH * 0.80];
+            const curve = (c) => { c.moveTo(p0[0], p0[1]); c.quadraticCurveTo(p1[0], p1[1], p2[0], p2[1]); };
+            const crack = (offset, lenMul = 1) => (c) => {
+                c.moveTo(p0[0] + offset, p0[1] + halfH * 0.08);
+                c.quadraticCurveTo(p1[0] + offset * 0.15, p1[1] + halfH * 0.06, p2[0] - offset * 0.18, p2[1] - halfH * 0.04 * lenMul);
+            };
+            const bg = ctx.createRadialGradient(0, 0, 8, 0, 0, Math.max(halfW, halfH) * 1.20);
+            bg.addColorStop(0.00, `rgba(255,56,46,${0.08 * alpha})`);
+            bg.addColorStop(0.42, `rgba(172,76,255,${0.16 * alpha})`);
+            bg.addColorStop(0.82, `rgba(0,0,0,${0.18 * alpha})`);
+            bg.addColorStop(1.00, 'rgba(0,0,0,0)');
+            fillPath((c)=>{ c.ellipse(0, 0, halfW * 0.92, halfH * 0.90, 0.15, 0, Math.PI * 2); }, bg, 0, 0.86, 'lighter');
+            strokePath(curve, Math.max(36, Math.min(slashW, slashH) * 0.18), `rgba(0,0,0,${0.76 * alpha})`, 10, 0.98, 'source-over');
+            strokePath(curve, Math.max(25, Math.min(slashW, slashH) * 0.12), purple, 30, 1, 'lighter');
+            strokePath(curve, Math.max(16, Math.min(slashW, slashH) * 0.075), red, 24, 0.95, 'lighter');
+            strokePath(curve, Math.max(5, Math.min(slashW, slashH) * 0.026), hot, 14, 0.90, 'lighter');
+            strokePath(crack(-halfW * 0.12), Math.max(5, halfH * 0.030), `rgba(0,0,0,${0.58 * alpha})`, 6, 0.92, 'source-over');
+            strokePath(crack(halfW * 0.09, 0.9), Math.max(3.5, halfH * 0.019), `rgba(255,58,48,${0.46 * alpha})`, 10, 0.80, 'lighter');
+            // 바닥까지 이어지는 파열 조각
+            for (let i = 0; i < 14; i++) {
+                const t = i / 13;
+                const x = p0[0] * (1-t) + p2[0] * t + Math.sin(t * Math.PI * 4) * 24;
+                const y = p0[1] * (1-t) + p2[1] * t;
+                strokePath((c)=>{ c.moveTo(x, y); c.lineTo(x + (i%2?-1:1) * (10 + t*16), y + 10 + t*12); }, i%2 ? 1.9 : 2.8, i%2 ? `rgba(178,98,255,${0.34 * alpha})` : `rgba(0,0,0,${0.46 * alpha})`, 5, 0.9, i%2 ? 'lighter' : 'source-over');
+            }
+        } else {
+            // 피니시 대각선 베기: 화면에서 확실히 구분되는 대형 패턴 전용 검흔.
+            const p0 = [-halfW * 0.92, -halfH * 0.88];
+            const p1 = [ halfW * 0.92,  halfH * 0.88];
+            const slashPoly = (wide) => (c) => {
+                const dx = p1[0]-p0[0], dy = p1[1]-p0[1];
+                const len = Math.max(1, Math.hypot(dx,dy));
+                const nx = -dy / len, ny = dx / len;
+                c.moveTo(p0[0]+nx*wide, p0[1]+ny*wide);
+                c.lineTo(p1[0]+nx*wide, p1[1]+ny*wide);
+                c.lineTo(p1[0]-nx*wide, p1[1]-ny*wide);
+                c.lineTo(p0[0]-nx*wide, p0[1]-ny*wide);
+                c.closePath();
+            };
+            fillPath(slashPoly(Math.max(36, Math.min(slashW, slashH) * 0.15)), `rgba(0,0,0,${0.46 * alpha})`, 14, 0.92, 'source-over');
+            fillPath(slashPoly(Math.max(26, Math.min(slashW, slashH) * 0.105)), `rgba(168,76,255,${0.28 * alpha})`, 28, 0.92, 'lighter');
+            fillPath(slashPoly(Math.max(15, Math.min(slashW, slashH) * 0.060)), `rgba(255,48,38,${0.42 * alpha})`, 24, 0.92, 'lighter');
+            strokePath((c)=>{ c.moveTo(p0[0],p0[1]); c.lineTo(p1[0],p1[1]); }, Math.max(40, Math.min(slashW, slashH) * 0.16), `rgba(0,0,0,${0.72 * alpha})`, 16, 0.95, 'source-over');
+            strokePath((c)=>{ c.moveTo(p0[0],p0[1]); c.lineTo(p1[0],p1[1]); }, Math.max(26, Math.min(slashW, slashH) * 0.105), purple, 32, 1, 'lighter');
+            strokePath((c)=>{ c.moveTo(p0[0],p0[1]); c.lineTo(p1[0],p1[1]); }, Math.max(14, Math.min(slashW, slashH) * 0.055), red, 26, 0.98, 'lighter');
+            strokePath((c)=>{ c.moveTo(p0[0]+halfW*0.03,p0[1]-halfH*0.02); c.lineTo(p1[0]-halfW*0.03,p1[1]+halfH*0.02); }, Math.max(4.5, Math.min(slashW, slashH) * 0.020), hot, 14, 0.94, 'lighter');
+            for (let i=0;i<22;i++) {
+                const t=i/21;
+                const x=p0[0]*(1-t)+p1[0]*t;
+                const y=p0[1]*(1-t)+p1[1]*t;
+                const side=(i%2?-1:1);
+                strokePath((c)=>{ c.moveTo(x, y); c.lineTo(x + side*(16+24*Math.sin(t*Math.PI)), y - side*(9+12*Math.cos(t*Math.PI))); }, i%3===0?2.8:1.9, i%3===0?`rgba(0,0,0,${0.46*alpha})`:(i%3===1?`rgba(255,62,52,${0.34*alpha})`:`rgba(188,118,255,${0.30*alpha})`), 6, 0.92, i%3===0?'source-over':'lighter');
+            }
+        }
+
+        ctx.restore();
+
     } else if (eff.type === 'kasiyasP3HeavySlash') {
         const mode = String(eff.slashMode || 'HORIZONTAL').toUpperCase();
         const slashW = Math.max(160, eff.w || 520);
@@ -2454,6 +2738,63 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
             strokeLine(p0, p1, Math.max(11, Math.min(slashW, slashH) * 0.070), core, 20, 1.00, 0);
             strokeLine(p0, p1, Math.max(3.2, Math.min(slashW, slashH) * 0.020), hot, 10, 0.94, -halfW * 0.018);
             strokeLine(p0, p1, Math.max(3.6, Math.min(slashW, slashH) * 0.026), accent, 12, 0.44, halfW * 0.040);
+        }
+
+        if (eff.oniMajor) {
+            const isM1Major = String(eff.renderType || '').toUpperCase().indexOf('EFT_KASIYAS_P3_M1_') === 0;
+            const m1Power = isM1Major ? 1.32 : 1.0;
+            // 3페이즈 대형 패턴 1번 전용 강화 레이어. 기본 패턴 이펙트와 분리해 붉은/검은 기운만 추가한다.
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.shadowBlur = mode === 'DIAGONAL' ? 34 : 26;
+            if (mode === 'HORIZONTAL') {
+                const rx = Math.max(halfW * 1.03, 150);
+                const ry = Math.max(halfH * 0.98, halfD * 0.90, 78);
+                const extraArc = (lineW, stroke, yMul, from, to, blur, aMul) => {
+                    ctx.save();
+                    ctx.globalAlpha *= aMul;
+                    ctx.shadowBlur = blur;
+                    ctx.shadowColor = stroke;
+                    ctx.strokeStyle = stroke;
+                    ctx.lineWidth = lineW;
+                    ctx.beginPath();
+                    ctx.ellipse(0, ry * yMul, rx, ry * 0.96, -0.025, from, to);
+                    ctx.stroke();
+                    ctx.restore();
+                };
+                extraArc(Math.max(6, ry * 0.060 * m1Power), `rgba(255,58,46,${0.86 * alpha})`, 0.08, -Math.PI * 0.96, Math.PI * 0.30, 20, 0.80);
+                extraArc(Math.max(10, ry * 0.090 * m1Power), `rgba(0,0,0,${0.64 * alpha})`, 0.18, -Math.PI * 0.98, Math.PI * 0.34, 18, 0.62);
+                for (let i = 0; i < 10; i++) {
+                    const a = -Math.PI * 0.88 + i * Math.PI * 0.14;
+                    ctx.strokeStyle = i % 2 ? `rgba(255,64,52,${0.36 * alpha})` : `rgba(0,0,0,${0.32 * alpha})`;
+                    ctx.lineWidth = 2.2;
+                    ctx.beginPath();
+                    ctx.moveTo(Math.cos(a) * rx * 0.78, Math.sin(a) * ry * 0.78);
+                    ctx.lineTo(Math.cos(a + 0.05) * rx * 1.03, Math.sin(a + 0.05) * ry * 1.03);
+                    ctx.stroke();
+                }
+            } else if (mode === 'DOWN') {
+                strokeCurve([[-halfW * 1.04, -halfH * 1.04], [halfW * 0.30, -halfH * 0.24], [ halfW * 1.04, halfH * 1.04]], Math.max(7, Math.min(slashW, slashH) * 0.050 * m1Power), `rgba(255,58,46,${0.86 * alpha})`, 26, 0.86);
+                strokeCurve([[-halfW * 0.98, -halfH * 0.78], [halfW * 0.02, -halfH * 0.08], [ halfW * 0.98, halfH * 0.78]], Math.max(9, Math.min(slashW, slashH) * 0.070 * m1Power), `rgba(0,0,0,${0.62 * alpha})`, 24, 0.70);
+            } else if (mode === 'DIAGONAL' || mode === 'AURA_DIAGONAL') {
+                const p0 = [-halfW * 1.02, -halfH * 1.02];
+                const p1 = [ halfW * 1.02,  halfH * 1.02];
+                strokeLine(p0, p1, Math.max(30, Math.min(slashW, slashH) * 0.155 * m1Power), `rgba(0,0,0,${0.66 * alpha})`, 44, 0.78, 0);
+                strokeLine(p0, p1, Math.max(13, Math.min(slashW, slashH) * 0.088 * m1Power), `rgba(255,58,46,${0.90 * alpha})`, 32, 0.92, -halfW * 0.020);
+                for (let i = 0; i < 14; i++) {
+                    const r = (i / 13 - 0.5) * slashW * 0.72;
+                    const y = (r / Math.max(1, slashW * 0.72)) * slashH * 0.72;
+                    ctx.strokeStyle = i % 2 ? `rgba(180,112,255,${0.36 * alpha})` : `rgba(255,64,52,${0.38 * alpha})`;
+                    ctx.lineWidth = 2.0;
+                    ctx.beginPath();
+                    ctx.moveTo(r - 12, y + 16);
+                    ctx.lineTo(r + 18, y - 8);
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
         }
 
         // 짧은 잔광 조각은 히트박스 내부에만 배치한다.
@@ -3558,7 +3899,161 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         const core = eff.color || (renderType === 'EFT_STRIKE' ? "rgba(245,245,245,0.96)" : "rgba(241,196,15,0.95)");
         const accent = eff.accentColor || (renderType === 'EFT_STRIKE' ? "rgba(210,220,230,0.92)" : "rgba(255,255,255,0.95)");
 
-        if (renderType === 'EFT_KASIYAS_TEMPERED_BLADE_READY') {
+        if (renderType === 'EFT_P3_ONI_CURSE_LIFE_STEAL') {
+            const w = Math.max(120, eff.w || 180) * burstScale;
+            const h = Math.max(110, eff.h || 170) * burstScale;
+            const t = 1 - alpha;
+            const toX = parseFloat(eff.toX);
+            const toY = parseFloat(eff.toY);
+            const toZ = parseFloat(eff.toZ);
+            const endX = isFinite(toX) ? (toX - effectX) : (w * 0.85);
+            const endY = isFinite(toY) && isFinite(toZ) ? ((this.GROUND_BASE_Y + toY - toZ) - drawZ) : 0;
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.shadowBlur = 28;
+            ctx.shadowColor = 'rgba(144,54,255,0.88)';
+            const midX = endX * 0.48;
+            const midY = endY * 0.48 - h * (0.18 + t * 0.10);
+            for (let i = 0; i < 4; i++) {
+                const off = (i - 1.5) * h * 0.035;
+                ctx.strokeStyle = i % 2 ? `rgba(255,56,58,${0.52 * alpha})` : `rgba(164,82,255,${0.48 * alpha})`;
+                ctx.lineWidth = i % 2 ? 4.4 : 6.0;
+                ctx.beginPath();
+                ctx.moveTo(0, off);
+                ctx.bezierCurveTo(midX * 0.45, midY - off, midX * 1.05, midY + off, endX, endY - off * 0.5);
+                ctx.stroke();
+            }
+            // 카시야스 쪽에서 빠져나가는 검붉은 조각.
+            ctx.fillStyle = `rgba(255,50,54,${0.70 * alpha})`;
+            for (let i = 0; i < 8; i++) {
+                const px = Math.sin(i * 1.9 + t * 4.0) * w * 0.13 + t * endX * 0.20;
+                const py = -h * 0.20 + (i % 5) * h * 0.08 - t * 22;
+                ctx.beginPath();
+                ctx.ellipse(px, py, 2.2 + (i % 2), 4.5 + (i % 3), 0.4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            // 플레이어에게 흘러 들어오는 회복 링.
+            ctx.strokeStyle = `rgba(255,156,118,${0.62 * alpha})`;
+            ctx.lineWidth = 3.2;
+            ctx.beginPath();
+            ctx.ellipse(endX, endY, w * (0.10 + t * 0.10), h * (0.05 + t * 0.04), 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        } else if (renderType === 'EFT_P3_ONI_CURSE_BLEED') {
+            const w = Math.max(90, eff.w || 130) * burstScale;
+            const h = Math.max(90, eff.h || 140) * burstScale;
+            const t = 1 - alpha;
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.shadowBlur = 24;
+            ctx.shadowColor = 'rgba(122,38,210,0.78)';
+            const grad = ctx.createRadialGradient(0, 0, 4, 0, 0, h * 0.52);
+            grad.addColorStop(0, `rgba(208,142,255,${0.26 * alpha})`);
+            grad.addColorStop(0.36, `rgba(116,42,195,${0.25 * alpha})`);
+            grad.addColorStop(0.72, `rgba(255,36,52,${0.18 * alpha})`);
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.ellipse(0, -h * 0.08, w * (0.36 + t * 0.12), h * (0.36 + t * 0.10), 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.lineCap = 'round';
+            for (let i = 0; i < 9; i++) {
+                const side = i % 2 === 0 ? -1 : 1;
+                const x = side * w * (0.10 + (i % 4) * 0.055);
+                const y = -h * (0.28 - (i % 3) * 0.15) + t * h * 0.10;
+                const len = h * (0.12 + (i % 3) * 0.04);
+                ctx.strokeStyle = i % 3 === 0 ? `rgba(22,0,32,${0.72 * alpha})` : `rgba(255,48,58,${0.62 * alpha})`;
+                ctx.lineWidth = i % 3 === 0 ? 4.6 : 2.6;
+                ctx.beginPath();
+                ctx.moveTo(x, y - len * 0.40);
+                ctx.bezierCurveTo(x + side * 18, y - len * 0.08, x - side * 8, y + len * 0.22, x + side * 10, y + len * 0.58);
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 0.58 * alpha;
+            ctx.fillStyle = 'rgba(255,35,54,0.82)';
+            for (let i = 0; i < 7; i++) {
+                const x = (Math.sin(i * 1.7 + t * 3.2)) * w * 0.22;
+                const y = -h * 0.34 + i * h * 0.10 + t * h * 0.16;
+                ctx.beginPath();
+                ctx.ellipse(x, y, 2.2 + (i % 2), 4.4 + (i % 3), 0.2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        } else if (renderType === 'EFT_P3_ONI_CURSE_BREAK') {
+            const w = Math.max(150, eff.w || 210) * burstScale;
+            const h = Math.max(140, eff.h || 180) * burstScale;
+            const t = 1 - alpha;
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.shadowBlur = 34;
+            ctx.shadowColor = 'rgba(150,60,255,0.86)';
+            const grad = ctx.createRadialGradient(0, 0, 8, 0, 0, h * (0.48 + t * 0.18));
+            grad.addColorStop(0, `rgba(225,190,255,${0.22 * alpha})`);
+            grad.addColorStop(0.38, `rgba(148,68,255,${0.24 * alpha})`);
+            grad.addColorStop(0.70, `rgba(255,42,48,${0.14 * alpha})`);
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, w * (0.40 + t * 0.22), h * (0.42 + t * 0.18), 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.lineCap = 'round';
+            for (let i = 0; i < 12; i++) {
+                const ang = (Math.PI * 2 / 12) * i + t * 0.9;
+                const r1 = w * (0.12 + t * 0.12);
+                const r2 = w * (0.28 + t * 0.32 + (i % 3) * 0.025);
+                ctx.strokeStyle = i % 2 ? `rgba(30,0,42,${0.70 * alpha})` : `rgba(255,92,86,${0.58 * alpha})`;
+                ctx.lineWidth = i % 2 ? 4.4 : 2.7;
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(ang) * r1, Math.sin(ang) * r1 * 0.72);
+                ctx.lineTo(Math.cos(ang) * r2, Math.sin(ang) * r2 * 0.72);
+                ctx.stroke();
+            }
+            ctx.strokeStyle = `rgba(222,176,255,${0.70 * alpha})`;
+            ctx.lineWidth = 2.4;
+            ctx.beginPath();
+            ctx.ellipse(0, h * 0.18, w * (0.26 + t * 0.28), h * (0.09 + t * 0.04), 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        } else if (renderType === 'EFT_P3_TRIAL_WILL_GAIN') {
+            const w = Math.max(190, eff.w || 250) * burstScale;
+            const h = Math.max(170, eff.h || 230) * burstScale;
+            const t = 1 - alpha;
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.shadowBlur = 44;
+            ctx.shadowColor = 'rgba(255,232,126,0.96)';
+            const grad = ctx.createRadialGradient(0, 0, 6, 0, 0, h * (0.40 + t * 0.35));
+            grad.addColorStop(0, `rgba(255,255,245,${0.44 * alpha})`);
+            grad.addColorStop(0.28, `rgba(255,228,122,${0.34 * alpha})`);
+            grad.addColorStop(0.62, `rgba(218,176,255,${0.18 * alpha})`);
+            grad.addColorStop(1, 'rgba(255,244,160,0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.ellipse(0, -h * 0.04, w * (0.34 + t * 0.28), h * (0.36 + t * 0.25), 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.lineCap = 'round';
+            for (let i = 0; i < 10; i++) {
+                const ang = (Math.PI * 2 / 10) * i - t * 0.8;
+                const r1 = w * (0.08 + t * 0.04);
+                const r2 = w * (0.24 + t * 0.30 + (i % 2) * 0.04);
+                ctx.strokeStyle = i % 2 ? `rgba(184,226,255,${0.55 * alpha})` : `rgba(255,250,205,${0.84 * alpha})`;
+                ctx.lineWidth = i % 2 ? 2.2 : 3.4;
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(ang) * r1, Math.sin(ang) * r1 * 0.76);
+                ctx.lineTo(Math.cos(ang) * r2, Math.sin(ang) * r2 * 0.76);
+                ctx.stroke();
+            }
+            ctx.strokeStyle = `rgba(255,252,210,${0.92 * alpha})`;
+            ctx.lineWidth = 4.0;
+            ctx.beginPath();
+            ctx.moveTo(-w * 0.16, h * 0.02);
+            ctx.lineTo(-w * 0.02, h * 0.18);
+            ctx.lineTo(w * 0.24, -h * 0.18);
+            ctx.stroke();
+            ctx.restore();
+        } else if (renderType === 'EFT_KASIYAS_TEMPERED_BLADE_READY') {
             const r = Math.max(48, (eff.w || 150) * 0.36) * burstScale;
             ctx.save();
             ctx.globalCompositeOperation = 'lighter';
@@ -4074,6 +4569,322 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
+    } else if (eff.type === 'p3M2KasiyasRise' || eff.type === 'p3M2KasiyasFall') {
+        const t = 1 - alpha;
+        const isFall = eff.type === 'p3M2KasiyasFall';
+        const w = Math.max(90, parseFloat(eff.w) || 145);
+        const h = Math.max(170, parseFloat(eff.h) || 240);
+        const d = Math.max(120, parseFloat(eff.d) || 180);
+        const dir = eff.dir === -1 ? -1 : 1;
+        const travel = Math.max(200, h * 1.05);
+        const fallEase = isFall ? (1 - Math.pow(1 - t, 1.6)) : Math.pow(t, 0.82);
+        const offsetY = isFall ? (-travel * (1 - fallEase)) : (-travel * fallEase);
+        const bodyAlpha = isFall ? Math.min(0.95, Math.max(0, (t - 0.02) / 0.42)) * alpha : Math.min(0.95, alpha);
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = Math.max(0, 0.48 * alpha);
+        ctx.strokeStyle = `rgba(150,72,255,${0.64 * alpha})`;
+        ctx.lineWidth = 4;
+        ctx.shadowBlur = 22;
+        ctx.shadowColor = 'rgba(160,60,255,0.78)';
+        ctx.beginPath();
+        ctx.ellipse(0, offsetY + h * 0.50, w * (0.62 + t * 0.12), d * 0.30, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(255,54,54,${0.44 * alpha})`;
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 12; i++) {
+            const a = Math.PI * 2 * i / 12 + t * 1.8;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(a) * w * 0.18, offsetY + h * 0.50 + Math.sin(a) * d * 0.10);
+            ctx.lineTo(Math.cos(a) * w * 0.64, offsetY + h * 0.50 + Math.sin(a) * d * 0.32);
+            ctx.stroke();
+        }
+        // noise teleport effect when appearing / disappearing
+        const noiseAlpha = isFall ? Math.max(0, 1 - t * 1.2) : Math.max(0, alpha * 0.75);
+        ctx.globalAlpha = 0.28 * noiseAlpha;
+        for (let i = 0; i < 16; i++) {
+            const rw = w * (0.18 + (i % 3) * 0.06);
+            const rh = 4 + (i % 4) * 2;
+            const rx = (-w * 0.45) + ((i * 43) % 100) / 100 * w * 0.90;
+            const ry = offsetY - h * 0.62 + ((i * 31) % 100) / 100 * h * 1.24;
+            ctx.fillStyle = i % 2 === 0 ? 'rgba(160,72,255,0.9)' : 'rgba(255,60,54,0.8)';
+            ctx.fillRect(rx, ry, rw, rh);
+        }
+        ctx.restore();
+
+        ctx.save();
+        ctx.translate(0, offsetY);
+        ctx.scale(dir, 1);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = bodyAlpha;
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = 'rgba(220,0,0,0.72)';
+        // more model-like silhouette
+        ctx.fillStyle = 'rgba(18,0,24,0.96)';
+        ctx.beginPath();
+        ctx.ellipse(0, -h * 0.22, w * 0.22, h * 0.24, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(0, -h * 0.56, w * 0.11, h * 0.10, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.14, -h * 0.02);
+        ctx.lineTo(-w * 0.08, h * 0.18);
+        ctx.lineTo(-w * 0.02, h * 0.18);
+        ctx.lineTo(-w * 0.01, -h * 0.02);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(w * 0.04, -h * 0.02);
+        ctx.lineTo(w * 0.02, h * 0.18);
+        ctx.lineTo(w * 0.10, h * 0.18);
+        ctx.lineTo(w * 0.14, -h * 0.02);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = `rgba(28,0,36,${0.98 * bodyAlpha})`;
+        ctx.lineWidth = Math.max(8, w * 0.09);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.30, -h * 0.36);
+        ctx.lineTo(w * 0.30, -h * 0.36);
+        ctx.stroke();
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = 'rgba(255,64,54,0.82)';
+        ctx.strokeStyle = `rgba(255,72,64,${0.86 * bodyAlpha})`;
+        ctx.lineWidth = Math.max(3, w * 0.035);
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.34, -h * 0.40);
+        ctx.lineTo(-w * 0.66, h * 0.10);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(255,186,70,${0.66 * bodyAlpha})`;
+        ctx.beginPath();
+        ctx.moveTo(w * 0.34, -h * 0.40);
+        ctx.lineTo(w * 0.68, h * 0.08);
+        ctx.stroke();
+        ctx.restore();
+
+        if (isFall && t > 0.55) {
+            const pulse = Math.min(1, (t - 0.55) / 0.45);
+            const a = (1 - pulse) * alpha;
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.shadowBlur = 26;
+            ctx.shadowColor = 'rgba(255,54,48,0.86)';
+            ctx.strokeStyle = `rgba(255,64,56,${0.96 * a})`;
+            ctx.lineWidth = 9;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, w * (0.90 + pulse * 2.2), d * (0.36 + pulse * 0.98), 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.strokeStyle = `rgba(0,0,0,${0.76 * a})`;
+            ctx.lineWidth = 5;
+            for (let i = 0; i < 16; i++) {
+                const a0 = Math.PI * 2 * i / 16;
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(a0) * w * 0.20, Math.sin(a0) * d * 0.10);
+                ctx.lineTo(Math.cos(a0) * w * (0.82 + pulse * 1.10), Math.sin(a0) * d * (0.30 + pulse * 0.74));
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+    } else if (eff.type === 'p3M2SkyCast' || eff.type === 'p3M2FinalSlashCharge') {
+        const t = 1 - alpha;
+        const w = Math.max(140, eff.w || 340);
+        const h = Math.max(180, eff.h || 300);
+        const isCharge = eff.type === 'p3M2FinalSlashCharge';
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        if (isCharge) {
+            const pulse = 0.55 + 0.45 * Math.sin(Date.now() / 70);
+            // 록맨 차지샷처럼 주변 에너지가 중심으로 빨려 들어오고, 검 주변에 압축되는 코어.
+            ctx.shadowBlur = 34 + pulse * 18;
+            ctx.shadowColor = 'rgba(255,62,58,0.88)';
+            const coreR = Math.max(34, Math.min(w * 0.13, 105)) * (0.78 + 0.22 * pulse + 0.30 * t);
+            const core = ctx.createRadialGradient(0, -h * 0.34, 4, 0, -h * 0.34, coreR * 1.35);
+            core.addColorStop(0, `rgba(255,232,220,${0.98 * alpha})`);
+            core.addColorStop(0.22, `rgba(255,72,62,${0.92 * alpha})`);
+            core.addColorStop(0.55, `rgba(142,52,255,${0.56 * alpha})`);
+            core.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = core;
+            ctx.beginPath();
+            ctx.arc(0, -h * 0.34, coreR * 1.45, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = `rgba(180,82,255,${0.70 * alpha})`;
+            ctx.lineWidth = 4.5;
+            for (let i = 0; i < 5; i++) {
+                const rr = coreR * (1.0 + i * 0.55 + t * 0.24);
+                const sy = -h * 0.34 + Math.sin(t * 5 + i) * h * 0.015;
+                ctx.beginPath();
+                ctx.ellipse(0, sy, rr * (1.75 + i * 0.08), rr * (0.44 + i * 0.03), 0, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            ctx.lineWidth = 3.2;
+            for (let i = 0; i < 28; i++) {
+                const a = (Math.PI * 2 * i / 28) + t * 3.5;
+                const outer = w * (0.42 + 0.12 * Math.sin(i * 1.7));
+                const inner = coreR * (0.78 + 0.20 * Math.sin(t * 6 + i));
+                const ox = Math.cos(a) * outer;
+                const oy = -h * 0.34 + Math.sin(a) * h * 0.24;
+                const ix = Math.cos(a) * inner;
+                const iy = -h * 0.34 + Math.sin(a) * inner * 0.36;
+                ctx.strokeStyle = i % 2 === 0 ? `rgba(255,70,58,${0.66 * alpha})` : `rgba(160,78,255,${0.66 * alpha})`;
+                ctx.beginPath();
+                ctx.moveTo(ox, oy);
+                ctx.lineTo(ix, iy);
+                ctx.stroke();
+            }
+
+            ctx.strokeStyle = `rgba(255,58,52,${0.36 * alpha})`;
+            ctx.lineWidth = 2.4;
+            for (let i = 0; i < 9; i++) {
+                const x0 = -w * 0.45 + i * w * 0.112;
+                ctx.beginPath();
+                ctx.moveTo(x0, -h * 0.16);
+                ctx.quadraticCurveTo(x0 * 0.42, -h * 0.30 - Math.sin(t * 4 + i) * 18, 0, -h * 0.34);
+                ctx.stroke();
+            }
+        } else {
+            ctx.shadowBlur = 22;
+            ctx.shadowColor = 'rgba(150,72,255,0.72)';
+            ctx.strokeStyle = `rgba(154,76,255,${0.76 * alpha})`;
+            ctx.lineWidth = 4;
+            for (let i = 0; i < 3; i++) {
+                ctx.beginPath();
+                ctx.ellipse(0, -h * (0.22 + i * 0.18), w * (0.38 + i * 0.16 + t * 0.08), h * (0.08 + i * 0.03), 0, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            ctx.strokeStyle = `rgba(255,54,42,${0.58 * alpha})`;
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 8; i++) {
+                const a = Math.PI * 2 * i / 8 + t * 1.4;
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(a) * w * 0.18, -h * 0.18 + Math.sin(a) * h * 0.03);
+                ctx.lineTo(Math.cos(a) * w * 0.52, -h * 0.36 + Math.sin(a) * h * 0.10);
+                ctx.stroke();
+            }
+        }
+        ctx.restore();
+    } else if (eff.type === 'p3M2OverheadImpact') {
+        const pulse = 1 - alpha;
+        const w = Math.max(160, eff.w || 700);
+        const d = Math.max(80, eff.d || 260);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.shadowBlur = 26;
+        ctx.shadowColor = 'rgba(255,64,54,0.88)';
+        ctx.strokeStyle = `rgba(255,74,60,${0.92 * alpha})`;
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, w * (0.22 + pulse * 0.34), d * (0.16 + pulse * 0.22), 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(18,0,0,${0.78 * alpha})`;
+        ctx.lineWidth = 4;
+        for (let i = 0; i < 12; i++) {
+            const a = Math.PI * 2 * i / 12;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(a) * w * 0.08, Math.sin(a) * d * 0.04);
+            ctx.lineTo(Math.cos(a) * w * (0.24 + pulse * 0.48), Math.sin(a) * d * (0.10 + pulse * 0.30));
+            ctx.stroke();
+        }
+        ctx.restore();
+    } else if (eff.type === 'p3M2FinalSlash') {
+        const pulse = 1 - alpha;
+        const w = Math.max(1200, eff.w || 2850);
+        const h = Math.max(520, eff.h || 760);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.shadowBlur = 42;
+        ctx.shadowColor = 'rgba(168,84,255,0.92)';
+
+        const bloom = ctx.createRadialGradient(0, 0, 6, 0, 0, Math.max(w * 0.22, h * 0.50));
+        bloom.addColorStop(0, `rgba(255,246,236,${0.95 * alpha})`);
+        bloom.addColorStop(0.14, `rgba(255,70,56,${0.90 * alpha})`);
+        bloom.addColorStop(0.36, `rgba(154,74,255,${0.58 * alpha})`);
+        bloom.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = bloom;
+        ctx.beginPath();
+        ctx.arc(0, 0, Math.max(w * 0.24, h * 0.62), 0, Math.PI * 2);
+        ctx.fill();
+
+        const horizontalGlow = ctx.createLinearGradient(-w * 0.54, 0, w * 0.54, 0);
+        horizontalGlow.addColorStop(0, 'rgba(0,0,0,0)');
+        horizontalGlow.addColorStop(0.20, `rgba(130,0,130,${0.24 * alpha})`);
+        horizontalGlow.addColorStop(0.50, `rgba(255,76,60,${0.42 * alpha})`);
+        horizontalGlow.addColorStop(0.80, `rgba(130,0,130,${0.24 * alpha})`);
+        horizontalGlow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = horizontalGlow;
+        ctx.fillRect(-w * 0.55, -h * 0.22, w * 1.1, h * 0.44);
+
+        const verticalGlow = ctx.createLinearGradient(0, -h * 0.86, 0, h * 0.86);
+        verticalGlow.addColorStop(0, 'rgba(0,0,0,0)');
+        verticalGlow.addColorStop(0.25, `rgba(120,0,150,${0.16 * alpha})`);
+        verticalGlow.addColorStop(0.50, `rgba(255,76,60,${0.32 * alpha})`);
+        verticalGlow.addColorStop(0.75, `rgba(120,0,150,${0.16 * alpha})`);
+        verticalGlow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = verticalGlow;
+        ctx.fillRect(-w * 0.08, -h * 0.88, w * 0.16, h * 1.76);
+
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = `rgba(168,84,255,${0.62 * alpha})`;
+        ctx.lineWidth = 42;
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.52, 0);
+        ctx.lineTo(w * 0.52, 0);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, -h * 0.78);
+        ctx.lineTo(0, h * 0.74);
+        ctx.stroke();
+
+        ctx.strokeStyle = `rgba(255,60,52,${0.98 * alpha})`;
+        ctx.lineWidth = 18;
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.54, 0);
+        ctx.lineTo(w * 0.54, 0);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, -h * 0.84);
+        ctx.lineTo(0, h * 0.80);
+        ctx.stroke();
+
+        ctx.strokeStyle = `rgba(255,232,210,${0.88 * alpha})`;
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.45, 0);
+        ctx.lineTo(w * 0.45, 0);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, -h * 0.62);
+        ctx.lineTo(0, h * 0.60);
+        ctx.stroke();
+
+        ctx.strokeStyle = `rgba(0,0,0,${0.82 * alpha})`;
+        ctx.lineWidth = 4;
+        for (let i = 0; i < 36; i++) {
+            const px = -w * 0.46 + (w * 0.92) * (i / 35);
+            const dir = i % 2 === 0 ? -1 : 1;
+            const len = 34 + (i % 5) * 18 + pulse * 18;
+            ctx.beginPath();
+            ctx.moveTo(px, 0);
+            ctx.lineTo(px + dir * (18 + (i % 4) * 7), -len);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(px, 0);
+            ctx.lineTo(px - dir * (14 + (i % 3) * 8), len * 0.78);
+            ctx.stroke();
+        }
+        ctx.strokeStyle = `rgba(154,76,255,${0.52 * alpha})`;
+        ctx.lineWidth = 3;
+        for (let i = 0; i < 22; i++) {
+            const a = Math.PI * 2 * i / 22 + pulse * 0.8;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(a) * w * 0.04, Math.sin(a) * h * 0.05);
+            ctx.lineTo(Math.cos(a) * w * (0.14 + (i % 3) * 0.025), Math.sin(a) * h * (0.18 + (i % 4) * 0.028));
+            ctx.stroke();
+        }
+        ctx.restore();
     } else if (eff.type === 'afterimageDisappear') {
         const w = Math.max(40, eff.w || 90);
         const h = Math.max(40, eff.h || 90);
@@ -4118,35 +4929,265 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
             ctx.lineTo(Math.cos(a) * w * (0.22 + pulse * 0.24), Math.sin(a) * d * (0.15 + pulse * 0.15));
             ctx.stroke();
         }
+        if (eff.oniMajor || String(eff.renderType || '').toUpperCase() === 'EFT_KASIYAS_P3_SLAM_THE_SWORD_DOWN') {
+            // 대형 패턴 내려찍기 전용 지면 파열 레이어. 기존 stompDust 기본 표현은 유지하고 바닥감만 강화한다.
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.shadowBlur = 18;
+            ctx.shadowColor = 'rgba(255,54,42,0.72)';
+            for (let r = 0; r < 3; r++) {
+                ctx.strokeStyle = r === 0 ? `rgba(0,0,0,${0.64 * alpha})` : (r === 1 ? `rgba(158,78,255,${0.54 * alpha})` : `rgba(255,58,46,${0.46 * alpha})`);
+                ctx.lineWidth = r === 0 ? 9 : (r === 1 ? 5 : 3);
+                ctx.beginPath();
+                ctx.ellipse(0, 0, w * (0.30 + pulse * (0.24 + r * 0.045)), d * (0.18 + pulse * (0.15 + r * 0.040)), 0, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            for (let i = 0; i < 16; i++) {
+                const a = (Math.PI * 2 / 16) * i + 0.08;
+                const sx = Math.cos(a) * w * 0.05;
+                const sy = Math.sin(a) * d * 0.04;
+                const ex = Math.cos(a) * w * (0.20 + pulse * 0.20 + (i % 3) * 0.018);
+                const ey = Math.sin(a) * d * (0.12 + pulse * 0.16 + (i % 2) * 0.014);
+                ctx.strokeStyle = i % 3 === 0 ? `rgba(0,0,0,${0.55 * alpha})` : (i % 3 === 1 ? `rgba(255,62,50,${0.42 * alpha})` : `rgba(188,120,255,${0.38 * alpha})`);
+                ctx.lineWidth = i % 3 === 0 ? 3.6 : 2.0;
+                ctx.beginPath();
+                ctx.moveTo(sx, sy);
+                ctx.lineTo(ex, ey);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
         ctx.restore();
     } else if (eff.type === 'shockwave') {
         const w = Math.max(80, eff.w || 300);
         const d = Math.max(40, eff.d || 140);
+        const h = Math.max(120, eff.h || 220);
         const pulse = 1 - alpha;
-        ctx.save();
-        ctx.shadowBlur = 16;
-        ctx.shadowColor = (eff.color || 'rgba(245,248,255,0.75)');
-        ctx.strokeStyle = eff.accentColor || `rgba(36,52,72,${0.84 * alpha})`;
-        ctx.lineWidth = 7;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, w * (0.20 + pulse * 0.28), d * (0.16 + pulse * 0.22), 0, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = eff.color || `rgba(245,248,255,${0.88 * alpha})`;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, w * (0.16 + pulse * 0.26), d * (0.12 + pulse * 0.20), 0, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.strokeStyle = `rgba(255,255,255,${0.74 * alpha})`;
-        ctx.lineWidth = 1.6;
-        for (let i = 0; i < 7; i++) {
-            const a = (Math.PI * 2 / 7) * i + pulse * 0.35;
+        const isP3OniRoar = String(eff.renderType || '').toUpperCase() === 'EFT_KASIYAS_P3_ATK_ROAR' || !!eff.oniMajor;
+        if (isP3OniRoar) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            const purple = eff.color || `rgba(154,76,255,${0.90 * alpha})`;
+            const red = eff.accentColor || `rgba(255,50,42,${0.90 * alpha})`;
+            const dark = eff.darkColor || `rgba(0,0,0,${0.96 * alpha})`;
+
+            // 전방 공격이 아니라 카시야스 중심 전방위 원형 포효. 지면에 붙는 타원형 파동을 여러 겹으로 출력한다.
+            ctx.shadowBlur = 28;
+            ctx.shadowColor = 'rgba(146,70,255,0.90)';
+            for (let ring = 0; ring < 3; ring++) {
+                const rPulse = Math.min(1, pulse + ring * 0.13);
+                const rw = w * (0.18 + rPulse * (0.30 + ring * 0.055));
+                const rd = d * (0.14 + rPulse * (0.27 + ring * 0.055));
+                ctx.strokeStyle = ring === 0 ? dark : (ring === 1 ? purple : red);
+                ctx.lineWidth = ring === 0 ? 13 : (ring === 1 ? 7 : 4);
+                ctx.beginPath();
+                ctx.ellipse(0, 0, rw, rd, 0, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            const groundGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, Math.max(w, d) * 0.58);
+            groundGrad.addColorStop(0.00, `rgba(255,80,64,${0.10 * alpha})`);
+            groundGrad.addColorStop(0.28, `rgba(168,78,255,${0.12 * alpha})`);
+            groundGrad.addColorStop(0.72, `rgba(0,0,0,${0.16 * alpha})`);
+            groundGrad.addColorStop(1.00, 'rgba(0,0,0,0)');
+            ctx.fillStyle = groundGrad;
             ctx.beginPath();
-            ctx.moveTo(Math.cos(a) * w * 0.08, Math.sin(a) * d * 0.06);
-            ctx.lineTo(Math.cos(a) * w * (0.18 + pulse * 0.23), Math.sin(a) * d * (0.12 + pulse * 0.20));
+            ctx.ellipse(0, 0, w * 0.44, d * 0.40, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 카시야스 문양 기반 귀면 환영. 돼지형 얼굴이 아니라 문양처럼 날카로운 뿔/눈/장식 실루엣으로 처리한다.
+            ctx.save();
+            const ghostScale = Math.min(1.40, Math.max(0.72, w / 1060));
+            ctx.translate(0, -h * 0.50);
+            ctx.scale(ghostScale, ghostScale);
+            ctx.globalAlpha *= 0.90;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.shadowBlur = 36;
+            ctx.shadowColor = 'rgba(138,66,255,0.94)';
+
+            // 원형 문양 배경: 실제 문양처럼 둥근 테두리 안에 귀면이 떠오르는 느낌.
+            ctx.fillStyle = `rgba(228,216,255,${0.055 * alpha})`;
+            ctx.strokeStyle = `rgba(206,166,255,${0.34 * alpha})`;
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.ellipse(0, -10, 250, 178, 0, 0, Math.PI * 2);
+            ctx.fill();
             ctx.stroke();
+            ctx.strokeStyle = `rgba(0,0,0,${0.42 * alpha})`;
+            ctx.lineWidth = 10;
+            ctx.beginPath();
+            ctx.ellipse(0, -10, 260, 186, 0, Math.PI * 0.05, Math.PI * 1.95);
+            ctx.stroke();
+
+            // 중앙 귀면 실루엣: 뾰족한 중앙 뿔과 좌우 뿔을 강조해 둥글게 보이지 않게 한다.
+            ctx.fillStyle = `rgba(8,0,18,${0.58 * alpha})`;
+            ctx.strokeStyle = `rgba(214,184,255,${0.60 * alpha})`;
+            ctx.lineWidth = 7;
+            ctx.beginPath();
+            ctx.moveTo(0, -176);                 // 중앙 뿔
+            ctx.lineTo(34, -104);
+            ctx.lineTo(88, -146);                // 우측 안쪽 뿔
+            ctx.lineTo(120, -74);
+            ctx.lineTo(204, -112);               // 우측 큰 뿔
+            ctx.quadraticCurveTo(176, -44, 142, -18);
+            ctx.lineTo(190, 12);                 // 볼/귀 날개
+            ctx.quadraticCurveTo(132, 52, 82, 62);
+            ctx.lineTo(56, 98);
+            ctx.lineTo(28, 78);
+            ctx.lineTo(0, 112);                  // 턱 중앙
+            ctx.lineTo(-28, 78);
+            ctx.lineTo(-56, 98);
+            ctx.lineTo(-82, 62);
+            ctx.quadraticCurveTo(-132, 52, -190, 12);
+            ctx.lineTo(-142, -18);
+            ctx.quadraticCurveTo(-176, -44, -204, -112);
+            ctx.lineTo(-120, -74);
+            ctx.lineTo(-88, -146);
+            ctx.lineTo(-34, -104);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // 문양 특유의 좌우 뿔 내부선.
+            ctx.shadowBlur = 18;
+            ctx.strokeStyle = `rgba(166,98,255,${0.44 * alpha})`;
+            ctx.lineWidth = 4;
+            for (const sx of [-1, 1]) {
+                ctx.beginPath();
+                ctx.moveTo(sx * 82, -132);
+                ctx.quadraticCurveTo(sx * 122, -112, sx * 128, -72);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(sx * 142, -92);
+                ctx.quadraticCurveTo(sx * 178, -70, sx * 188, -36);
+                ctx.stroke();
+            }
+
+            // 사납게 찢어진 눈. 둥근 눈/코를 피하고 문양형으로 날카롭게 처리.
+            ctx.shadowBlur = 24;
+            ctx.shadowColor = 'rgba(255,58,48,0.96)';
+            ctx.fillStyle = `rgba(255,58,48,${0.88 * alpha})`;
+            for (const sx of [-1, 1]) {
+                ctx.beginPath();
+                ctx.moveTo(sx * 26, -26);
+                ctx.lineTo(sx * 116, -52);
+                ctx.lineTo(sx * 94, -20);
+                ctx.lineTo(sx * 34, -10);
+                ctx.closePath();
+                ctx.fill();
+                ctx.strokeStyle = `rgba(0,0,0,${0.52 * alpha})`;
+                ctx.lineWidth = 4;
+                ctx.stroke();
+            }
+
+            // 코/송곳니/입은 추상 문양처럼 작고 날카롭게. 돼지 코처럼 보이는 타원은 사용하지 않는다.
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = `rgba(0,0,0,${0.88 * alpha})`;
+            ctx.strokeStyle = `rgba(232,214,255,${0.50 * alpha})`;
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(-18, 12);
+            ctx.lineTo(-4, 36);
+            ctx.lineTo(-28, 34);
+            ctx.closePath();
+            ctx.moveTo(18, 12);
+            ctx.lineTo(4, 36);
+            ctx.lineTo(28, 34);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            // 포효 입: 둥근 타원이 아니라 아래로 찢어진 날카로운 문양형 구멍.
+            ctx.beginPath();
+            ctx.moveTo(-54, 46);
+            ctx.lineTo(-20, 76 + pulse * 18);
+            ctx.lineTo(0, 58 + pulse * 12);
+            ctx.lineTo(20, 76 + pulse * 18);
+            ctx.lineTo(54, 46);
+            ctx.lineTo(24, 112 + pulse * 16);
+            ctx.lineTo(0, 92 + pulse * 18);
+            ctx.lineTo(-24, 112 + pulse * 16);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // 하단 구슬 장식 느낌. 문양의 원형 장식을 따라 검붉은 구슬을 배치한다.
+            ctx.shadowBlur = 16;
+            for (let i = -2; i <= 2; i++) {
+                const bx = i * 42;
+                const by = 116 - Math.abs(i) * 12;
+                const br = i === 0 ? 22 : 17;
+                const beadGrad = ctx.createRadialGradient(bx - br * 0.25, by - br * 0.35, 3, bx, by, br);
+                beadGrad.addColorStop(0, `rgba(240,220,255,${0.40 * alpha})`);
+                beadGrad.addColorStop(0.36, `rgba(110,40,180,${0.40 * alpha})`);
+                beadGrad.addColorStop(0.72, `rgba(20,0,30,${0.64 * alpha})`);
+                beadGrad.addColorStop(1, `rgba(0,0,0,${0.78 * alpha})`);
+                ctx.fillStyle = beadGrad;
+                ctx.beginPath();
+                ctx.arc(bx, by, br, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = `rgba(230,210,255,${0.30 * alpha})`;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
+
+            // 귀면 문양에서 사방으로 터지는 포효 방사선.
+            for (let i = 0; i < 22; i++) {
+                const a = (Math.PI * 2 / 22) * i + pulse * 0.18;
+                const r0 = 116;
+                const r1 = 198 + pulse * 54;
+                ctx.strokeStyle = i % 3 === 0 ? `rgba(255,60,50,${0.30 * alpha})` : (i % 3 === 1 ? `rgba(180,112,255,${0.28 * alpha})` : `rgba(0,0,0,${0.30 * alpha})`);
+                ctx.lineWidth = i % 3 === 2 ? 3.4 : 2.0;
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(a) * r0, 8 + Math.sin(a) * r0 * 0.64);
+                ctx.lineTo(Math.cos(a) * r1, 8 + Math.sin(a) * r1 * 0.64);
+                ctx.stroke();
+            }
+            ctx.restore();
+
+            // 지면 파열선: 원형 범위를 강조하되 사방으로 균등하게 뻗는다.
+            ctx.shadowBlur = 8;
+            for (let i = 0; i < 18; i++) {
+                const a = (Math.PI * 2 / 18) * i + pulse * 0.10;
+                const r0x = w * (0.08 + (i % 3) * 0.012);
+                const r0y = d * (0.06 + (i % 2) * 0.012);
+                const r1x = w * (0.24 + pulse * 0.18 + (i % 3) * 0.014);
+                const r1y = d * (0.18 + pulse * 0.15 + (i % 2) * 0.012);
+                ctx.strokeStyle = i % 3 === 0 ? `rgba(0,0,0,${0.55 * alpha})` : (i % 3 === 1 ? `rgba(255,64,52,${0.42 * alpha})` : `rgba(186,122,255,${0.42 * alpha})`);
+                ctx.lineWidth = i % 3 === 0 ? 3.6 : 2.2;
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(a) * r0x, Math.sin(a) * r0y);
+                ctx.lineTo(Math.cos(a) * r1x, Math.sin(a) * r1y);
+                ctx.stroke();
+            }
+            ctx.restore();
+        } else {
+            ctx.save();
+            ctx.shadowBlur = 16;
+            ctx.shadowColor = (eff.color || 'rgba(245,248,255,0.75)');
+            ctx.strokeStyle = eff.accentColor || `rgba(36,52,72,${0.84 * alpha})`;
+            ctx.lineWidth = 7;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, w * (0.20 + pulse * 0.28), d * (0.16 + pulse * 0.22), 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = eff.color || `rgba(245,248,255,${0.88 * alpha})`;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, w * (0.16 + pulse * 0.26), d * (0.12 + pulse * 0.20), 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.strokeStyle = `rgba(255,255,255,${0.74 * alpha})`;
+            ctx.lineWidth = 1.6;
+            for (let i = 0; i < 7; i++) {
+                const a = (Math.PI * 2 / 7) * i + pulse * 0.35;
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(a) * w * 0.08, Math.sin(a) * d * 0.06);
+                ctx.lineTo(Math.cos(a) * w * (0.18 + pulse * 0.23), Math.sin(a) * d * (0.12 + pulse * 0.20));
+                ctx.stroke();
+            }
+            ctx.restore();
         }
-        ctx.restore();
     } else if (eff.type === 'particle') {
         const pr = Math.max(2, eff.r || 4);
         ctx.fillStyle = eff.color || "rgba(255,255,255,0.95)";

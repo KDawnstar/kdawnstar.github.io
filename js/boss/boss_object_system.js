@@ -572,7 +572,6 @@ const BossObjectSystem = {
                 });
             }
             this.movePlayerToTerrainSafeArea(p, obj.safeArea || this.getTerrainSafeRect(obj, gameState), rect, gameState);
-            if (gameState.floatingTexts) gameState.floatingTexts.push({ x: p.x, y: p.y, z: (p.z || 0) + (p.bodyZ || 120) + 20, text: '낙하 피해', color: '#ff735f', size: '24px', timer: 0.75 });
             return true;
         }
         return false;
@@ -875,12 +874,96 @@ const BossObjectSystem = {
         return { start, end };
     },
 
+
+    parseKasiyasP3M2TileGroup: function(value) {
+        const raw = String(value || '').trim();
+        const result = [];
+        for (let i = 0; i < raw.length; i++) {
+            const n = parseInt(raw.charAt(i), 10);
+            if (n >= 1 && n <= 9 && !result.includes(n)) result.push(n);
+        }
+        return result;
+    },
+
+    getKasiyasP3M2TilePosition: function(gameState, tileNo) {
+        const worldW = Math.max(1, parseFloat(gameState && gameState.WORLD_WIDTH) || 1400);
+        const worldD = Math.max(1, parseFloat(gameState && gameState.WORLD_DEPTH) || 400);
+        const marginX = Math.max(72, Math.min(140, worldW * 0.085));
+        const marginY = Math.max(42, Math.min(70, worldD * 0.115));
+        const xs = [marginX, worldW * 0.5, worldW - marginX];
+        const ys = [marginY, worldD * 0.5, worldD - marginY];
+        const n = Math.max(1, Math.min(9, parseInt(tileNo, 10) || 5));
+        const idx = n - 1;
+        const col = idx % 3;
+        const row = Math.floor(idx / 3);
+        return { x: xs[col], y: ys[row], z: 0, tileNo: n, slotKey: `P3_M2_TILE_${n}` };
+    },
+
+    getKasiyasP3M2TilePositions: function(gameState, groupValue) {
+        const tiles = BossObjectSystem.parseKasiyasP3M2TileGroup(groupValue);
+        return tiles.map(tileNo => BossObjectSystem.getKasiyasP3M2TilePosition(gameState, tileNo));
+    },
+
+    getKasiyasP3M2ActiveDistortions: function(gameState) {
+        if (!gameState || !Array.isArray(gameState.bossAttackObjects)) return [];
+        return gameState.bossAttackObjects.filter(obj => {
+            if (!obj || !obj.active) return false;
+            const data = obj.data || {};
+            const type = String(obj.objectType || data.Object_Type || '').trim().toUpperCase();
+            return obj.kind === 'p3SpaceDistortion' || type === 'SPACE_DISTORTION';
+        });
+    },
+
+    getKasiyasP3M2DistortionState: function(gameState) {
+        const distortions = BossObjectSystem.getKasiyasP3M2ActiveDistortions(gameState);
+        const center = BossObjectSystem.getKasiyasP3M2TilePosition(gameState, 5);
+        const threshold = Math.max(90, Math.min(180, (parseFloat(gameState && gameState.WORLD_WIDTH) || 1400) * 0.09));
+        let hasCenter = false;
+        let centerCount = 0;
+        distortions.forEach(obj => {
+            const dx = (parseFloat(obj.x) || 0) - center.x;
+            const dy = (parseFloat(obj.y) || 0) - center.y;
+            if (Math.sqrt(dx * dx + dy * dy) <= threshold) {
+                hasCenter = true;
+                centerCount++;
+            }
+        });
+        return {
+            count: distortions.length,
+            hasCenter,
+            centerCount,
+            onlyCenter: distortions.length === 1 && hasCenter,
+            none: distortions.length === 0,
+            remainOther: distortions.length > 0 && !(distortions.length === 1 && hasCenter)
+        };
+    },
+
+    isKasiyasP3M2ActionConditionMet: function(action, gameState) {
+        const cond = String(action && action.Action_Condition_Type || '').trim().toUpperCase();
+        if (!cond || cond === 'NONE') return true;
+        const state = BossObjectSystem.getKasiyasP3M2DistortionState(gameState);
+        if (cond === 'P3_M2_ONLY_CENTER_DISTORTION_EXISTS') return !!state.onlyCenter;
+        if (cond === 'P3_M2_NO_SPACE_DISTORTION') return !!state.none;
+        if (cond === 'P3_M2_SPACE_DISTORTION_REMAIN') return !!state.remainOther;
+        return true;
+    },
+
     resolveBossObjectSpawnPositions: function(m, objData, action, gameState, spawnCount) {
         const count = Math.max(1, parseInt(spawnCount) || 1);
         const spawnPlace = String(objData && objData.Spawn_Place_Type || '').trim().toUpperCase();
         const positions = [];
         const boss = m && m.boss ? m.boss : null;
         const corners = this.getBossDiagonalCornerPositions(gameState, m);
+        const groupSpawnType = String(action && (action.Group_Object_Spawn_Type || action.Object_Group_Spawn_Type || action.Spawn_Object_Select_Type) || '').trim().toUpperCase();
+        const actionPlacementType = String(action && (action.Action_Position_Placement_Type || action.Position_Placement_Type) || '').trim().toUpperCase();
+        if (groupSpawnType === 'P3_M2_TILE_GROUP' || actionPlacementType === 'P3_M2_TILE_GROUP' || spawnPlace === 'P3_M2_TILE_GROUP') {
+            const groupValue = action && (action.Action_Position_Group || action.Position_Group || action.Spawn_Position_Group || action.Spawn_Place_Value);
+            const tilePositions = BossObjectSystem.getKasiyasP3M2TilePositions(gameState, groupValue);
+            if (tilePositions.length > 0) {
+                tilePositions.forEach(pos => positions.push({ x: pos.x, y: pos.y, z: pos.z || 0, tileNo: pos.tileNo, slotKey: pos.slotKey, cornerKey: pos.slotKey }));
+                return positions;
+            }
+        }
 
         if (typeof this.isBossFixedMapPlaceType === 'function' && this.isBossFixedMapPlaceType(spawnPlace)) {
             const pos = this.getBossFixedMapPosition(gameState, spawnPlace);
@@ -1169,10 +1252,6 @@ const BossObjectSystem = {
             maxLife: 0.40,
             color: 'rgba(255,46,56,0.94)',
             accentColor: 'rgba(34,0,0,0.92)'
-        });
-        gameState.floatingTexts.push({
-            x: p.x, y: p.y, z: p.z + (p.bodyZ || 100) + 58,
-            text: '귀면족의 낙인', color: '#ff5656', size: '24px', timer: 0.9
         });
         this.pushBossDebugLog(gameState, 'MARK', `${String(objData.Object_ID || '').trim()} ${this.getBossDebugName(objData)}`, 'applied to player');
         return true;
@@ -1849,6 +1928,41 @@ const BossObjectSystem = {
         const hasObjectActions = Array.isArray(objData.Runtime_Actions) && objData.Runtime_Actions.length > 0;
         const spawnCount = Math.max(1, parseInt(action.Object_Spawn_Count || action.Spawn_Count) || 1);
 
+        if (objectType === 'PLAYER_DEBUFF') {
+            if (typeof PlayerManager !== 'undefined' && PlayerManager.applyP3OniCurseFromObject) {
+                PlayerManager.applyP3OniCurseFromObject(gameState, objData, m, action);
+            }
+            return;
+        }
+
+        if (objectType === 'PLAYER_BUFF') {
+            const renderType = String(objData.Object_Render_Type || '').trim().toUpperCase();
+            if (renderType === 'OBJ_P3_PLAYER_BUFF_02' && typeof PlayerManager !== 'undefined' && PlayerManager.grantP3TrialBodyBuff) {
+                PlayerManager.grantP3TrialBodyBuff(gameState, objData);
+            } else if (typeof PlayerManager !== 'undefined' && PlayerManager.grantP3TrialWillBuff) {
+                PlayerManager.grantP3TrialWillBuff(gameState, objData);
+            }
+            return;
+        }
+
+        if (objectType === 'GIANT_SWORD_DROP') {
+            const positions = this.resolveBossObjectSpawnPositions(m, objData, action, gameState, spawnCount);
+            positions.forEach((pos, spawnIndex) => {
+                BossObjectSystem.createKasiyasP3M2GiantSwordDropObject.call(this, objectId, gameState, m, { x: pos.x, y: pos.y, z: pos.z || 0, tileNo: pos.tileNo, sourceAction: action });
+                this.pushBossDebugLog && this.pushBossDebugLog(gameState, 'OBJECT', `${objectId} ${this.getBossDebugName ? this.getBossDebugName(objData) : ''}`, `P3_M2 giant sword drop ${spawnIndex + 1}/${positions.length} tile ${pos.tileNo || '?'}`);
+            });
+            return;
+        }
+
+        if (objectType === 'APOSTLE_ENERGY_ERUPTION') {
+            const positions = this.resolveBossObjectSpawnPositions(m, objData, action, gameState, spawnCount);
+            positions.forEach((pos, spawnIndex) => {
+                BossObjectSystem.createKasiyasP3M2ApostleEnergyEruptionObject.call(this, objectId, gameState, m, { x: pos.x, y: pos.y, z: pos.z || 0, tileNo: pos.tileNo, sourceAction: action });
+                this.pushBossDebugLog && this.pushBossDebugLog(gameState, 'OBJECT', `${objectId} ${this.getBossDebugName ? this.getBossDebugName(objData) : ''}`, `P3_M2 apostle eruption ${spawnIndex + 1}/${positions.length} tile ${pos.tileNo || '?'}`);
+            });
+            return;
+        }
+
         if (objectType === 'GIANT_SWORD_TRACE') {
             BossObjectSystem.createKasiyasP3GiantSwordTraceObject.call(this, objectId, gameState, m, { sourceAction: action });
             return;
@@ -1868,21 +1982,22 @@ const BossObjectSystem = {
             return;
         }
 
-        if (objectType === 'DIMENSION_PORTAL' || objectType === 'FALLING_SWORD_RAIN') {
+        if (objectType === 'DIMENSION_PORTAL' || objectType === 'GIANT_DIMENSION_PORTAL_SKY' || objectType === 'FALLING_SWORD_RAIN') {
             const positions = this.resolveBossObjectSpawnPositions(m, objData, action, gameState, spawnCount);
             if (!gameState.bossAttackObjects) gameState.bossAttackObjects = [];
             positions.forEach((pos, spawnIndex) => {
                 const renderType = String(objData.Object_Render_Type || '').trim().toUpperCase();
                 const explicitDuration = parseFloat(objData.Object_Internal_Duration || objData.Object_Duration || objData.Object_Max_Life);
                 const actionDuration = parseFloat(action.Action_Anim_Duration || action.Duration);
-                const maxLife = Math.max(0.1, (!isNaN(explicitDuration) && explicitDuration > 0 ? explicitDuration : ((!isNaN(actionDuration) && actionDuration > 0) ? actionDuration : (objectType === 'DIMENSION_PORTAL' ? 3.8 : 2.0))));
+                const maxLife = Math.max(0.1, (!isNaN(explicitDuration) && explicitDuration > 0 ? explicitDuration : ((!isNaN(actionDuration) && actionDuration > 0) ? actionDuration : ((objectType === 'DIMENSION_PORTAL' || objectType === 'GIANT_DIMENSION_PORTAL_SKY') ? 3.8 : 2.0))));
                 const owner = (m && m.owner) ? m.owner : m;
-                if (objectType === 'DIMENSION_PORTAL') {
+                if (objectType === 'DIMENSION_PORTAL' || objectType === 'GIANT_DIMENSION_PORTAL_SKY') {
                     gameState.bossAttackObjects.push({
                         kind: 'dimensionPortal',
                         owner: owner,
                         sourceCaster: m,
                         data: objData,
+                        sourceAction: action,
                         active: true,
                         x: pos.x,
                         y: pos.y,
@@ -3009,6 +3124,26 @@ const BossObjectSystem = {
         return distortions.length;
     },
 
+    removeKasiyasP3M2CenterDistortionSilently: function(gameState) {
+        if (!gameState || !Array.isArray(gameState.bossAttackObjects)) return 0;
+        const center = BossObjectSystem.getKasiyasP3M2TilePosition(gameState, 5);
+        const threshold = Math.max(90, Math.min(180, (parseFloat(gameState && gameState.WORLD_WIDTH) || 1400) * 0.09));
+        let removed = 0;
+        gameState.bossAttackObjects.forEach(obj => {
+            if (!obj || !obj.active || obj.kind !== 'p3SpaceDistortion') return;
+            const dx = (parseFloat(obj.x) || 0) - center.x;
+            const dy = (parseFloat(obj.y) || 0) - center.y;
+            if (Math.sqrt(dx * dx + dy * dy) <= threshold) {
+                obj.active = false;
+                removed++;
+            }
+        });
+        if (typeof this.pushBossDebugLog === 'function' && removed > 0) {
+            this.pushBossDebugLog(gameState, 'OBJECT', '3P 대형2 중앙 공간왜곡 소멸', `${removed}개 소멸(폭발 없음)`);
+        }
+        return removed;
+    },
+
     updateKasiyasP3GiantSwordTraceObject: function(obj, deltaTime, gameState) {
         obj.timer = (parseFloat(obj.timer) || 0) + deltaTime;
         const data = obj.data || {};
@@ -3331,7 +3466,6 @@ const BossObjectSystem = {
             });
         }
         if (Array.isArray(gameState.floatingTexts)) {
-            gameState.floatingTexts.push({ x: createX, y: createY, z: 94, text: '공간 왜곡 발생', color: '#d9a8ff', size: '20px', timer: 0.75 });
         }
         if (typeof this.pushBossDebugLog === 'function') {
             this.pushBossDebugLog(gameState, 'OBJECT', `${String(data.Object_ID || '').trim()} ${this.getBossDebugName(data)}`, `guarded sword wave -> space distortion ${resultValue}`);
@@ -3350,7 +3484,6 @@ const BossObjectSystem = {
         if (obj.restoreTimer >= (obj.restoreRequired || 4)) {
             obj.active = false;
             if (gameState.effects) gameState.effects.push({ type: 'p3SpaceDistortionRestore', renderType: 'EFT_P3_SPACE_DISTORTION_RESTORE', x: obj.x, y: obj.y, z: 16, w: obj.w, d: obj.d, h: obj.h, life: 0.42, maxLife: 0.42 });
-            if (gameState.floatingTexts) gameState.floatingTexts.push({ x: obj.x, y: obj.y, z: 80, text: '공간 복구', color: '#cda8ff', size: '22px', timer: 0.65 });
             return false;
         }
         if (obj.maxLife && obj.timer > obj.maxLife) return false;
@@ -3632,6 +3765,259 @@ const BossObjectSystem = {
         return t < Math.max(0.1, parseFloat(obj.maxLife) || 2.0);
     },
 
+
+    createKasiyasP3M2GiantSwordDropObject: function(objectId, gameState, caster, options = {}) {
+        if (!gameState) return null;
+        const objData = gameState.DB_BOSS_PATTERN_OBJECT ? gameState.DB_BOSS_PATTERN_OBJECT[String(objectId)] : null;
+        if (!objData) return null;
+        if (!Array.isArray(gameState.bossAttackObjects)) gameState.bossAttackObjects = [];
+        const warningDuration = Math.max(0.08, parseFloat(objData.Warning_Duration) || 0.75);
+        const delay = Math.max(0, parseFloat(objData.Hitbox_Delay_Time) || 0);
+        const hitDuration = Math.max(0.05, parseFloat(objData.Hitbox_Duration) || 0.18);
+        const maxLifeRaw = parseFloat(objData.Object_Internal_Duration || objData.Object_Duration || objData.Object_Max_Life);
+        const maxLife = Math.max(warningDuration + delay + hitDuration + 0.16, (!isNaN(maxLifeRaw) && maxLifeRaw > 0) ? maxLifeRaw : 1.35);
+        const x = Math.max(0, Math.min(Math.max(1, parseFloat(gameState.WORLD_WIDTH) || 1400), parseFloat(options.x) || 0));
+        const y = Math.max(0, Math.min(Math.max(1, parseFloat(gameState.WORLD_DEPTH) || 400), parseFloat(options.y) || 0));
+        const obj = {
+            kind: 'p3M2GiantSwordDrop',
+            owner: (caster && caster.owner) ? caster.owner : caster,
+            sourceCaster: caster,
+            sourceAction: options.sourceAction || null,
+            data: objData,
+            active: true,
+            x, y,
+            z: Math.max(0, parseFloat(options.z) || 0),
+            timer: 0,
+            maxLife,
+            warningDuration,
+            delayTime: delay,
+            hitDuration,
+            hitFired: false,
+            distortionSpawned: false,
+            renderType: String(objData.Object_Render_Type || 'OBJ_P3_M2_GIANT_SWORD_DROP').trim(),
+            objectType: String(objData.Object_Type || 'GIANT_SWORD_DROP').trim(),
+            objectGroup: String(objData.Object_Group || '').trim(),
+            tileNo: options.tileNo || null,
+            w: Math.max(40, parseFloat(objData.Hitbox_Size_X) || 250),
+            d: Math.max(30, parseFloat(objData.Hitbox_Size_Y) || 130),
+            h: Math.max(80, parseFloat(objData.Hitbox_Size_Z) || 500),
+            seed: Math.random() * 1000
+        };
+        gameState.bossAttackObjects.push(obj);
+        if (Array.isArray(gameState.effects)) {
+            gameState.effects.push({
+                type: 'p3M2GiantSwordWarning',
+                renderType: objData.Warning_Render_Type || 'WARNING_P3_M2_GIANT_SWORD_DROP',
+                x, y, z: 0,
+                w: obj.w, d: obj.d, h: obj.h,
+                life: warningDuration,
+                maxLife: warningDuration,
+                tileNo: obj.tileNo
+            });
+        }
+        return obj;
+    },
+
+    updateKasiyasP3M2GiantSwordDropObject: function(obj, deltaTime, gameState) {
+        if (!obj || !gameState) return false;
+        obj.timer = (parseFloat(obj.timer) || 0) + (parseFloat(deltaTime) || 0);
+        const data = obj.data || {};
+        const impactStart = Math.max(0.08, parseFloat(obj.warningDuration) || 0.75) + Math.max(0, parseFloat(obj.delayTime) || 0);
+        const hitDuration = Math.max(0.05, parseFloat(obj.hitDuration) || 0.18);
+        const hitEnd = impactStart + hitDuration;
+        const owner = obj.owner || obj.sourceCaster || (Array.isArray(gameState.monsters) && gameState.monsters[0]) || null;
+        const hitbox = {
+            x: parseFloat(obj.x) || 0,
+            y: parseFloat(obj.y) || 0,
+            z: 0,
+            w: Math.max(40, parseFloat(obj.w) || parseFloat(data.Hitbox_Size_X) || 250),
+            d: Math.max(30, parseFloat(obj.d) || parseFloat(data.Hitbox_Size_Y) || 130),
+            h: Math.max(80, parseFloat(obj.h) || parseFloat(data.Hitbox_Size_Z) || 500)
+        };
+
+        if (!obj.hitFired && obj.timer >= impactStart) {
+            obj.hitFired = true;
+            if (!Array.isArray(gameState.hitboxes)) gameState.hitboxes = [];
+            gameState.hitboxes.push({ ...hitbox, type: 'circle', life: Math.max(0.10, hitDuration), sourceObject: obj, sourceObjectId: String(data.Object_ID || '') });
+            if (Array.isArray(gameState.effects)) {
+                gameState.effects.push({
+                    type: 'p3M2GiantSwordImpact',
+                    renderType: data.VFX_Type || 'EFT_P3_M2_GIANT_SWORD_DROP',
+                    x: hitbox.x, y: hitbox.y, z: 0,
+                    w: hitbox.w, d: hitbox.d, h: hitbox.h,
+                    life: 0.32, maxLife: 0.32
+                });
+            }
+            const p = gameState.player || null;
+            if (owner && owner.d && p && p.active && p.hp > 0 && typeof this.isPlayerInsideCircleHitbox === 'function' && this.isPlayerInsideCircleHitbox(hitbox, gameState)) {
+                const dmgRate = parseFloat(data.Object_DMG_Rate || data.ATK_Damage_Rate || data.Damage_Rate) || 0.8;
+                const baseDmg = (parseFloat(owner.d.atk) || 1) * dmgRate;
+                const attackData = {
+                    ...data,
+                    ATK_Damage_Rate: dmgRate,
+                    ATK_Hit_Count: data.Object_ATK_Hit_Count || 1,
+                    ATK_Cycle: data.Object_ATK_Cycle || 0,
+                    Action_Attack_Type: data.Object_Type || 'GIANT_SWORD_DROP',
+                    Guard_Direction_Type: data.Guard_Direction_Type || 'ANY_DIRECTION'
+                };
+                PlayerManager.takeDamage(
+                    gameState,
+                    calcScaledDamage(owner.d.level || 1, p.level || 1, baseDmg),
+                    hitbox.x, hitbox.y, null, 0, 0,
+                    this.buildGuardInfoFromAttackData ? this.buildGuardInfoFromAttackData(attackData, obj) : undefined
+                );
+            }
+        }
+
+        if (!obj.distortionSpawned && obj.timer >= hitEnd) {
+            obj.distortionSpawned = true;
+            const resultType = String(data.Object_Destroy_Result_Type || '').trim().toUpperCase();
+            const resultValue = String(data.Object_Destroy_Result_Value || '').trim();
+            if ((resultType === 'SPAWN_OBJECT' || resultType === 'CALL_OBJECT') && resultValue) {
+                BossObjectSystem.createKasiyasP3SpaceObject.call(this, resultValue, gameState, obj, {
+                    x: hitbox.x,
+                    y: hitbox.y,
+                    z: 0,
+                    sourceAction: obj.sourceAction || null
+                });
+            }
+        }
+
+        if (obj.timer >= Math.max(hitEnd + 0.08, parseFloat(obj.maxLife) || 1.35)) {
+            obj.active = false;
+            return false;
+        }
+        return true;
+    },
+
+
+    createKasiyasP3M2ApostleEnergyEruptionObject: function(objectId, gameState, caster, options = {}) {
+        if (!gameState) return null;
+        const objData = gameState.DB_BOSS_PATTERN_OBJECT ? gameState.DB_BOSS_PATTERN_OBJECT[String(objectId)] : null;
+        if (!objData) return null;
+        if (!Array.isArray(gameState.bossAttackObjects)) gameState.bossAttackObjects = [];
+
+        const warningDuration = Math.max(0.08, parseFloat(objData.Warning_Duration) || 0.5);
+        const delay = Math.max(0, parseFloat(objData.Hitbox_Delay_Time) || 0);
+        const hitDuration = Math.max(0.05, parseFloat(objData.Hitbox_Duration) || 0.3);
+        const maxLifeRaw = parseFloat(objData.Object_Internal_Duration || objData.Object_Duration || objData.Object_Max_Life);
+        const maxLife = Math.max(warningDuration + delay + hitDuration + 0.18, (!isNaN(maxLifeRaw) && maxLifeRaw > 0) ? maxLifeRaw : 1.15);
+        const x = Math.max(0, Math.min(Math.max(1, parseFloat(gameState.WORLD_WIDTH) || 1400), parseFloat(options.x) || 0));
+        const y = Math.max(0, Math.min(Math.max(1, parseFloat(gameState.WORLD_DEPTH) || 400), parseFloat(options.y) || 0));
+
+        const obj = {
+            kind: 'p3M2ApostleEnergyEruption',
+            owner: (caster && caster.owner) ? caster.owner : caster,
+            sourceCaster: caster,
+            sourceAction: options.sourceAction || null,
+            data: objData,
+            active: true,
+            x, y,
+            z: Math.max(0, parseFloat(options.z) || 0),
+            timer: 0,
+            maxLife,
+            warningDuration,
+            delayTime: delay,
+            hitDuration,
+            cycleTimer: 999,
+            hitsDone: 0,
+            renderType: String(objData.Object_Render_Type || 'OBJ_P3_M2_APOSTLE_ENERGY_ERUPTION').trim(),
+            objectType: String(objData.Object_Type || 'APOSTLE_ENERGY_ERUPTION').trim(),
+            objectGroup: String(objData.Object_Group || '').trim(),
+            tileNo: options.tileNo || null,
+            w: Math.max(40, parseFloat(objData.Hitbox_Size_X) || 230),
+            d: Math.max(30, parseFloat(objData.Hitbox_Size_Y) || 140),
+            h: Math.max(80, parseFloat(objData.Hitbox_Size_Z) || 300),
+            seed: Math.random() * 1000,
+            hitTargets: new Map()
+        };
+        gameState.bossAttackObjects.push(obj);
+
+        if (Array.isArray(gameState.effects)) {
+            gameState.effects.push({
+                type: 'p3M2ApostleEnergyWarning',
+                renderType: objData.Warning_Render_Type || 'WARNING_P3_M2_APOSTLE_ENERGY_ERUPTION',
+                x, y, z: 0,
+                w: obj.w, d: obj.d, h: obj.h,
+                life: warningDuration,
+                maxLife: warningDuration,
+                tileNo: obj.tileNo
+            });
+        }
+        return obj;
+    },
+
+    updateKasiyasP3M2ApostleEnergyEruptionObject: function(obj, deltaTime, gameState) {
+        if (!obj || !gameState) return false;
+        obj.timer = (parseFloat(obj.timer) || 0) + (parseFloat(deltaTime) || 0);
+        obj.cycleTimer = (parseFloat(obj.cycleTimer) || 0) + (parseFloat(deltaTime) || 0);
+
+        const data = obj.data || {};
+        const hitStart = Math.max(0.08, parseFloat(obj.warningDuration) || parseFloat(data.Warning_Duration) || 0.5) + Math.max(0, parseFloat(obj.delayTime) || parseFloat(data.Hitbox_Delay_Time) || 0);
+        const hitDuration = Math.max(0.05, parseFloat(obj.hitDuration) || parseFloat(data.Hitbox_Duration) || 0.3);
+        const hitEnd = hitStart + hitDuration;
+        const hitCount = Math.max(1, parseInt(data.Object_ATK_Hit_Count || data.ATK_Hit_Count) || 3);
+        const cycle = Math.max(0.01, parseFloat(data.Object_ATK_Cycle || data.ATK_Cycle) || 0.1);
+        const owner = obj.owner || obj.sourceCaster || (Array.isArray(gameState.monsters) && gameState.monsters[0]) || null;
+        const hitbox = {
+            x: parseFloat(obj.x) || 0,
+            y: parseFloat(obj.y) || 0,
+            z: 0,
+            w: Math.max(40, parseFloat(obj.w) || parseFloat(data.Hitbox_Size_X) || 230),
+            d: Math.max(30, parseFloat(obj.d) || parseFloat(data.Hitbox_Size_Y) || 140),
+            h: Math.max(80, parseFloat(obj.h) || parseFloat(data.Hitbox_Size_Z) || 300)
+        };
+
+        if (!obj.eruptionEffectFired && obj.timer >= hitStart) {
+            obj.eruptionEffectFired = true;
+            if (Array.isArray(gameState.effects)) {
+                gameState.effects.push({
+                    type: 'p3M2ApostleEnergyEruption',
+                    renderType: data.VFX_Type || 'EFT_P3_M2_APOSTLE_ENERGY_ERUPTION',
+                    x: hitbox.x, y: hitbox.y, z: 0,
+                    w: hitbox.w, d: hitbox.d, h: hitbox.h,
+                    life: Math.max(0.28, hitDuration + 0.18),
+                    maxLife: Math.max(0.28, hitDuration + 0.18)
+                });
+            }
+        }
+
+        if (obj.timer >= hitStart && obj.timer <= hitEnd && (obj.hitsDone || 0) < hitCount && obj.cycleTimer >= cycle) {
+            obj.cycleTimer = 0;
+            obj.hitsDone = (obj.hitsDone || 0) + 1;
+            if (!Array.isArray(gameState.hitboxes)) gameState.hitboxes = [];
+            gameState.hitboxes.push({ ...hitbox, type: 'circle', life: Math.max(0.08, cycle), sourceObject: obj, sourceObjectId: String(data.Object_ID || ''), apostleEnergyEruption: true });
+
+            const p = gameState.player || null;
+            if (owner && owner.d && p && p.active && p.hp > 0 && typeof this.isPlayerInsideCircleHitbox === 'function' && this.isPlayerInsideCircleHitbox(hitbox, gameState)) {
+                const dmgRate = parseFloat(data.Object_DMG_Rate || data.ATK_Damage_Rate || data.Damage_Rate) || 0.2;
+                const baseDmg = (parseFloat(owner.d.atk) || 1) * dmgRate;
+                const attackData = {
+                    ...data,
+                    ATK_Damage_Rate: dmgRate,
+                    ATK_Hit_Count: hitCount,
+                    ATK_Cycle: cycle,
+                    ATK_Can_Guard: false,
+                    Guard_Result_Type: 'UNGUARDABLE',
+                    Action_Attack_Type: data.Object_Type || 'APOSTLE_ENERGY_ERUPTION',
+                    Guard_Direction_Type: data.Guard_Direction_Type || 'ANY_DIRECTION'
+                };
+                PlayerManager.takeDamage(
+                    gameState,
+                    calcScaledDamage(owner.d.level || 1, p.level || 1, baseDmg),
+                    hitbox.x, hitbox.y, null, 0, 0,
+                    this.buildGuardInfoFromAttackData ? this.buildGuardInfoFromAttackData(attackData, obj) : undefined
+                );
+            }
+        }
+
+        if (obj.timer >= Math.max(hitEnd + 0.12, parseFloat(obj.maxLife) || 1.15)) {
+            obj.active = false;
+            return false;
+        }
+        return true;
+    },
+
     updateBossAttackObjects: function(deltaTime, gameState) {
         if (typeof this.flushKasiyasP2M2PendingSpecialObjectSpawns === 'function') {
             this.flushKasiyasP2M2PendingSpecialObjectSpawns(gameState);
@@ -3748,6 +4134,12 @@ const BossObjectSystem = {
 
             if (obj.kind === 'dimensionPortal') {
                 obj.timer = (parseFloat(obj.timer) || 0) + deltaTime;
+                const removeCond = String(obj.data && obj.data.Object_Remove_Cond || '').trim().toUpperCase();
+                if (removeCond === 'PATTERN_ACTION_END' && BossObjectSystem.isKasiyasP3DimensionCrackRemoveActionFinished(obj, gameState)) {
+                    obj.active = false;
+                    objects.splice(i, 1);
+                    continue;
+                }
                 if (obj.timer > (parseFloat(obj.maxLife) || 3.8)) {
                     objects.splice(i, 1);
                     continue;
@@ -3861,6 +4253,22 @@ const BossObjectSystem = {
                 if (obj.timer > maxLife && swords.length <= 0) {
                     objects.splice(i, 1);
                     continue;
+                }
+                continue;
+            }
+
+            if (obj.kind === 'p3M2GiantSwordDrop') {
+                BossObjectSystem.updateKasiyasP3M2GiantSwordDropObject.call(this, obj, deltaTime, gameState);
+                if (!obj.active) {
+                    objects.splice(i, 1);
+                }
+                continue;
+            }
+
+            if (obj.kind === 'p3M2ApostleEnergyEruption') {
+                BossObjectSystem.updateKasiyasP3M2ApostleEnergyEruptionObject.call(this, obj, deltaTime, gameState);
+                if (!obj.active) {
+                    objects.splice(i, 1);
                 }
                 continue;
             }

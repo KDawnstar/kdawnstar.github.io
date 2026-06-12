@@ -279,7 +279,12 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
 
             if (!['WAIT','WARNING_PATH','WARNING','SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT','MOVE','REMOVE_ALL_OBJECT','CLEAR_PATTERN_TERRAIN_OBJECTS','DIRECT_ACT','P2_M3_EXCLUSIVE_MODE_START'].includes(actionType)) {
                 const rawHitEnd = parseFloat(boss.action.Hitbox_End_Time);
-                const effectiveHitEnd = !isNaN(rawHitEnd) && rawHitEnd > 0 ? hitEnd : animDur;
+                const moveWaitUntil = boss.actionMove && boss.actionMove.attackAfterMove
+                    ? Math.max(0, parseFloat(boss.actionMove.duration) || parseFloat(boss.attackAfterMoveUntil) || 0)
+                    : 0;
+                const adjustedHitStart = moveWaitUntil > 0 ? Math.max(hitStart, moveWaitUntil) : hitStart;
+                const effectiveHitEndBase = !isNaN(rawHitEnd) && rawHitEnd > 0 ? hitEnd : animDur;
+                const effectiveHitEnd = moveWaitUntil > 0 ? Math.max(effectiveHitEndBase, adjustedHitStart + 0.02) : effectiveHitEndBase;
                 const hitboxType = String(boss.action.Hitbox_Type || '').trim().toUpperCase();
                 const isBodyCollision = hitboxType === 'HITBOX_BODY_COLLISION';
                 const hitCount = Math.max(1, parseInt(boss.action.ATK_Hit_Count) || 1);
@@ -287,7 +292,7 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
                 const hitCycle = isBodyCollision
                     ? Math.max(0.02, (!isNaN(rawCycle) && rawCycle > 0) ? rawCycle : 0.035)
                     : Math.max(0.01, (!isNaN(rawCycle) && rawCycle > 0) ? rawCycle : 0.12);
-                if (m.timer >= hitStart && m.timer <= effectiveHitEnd && (boss.actionHitsDone || 0) < hitCount) {
+                if (m.timer >= adjustedHitStart && m.timer <= effectiveHitEnd && (boss.actionHitsDone || 0) < hitCount) {
                     boss.actionCycleTimer = (boss.actionCycleTimer || 0) + deltaTime;
                     if (boss.actionCycleTimer >= hitCycle) {
                         boss.actionCycleTimer = 0;

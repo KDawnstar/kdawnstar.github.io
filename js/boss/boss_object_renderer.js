@@ -12,6 +12,20 @@ GameRenderer.drawBossPatternObjectEntity = function(ctx, obj) {
         return;
     }
 
+    if (obj.kind === 'p3M2GiantSwordDrop' || objectRenderTypeRaw === 'OBJ_P3_M2_GIANT_SWORD_DROP' || objectTypeRaw === 'GIANT_SWORD_DROP') {
+        if (typeof this.drawKasiyasP3M2GiantSwordDropObject === 'function') {
+            this.drawKasiyasP3M2GiantSwordDropObject(ctx, obj);
+        }
+        return;
+    }
+
+    if (obj.kind === 'p3M2ApostleEnergyEruption' || objectRenderTypeRaw === 'OBJ_P3_M2_APOSTLE_ENERGY_ERUPTION' || objectTypeRaw === 'APOSTLE_ENERGY_ERUPTION') {
+        if (typeof this.drawKasiyasP3M2ApostleEnergyEruptionObject === 'function') {
+            this.drawKasiyasP3M2ApostleEnergyEruptionObject(ctx, obj);
+        }
+        return;
+    }
+
     if (obj.kind === 'fallingSwordRain' || objectRenderTypeRaw === 'OBJ_DIMENSION_PORTAL_SWORD_RAIN' || objectTypeRaw === 'FALLING_SWORD_RAIN') {
         if (typeof this.drawKasiyasFallingSwordRainObject === 'function') {
             this.drawKasiyasFallingSwordRainObject(ctx, obj);
@@ -204,7 +218,58 @@ GameRenderer.drawBossPatternObjectEntity = function(ctx, obj) {
 
     const actionType = String(action.Action_Type || '').trim().toUpperCase();
     const rawPose = String(action.Action_Pose_Type || '').trim().toUpperCase();
-    if (actionType === 'WARNING' && rawPose === 'POSE_KASIYAS_SLAM_THE_SWORD_DOWN_READY') {
+    const objectActionId = String(action.Object_Action_ID || '').trim();
+    const patternId = String(action.Pattern_ID || obj.patternId || obj.sourcePatternId || '').trim();
+    const actionName = String(action.Object_Action_Name || action.Action_Name || '').trim();
+
+    const isP1M2AfterimageSlamWarning = patternId === '231007'
+        && actionType === 'WARNING'
+        && rawPose === 'POSE_KASIYAS_SLAM_THE_SWORD_DOWN_READY'
+        && actionName.indexOf('잔상 내려찍기 전조') >= 0;
+    const isP1M2AfterimageShockwaveAtk = patternId === '231007'
+        && actionType === 'ATK'
+        && identityEffect === 'EFT_SHOCKWAVE'
+        && (
+            objectActionId === '261055' || objectActionId === '261060' || objectActionId === '261065' || objectActionId === '261070' ||
+            actionName.indexOf('잔상 내려찍기 충격파') >= 0
+        );
+
+    if (isP1M2AfterimageSlamWarning || isP1M2AfterimageShockwaveAtk) {
+        const timer = Math.max(0, parseFloat(obj.actionTimer) || 0);
+        const currentIndex = parseInt(obj.actionIndex, 10);
+        const actions = Array.isArray(obj.actions) ? obj.actions : [];
+        const getDuration = (act, fallback = 0.5) => {
+            const d = parseFloat(act && act.Action_Anim_Duration);
+            return (isFinite(d) && d > 0) ? d : fallback;
+        };
+        const getHitStart = (act, fallback = 0.3) => {
+            const hs = parseFloat(act && act.Hitbox_Start_Time);
+            return (isFinite(hs) && hs >= 0) ? hs : fallback;
+        };
+
+        if (isP1M2AfterimageSlamWarning) {
+            const nextAction = actions[currentIndex + 1] || null;
+            const nextIsShockwave = nextAction && String(nextAction.Action_Type || '').trim().toUpperCase() === 'ATK'
+                && String(nextAction.VFX_Type || nextAction.Effect_Render_Type || '').trim().toUpperCase() === 'EFT_SHOCKWAVE';
+            const warningDuration = getDuration(action, 0.5);
+            const hitStart = nextIsShockwave ? getHitStart(nextAction, 0.3) : 0;
+            const total = Math.max(0.01, warningDuration + hitStart);
+            const p = Math.max(0, Math.min(1, timer / total));
+            this.drawBossObjectSlamGauge(ctx, obj, bodyY, h, p);
+        } else {
+            const prevAction = actions[currentIndex - 1] || null;
+            const prevIsWarning = prevAction && String(prevAction.Action_Type || '').trim().toUpperCase() === 'WARNING'
+                && String(prevAction.Action_Pose_Type || '').trim().toUpperCase() === 'POSE_KASIYAS_SLAM_THE_SWORD_DOWN_READY';
+            const warningDuration = prevIsWarning ? getDuration(prevAction, 0.5) : 0;
+            const hitStart = Math.max(0.01, getHitStart(action, 0.3));
+            if (timer <= hitStart + 0.04) {
+                const total = Math.max(0.01, warningDuration + hitStart);
+                const elapsed = warningDuration + Math.min(timer, hitStart);
+                const p = Math.max(0, Math.min(1, elapsed / total));
+                this.drawBossObjectSlamGauge(ctx, obj, bodyY, h, p);
+            }
+        }
+    } else if (actionType === 'WARNING' && rawPose === 'POSE_KASIYAS_SLAM_THE_SWORD_DOWN_READY') {
         this.drawBossObjectSlamGauge(ctx, obj, bodyY, h, progress);
     }
 };
@@ -1510,13 +1575,103 @@ GameRenderer.drawKasiyasDimensionPortalObject = function(ctx, obj) {
     const t = (parseFloat(obj.timer) || 0) + Date.now() / 1000;
     const life = Math.max(0.001, parseFloat(obj.maxLife) || 4);
     const progress = Math.max(0, Math.min(1, (parseFloat(obj.timer) || 0) / life));
-    const open = Math.min(1, progress / 0.14);
-    const close = Math.min(1, (1 - progress) / 0.16);
+    const open = Math.min(1, progress / 0.10);
+    const close = Math.min(1, (1 - progress) / 0.14);
     const alpha = Math.max(0, Math.min(1, open * close));
     const worldW = (this.gameState && this.gameState.WORLD_WIDTH) || 1400;
     const sx = Number.isFinite(parseFloat(obj.x)) ? parseFloat(obj.x) : worldW / 2;
     const worldY = Number.isFinite(parseFloat(obj.y)) ? parseFloat(obj.y) : 34;
     const sy = Math.max(82, Math.min(184, this.GROUND_BASE_Y + worldY - 250));
+
+    if (renderTypeForPortal === 'OBJ_P3_M2_GIANT_DIMENSION_PORTAL_SKY') {
+        const width = worldW * 1.06;
+        const height = 182;
+        const topY = Math.max(34, sy - 26 + Math.sin(t * 0.55) * 1.5);
+        const jag = 0.18 + 0.08 * Math.sin(t * 0.7);
+
+        ctx.save();
+        ctx.globalAlpha = 0.28 * alpha;
+        const fog = ctx.createLinearGradient(sx, topY - height * 0.85, sx, topY + height * 0.72);
+        fog.addColorStop(0, 'rgba(0,0,0,0)');
+        fog.addColorStop(0.18, 'rgba(34,0,60,0.30)');
+        fog.addColorStop(0.42, 'rgba(58,0,40,0.40)');
+        fog.addColorStop(0.74, 'rgba(14,0,18,0.18)');
+        fog.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = fog;
+        ctx.beginPath();
+        ctx.ellipse(sx, topY, width * 0.56, height * 0.78, 0, Math.PI, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        ctx.save();
+        ctx.globalAlpha = 0.82 * alpha;
+        ctx.fillStyle = 'rgba(6,0,10,0.92)';
+        ctx.beginPath();
+        ctx.moveTo(sx - width * 0.52, topY + 8);
+        for (let i = 0; i <= 28; i++) {
+            const p = i / 28;
+            const px = sx - width * 0.52 + width * 1.04 * p;
+            const spike = Math.sin(p * Math.PI) * height * (0.52 + 0.06 * Math.sin(t * 2.1 + p * 10.0));
+            const edge = ((i % 2 === 0) ? 1 : -1) * (6 + 8 * jag);
+            const py = topY - spike + edge;
+            if (i === 0) ctx.lineTo(px, topY); else ctx.lineTo(px, py);
+        }
+        for (let i = 28; i >= 0; i--) {
+            const p = i / 28;
+            const px = sx - width * 0.52 + width * 1.04 * p;
+            const bulge = Math.sin(p * Math.PI) * height * (0.18 + 0.02 * Math.cos(t * 1.7 + p * 8.0));
+            const edge = ((i % 2 === 0) ? -1 : 1) * (3 + 3 * jag);
+            const py = topY + bulge + edge;
+            ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.85 * alpha;
+        ctx.strokeStyle = 'rgba(180,84,255,0.88)';
+        ctx.lineWidth = 4.2;
+        ctx.shadowBlur = 28;
+        ctx.shadowColor = 'rgba(154,72,255,0.84)';
+        ctx.beginPath();
+        ctx.moveTo(sx - width * 0.52, topY + 3);
+        for (let i = 0; i <= 22; i++) {
+            const p = i / 22;
+            const px = sx - width * 0.52 + width * 1.04 * p;
+            const py = topY - Math.sin(p * Math.PI) * height * (0.56 + 0.05 * Math.sin(t * 2.0 + p * 6.0));
+            ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(255,78,70,0.74)';
+        ctx.lineWidth = 2.6;
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = 'rgba(255,62,62,0.66)';
+        for (let i = 0; i < 12; i++) {
+            const p = (i + 0.5) / 12;
+            const cx = sx - width * 0.42 + width * 0.84 * p;
+            const cy = topY - Math.sin(p * Math.PI) * height * 0.30;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + Math.sin(t * 2.0 + i) * 10, cy + 28);
+            ctx.lineTo(cx - 4, cy + 58 + (i % 3) * 8);
+            ctx.stroke();
+        }
+        const core = ctx.createRadialGradient(sx, topY - 4, 8, sx, topY - 4, width * 0.15);
+        core.addColorStop(0, 'rgba(255,224,255,0.72)');
+        core.addColorStop(0.25, 'rgba(160,88,255,0.54)');
+        core.addColorStop(0.6, 'rgba(90,0,120,0.16)');
+        core.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = core;
+        ctx.beginPath();
+        ctx.ellipse(sx, topY - 4, width * 0.15, height * 0.16, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        return;
+    }
+
     const rx = 180 + Math.sin(t * 2.3) * 8;
     const ry = 76 + Math.cos(t * 1.7) * 5;
     this.drawKasiyasCrackedBlackholePortal(ctx, sx, sy, rx, ry, alpha, t, { vertical: false, cracks: 14 });
@@ -2937,3 +3092,280 @@ GameRenderer.drawKasiyasPathDelayedSlashObject = function(ctx, obj) {
 };
 
 
+
+
+GameRenderer.drawKasiyasP3M2GiantSwordDropObject = function(ctx, obj) {
+    if (!ctx || !obj) return;
+    const data = obj.data || {};
+    const x = parseFloat(obj.x) || 0;
+    const groundY = this.GROUND_BASE_Y + (parseFloat(obj.y) || 0);
+    const timer = parseFloat(obj.timer) || 0;
+    const warning = Math.max(0.08, parseFloat(obj.warningDuration) || parseFloat(data.Warning_Duration) || 1.0);
+    const delay = Math.max(0, parseFloat(obj.delayTime) || parseFloat(data.Hitbox_Delay_Time) || 0);
+    const impactStart = warning + delay;
+    const w = Math.max(80, parseFloat(obj.w) || parseFloat(data.Hitbox_Size_X) || 250);
+    const d = Math.max(50, parseFloat(obj.d) || parseFloat(data.Hitbox_Size_Y) || 130);
+    const pre = Math.max(0, Math.min(1, timer / Math.max(impactStart, 0.001)));
+    const impactRate = timer < impactStart ? 0 : Math.max(0, Math.min(1, (timer - impactStart) / 0.18));
+    const flash = 0.5 + 0.5 * Math.sin(Date.now() / 75 + (obj.seed || 0));
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.18 + 0.16 * flash;
+    const beamGrad = ctx.createLinearGradient(x, groundY - 420, x, groundY + 12);
+    beamGrad.addColorStop(0, 'rgba(170,90,255,0)');
+    beamGrad.addColorStop(0.18, 'rgba(160,84,255,0.18)');
+    beamGrad.addColorStop(0.42, 'rgba(255,82,76,0.24)');
+    beamGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = beamGrad;
+    ctx.beginPath();
+    ctx.ellipse(x, groundY - 180, w * 0.16, 260, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = 0.20 + 0.22 * flash;
+    ctx.strokeStyle = 'rgba(255,76,76,0.98)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.ellipse(x, groundY, w * (0.45 + pre * 0.05), d * (0.42 + pre * 0.05), 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 0.12 + 0.10 * pre;
+    ctx.fillStyle = 'rgba(80,0,18,0.92)';
+    ctx.beginPath();
+    ctx.ellipse(x, groundY, w * 0.50, d * 0.46, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.38;
+    ctx.strokeStyle = 'rgba(30,0,50,0.96)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 8; i++) {
+        const a = Math.PI * 2 * i / 8 + pre * 0.8;
+        ctx.beginPath();
+        ctx.moveTo(x + Math.cos(a) * w * 0.12, groundY + Math.sin(a) * d * 0.09);
+        ctx.lineTo(x + Math.cos(a) * w * 0.48, groundY + Math.sin(a) * d * 0.36);
+        ctx.stroke();
+    }
+    ctx.restore();
+
+    const startHeight = 380;
+    const endHeight = 20;
+    const fallEase = Math.pow(pre, 0.58);
+    const swordY = groundY - (startHeight * (1 - fallEase) + endHeight * fallEase) + impactRate * 10;
+    const swordLen = Math.max(205, w * 1.00);
+    const bladeLen = swordLen * 0.82;
+    const bladeW = Math.max(22, w * 0.072);
+
+    ctx.save();
+    ctx.globalAlpha = timer < impactStart ? (0.88 + 0.10 * pre) : Math.max(0.18, 1 - impactRate * 0.86);
+    ctx.translate(x, swordY);
+    ctx.shadowBlur = 22;
+    ctx.shadowColor = 'rgba(255,60,60,0.52)';
+
+    // motion streaks
+    if (timer < impactStart) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = 'rgba(255,84,74,0.25)';
+        ctx.lineWidth = Math.max(3, bladeW * 0.18);
+        for (let i = 0; i < 4; i++) {
+            const ox = (i - 1.5) * bladeW * 0.35;
+            ctx.beginPath();
+            ctx.moveTo(ox, -swordLen * 0.22);
+            ctx.lineTo(ox, -swordLen * 0.72 - pre * 70);
+            ctx.stroke();
+        }
+        ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // hilt / guard
+    ctx.fillStyle = 'rgba(40,22,50,0.98)';
+    ctx.fillRect(-bladeW * 0.52, -swordLen * 0.57, bladeW * 1.04, swordLen * 0.24);
+    ctx.strokeStyle = 'rgba(198,188,210,0.60)';
+    ctx.lineWidth = 1.8;
+    for (let i = 0; i < 4; i++) {
+        const yy = -swordLen * 0.55 + i * swordLen * 0.05;
+        ctx.beginPath();
+        ctx.moveTo(-bladeW * 0.40, yy);
+        ctx.lineTo(bladeW * 0.40, yy + bladeW * 0.10);
+        ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(164,128,98,0.98)';
+    ctx.fillRect(-bladeW * 1.9, -swordLen * 0.35, bladeW * 3.8, bladeW * 0.62);
+    ctx.fillStyle = 'rgba(86,70,78,0.98)';
+    ctx.beginPath();
+    ctx.moveTo(-bladeW * 2.3, -swordLen * 0.02);
+    ctx.lineTo(-bladeW * 0.62, -swordLen * 0.30);
+    ctx.lineTo(bladeW * 0.62, -swordLen * 0.30);
+    ctx.lineTo(bladeW * 2.3, -swordLen * 0.02);
+    ctx.lineTo(bladeW * 0.76, bladeW * 0.14 - swordLen * 0.28);
+    ctx.lineTo(bladeW * 0.14, bladeW * 0.00 - swordLen * 0.20);
+    ctx.lineTo(-bladeW * 0.14, bladeW * 0.00 - swordLen * 0.20);
+    ctx.lineTo(-bladeW * 0.76, bladeW * 0.14 - swordLen * 0.28);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(230,58,48,0.95)';
+    ctx.beginPath();
+    ctx.arc(0, -swordLen * 0.17, bladeW * 0.34, 0, Math.PI * 2);
+    ctx.fill();
+
+    const grad = ctx.createLinearGradient(0, -swordLen * 0.20, 0, bladeLen * 0.78);
+    grad.addColorStop(0, 'rgba(246,220,198,0.98)');
+    grad.addColorStop(0.08, 'rgba(72,44,100,0.96)');
+    grad.addColorStop(0.22, 'rgba(84,58,118,0.98)');
+    grad.addColorStop(0.40, 'rgba(226,28,46,0.98)');
+    grad.addColorStop(0.84, 'rgba(138,0,30,0.98)');
+    grad.addColorStop(1, 'rgba(24,0,14,1)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(-bladeW * 0.95, -swordLen * 0.22);
+    ctx.quadraticCurveTo(-bladeW * 1.34, bladeLen * 0.05, -bladeW * 0.70, bladeLen * 0.54);
+    ctx.quadraticCurveTo(-bladeW * 0.45, bladeLen * 0.70, 0, bladeLen * 0.84);
+    ctx.quadraticCurveTo(bladeW * 1.12, bladeLen * 0.22, bladeW * 0.92, -swordLen * 0.22);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(12,0,8,0.94)';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,96,74,0.92)';
+    ctx.lineWidth = 2.8;
+    ctx.beginPath();
+    ctx.moveTo(bladeW * 0.12, -swordLen * 0.18);
+    ctx.quadraticCurveTo(bladeW * 0.56, bladeLen * 0.22, bladeW * 0.02, bladeLen * 0.76);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(88,44,110,0.72)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-bladeW * 0.12, -swordLen * 0.12);
+    ctx.quadraticCurveTo(-bladeW * 0.24, bladeLen * 0.20, -bladeW * 0.06, bladeLen * 0.56);
+    ctx.stroke();
+    ctx.restore();
+
+    if (timer >= impactStart) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = Math.max(0, 0.74 * (1 - impactRate));
+        ctx.strokeStyle = 'rgba(255,48,42,0.98)';
+        ctx.lineWidth = 7;
+        ctx.beginPath();
+        ctx.ellipse(x, groundY, w * (0.48 + impactRate * 0.32), d * (0.42 + impactRate * 0.24), 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(154,76,255,0.84)';
+        ctx.lineWidth = 3;
+        for (let i = 0; i < 12; i++) {
+            const a = Math.PI * 2 * i / 12 + impactRate * 0.8;
+            ctx.beginPath();
+            ctx.moveTo(x + Math.cos(a) * w * 0.14, groundY + Math.sin(a) * d * 0.09);
+            ctx.lineTo(x + Math.cos(a) * w * (0.46 + impactRate * 0.28), groundY + Math.sin(a) * d * (0.22 + impactRate * 0.22));
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+};
+
+
+GameRenderer.drawKasiyasP3M2ApostleEnergyEruptionObject = function(ctx, obj) {
+    if (!ctx || !obj) return;
+    const data = obj.data || {};
+    const x = parseFloat(obj.x) || 0;
+    const groundY = this.GROUND_BASE_Y + (parseFloat(obj.y) || 0);
+    const timer = parseFloat(obj.timer) || 0;
+    const warning = Math.max(0.08, parseFloat(obj.warningDuration) || parseFloat(data.Warning_Duration) || 0.5);
+    const hitStart = warning + Math.max(0, parseFloat(obj.delayTime) || parseFloat(data.Hitbox_Delay_Time) || 0);
+    const hitDuration = Math.max(0.05, parseFloat(obj.hitDuration) || parseFloat(data.Hitbox_Duration) || 0.3);
+    const w = Math.max(70, parseFloat(obj.w) || parseFloat(data.Hitbox_Size_X) || 230);
+    const d = Math.max(50, parseFloat(obj.d) || parseFloat(data.Hitbox_Size_Y) || 140);
+    const warnRate = Math.max(0, Math.min(1, timer / Math.max(0.001, warning)));
+    const burstRate = timer < hitStart ? 0 : Math.max(0, Math.min(1, (timer - hitStart) / Math.max(0.001, hitDuration)));
+    const flash = 0.5 + 0.5 * Math.sin(Date.now() / 60 + (obj.seed || 0));
+
+    if (timer < hitStart) {
+        ctx.save();
+        ctx.globalAlpha = 0.34 + 0.18 * flash;
+        ctx.strokeStyle = 'rgba(120,72,255,0.98)';
+        ctx.lineWidth = 4.4;
+        ctx.beginPath();
+        ctx.ellipse(x, groundY, w * (0.26 + warnRate * 0.18), d * (0.24 + warnRate * 0.16), 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = 'rgba(36,0,54,0.92)';
+        ctx.beginPath();
+        ctx.ellipse(x, groundY, w * 0.34, d * 0.28, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 0.26;
+        ctx.strokeStyle = 'rgba(12,0,24,0.98)';
+        ctx.lineWidth = 3.2;
+        for (let i = 0; i < 6; i++) {
+            const a = Math.PI * 2 * i / 6 + warnRate * 0.45;
+            ctx.beginPath();
+            ctx.moveTo(x + Math.cos(a) * w * 0.08, groundY + Math.sin(a) * d * 0.05);
+            ctx.lineTo(x + Math.cos(a) * w * 0.30, groundY + Math.sin(a) * d * 0.22);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 0.36;
+        ctx.strokeStyle = 'rgba(182,132,255,0.58)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(x - w * 0.20, groundY + 2);
+        ctx.lineTo(x - w * 0.08, groundY - 10 - warnRate * 14);
+        ctx.lineTo(x + w * 0.01, groundY - 2);
+        ctx.lineTo(x + w * 0.11, groundY - 16 - warnRate * 10);
+        ctx.lineTo(x + w * 0.20, groundY + 3);
+        ctx.stroke();
+        ctx.restore();
+        return;
+    }
+
+    const fade = Math.max(0, 1 - burstRate * 2.2);
+    if (fade <= 0.01) return;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.84 * fade;
+    ctx.strokeStyle = 'rgba(168,98,255,0.98)';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.ellipse(x, groundY, w * (0.18 + burstRate * 0.62), d * (0.14 + burstRate * 0.48), 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(54,0,84,0.88)';
+    ctx.lineWidth = 3.2;
+    ctx.beginPath();
+    ctx.ellipse(x, groundY, w * (0.12 + burstRate * 0.46), d * (0.10 + burstRate * 0.34), 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.54 * fade;
+    const glow = ctx.createRadialGradient(x, groundY, 3, x, groundY, Math.max(w, d) * 0.9);
+    glow.addColorStop(0, 'rgba(196,144,255,0.96)');
+    glow.addColorStop(0.22, 'rgba(116,42,210,0.76)');
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.ellipse(x, groundY, w * (0.24 + burstRate * 0.30), d * (0.18 + burstRate * 0.24), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = fade;
+    for (let i = 0; i < 8; i++) {
+        const a = Math.PI * 2 * i / 8 + (obj.seed || 0) * 0.2;
+        const spread = 0.15 + (i % 3) * 0.03;
+        const baseX = x + Math.cos(a) * w * 0.05;
+        const plumeW = w * (0.08 + (i % 2) * 0.03);
+        const topY = groundY - (92 + 48 * (1 - burstRate)) * (0.62 + (i % 4) * 0.12);
+        const grad2 = ctx.createLinearGradient(baseX, groundY, baseX, topY);
+        grad2.addColorStop(0, 'rgba(214,150,255,0.98)');
+        grad2.addColorStop(0.34, 'rgba(132,64,255,0.94)');
+        grad2.addColorStop(0.70, 'rgba(62,0,78,0.62)');
+        grad2.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad2;
+        ctx.beginPath();
+        ctx.moveTo(baseX - plumeW * 0.7, groundY);
+        ctx.quadraticCurveTo(baseX - plumeW * (0.7 + spread), (groundY + topY) * 0.70, baseX - plumeW * 0.16, topY + 12);
+        ctx.quadraticCurveTo(baseX, topY - 16, baseX + plumeW * 0.18, topY + 10);
+        ctx.quadraticCurveTo(baseX + plumeW * (0.7 + spread), (groundY + topY) * 0.72, baseX + plumeW * 0.72, groundY);
+        ctx.closePath();
+        ctx.fill();
+    }
+    ctx.restore();
+};
