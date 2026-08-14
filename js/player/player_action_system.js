@@ -252,6 +252,20 @@ const PlayerAction = {
     },
 
     handleInput: function(deltaTime, keys, gameState, player) {
+        // P3_M3 대화 중에는 X/Space 입력이 대화 넘김으로만 사용되므로 전투 조작을 차단한다.
+        if (gameState && typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.isDialogueActive && P3M3FinalIssenSystem.isDialogueActive(gameState)) {
+            player.isRunning = false;
+            player.runDirection = null;
+            player.kbVx = 0;
+            player.kbVy = 0;
+            player.dashSpeedX = 0;
+            player.dashSpeedY = 0;
+            if (player.state === 'Walk' || player.state === 'Run' || player.state === 'Dash' || player.state === 'Atk' || player.state === 'Guard') {
+                player.state = 'Idle';
+            }
+            return;
+        }
+
         // 2페이즈 대형 패턴 2번 거대 검 조준 모드/발사 직후에는
         // X/Z/Space/C가 기존 공격·대쉬·점프 입력으로 새지 않도록 PlayerAction 입력을 선점 차단한다.
         const resetP2M2AimPlayerInput = () => {

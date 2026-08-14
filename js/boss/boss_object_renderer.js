@@ -5,6 +5,7 @@ GameRenderer.drawBossPatternObjectEntity = function(ctx, obj) {
 
     const objectRenderTypeRaw = String(obj.renderType || obj.data && obj.data.Object_Render_Type || '').trim().toUpperCase();
     const objectTypeRaw = String(obj.data && obj.data.Object_Type || '').trim().toUpperCase();
+    const vfxRaw = String(obj.data && obj.data.VFX_Type || '').trim().toUpperCase();
     if (obj.kind === 'dimensionPortal' || objectRenderTypeRaw === 'OBJ_DIMENSION_PORTAL' || objectTypeRaw === 'DIMENSION_PORTAL') {
         if (typeof this.drawKasiyasDimensionPortalObject === 'function') {
             this.drawKasiyasDimensionPortalObject(ctx, obj);
@@ -78,6 +79,13 @@ GameRenderer.drawBossPatternObjectEntity = function(ctx, obj) {
     if (objectRenderTypeRaw === 'OBJ_P3_GIANT_SWORD_WAVE' || objectTypeRaw === 'GIANT_SWORD_WAVE') {
         if (typeof this.drawKasiyasP3GiantSwordWaveObject === 'function') {
             this.drawKasiyasP3GiantSwordWaveObject(ctx, obj);
+        }
+        return;
+    }
+
+    if (objectRenderTypeRaw === 'OBJ_CIRCLE_SWORD_WAVE' || vfxRaw === 'EFT_CIRCLE_SWORD_WAVE' || objectRenderTypeRaw === 'OBJ_P2_DOUBLE_CIRCLE_CROSS_SWORD_WAVE' || vfxRaw === 'EFT_P2_DOUBLE_CIRCLE_CROSS_SWORD_WAVE') {
+        if (typeof this.drawKasiyasCircleSwordWaveObject === 'function') {
+            this.drawKasiyasCircleSwordWaveObject(ctx, obj);
         }
         return;
     }
@@ -192,7 +200,7 @@ GameRenderer.drawBossPatternObjectEntity = function(ctx, obj) {
         this.drawKasiyasArmorOutline(ctx, w, h, opacity);
     }
     this.drawKasiyasModel(ctx, {
-        m: { boss: { action: { Action_Move_Type: action.Move_Type || action.Action_Move_Type || '', Move_Type: action.Move_Type || '', VFX_Type: action.VFX_Type || action.Effect_Render_Type || '', Effect_Render_Type: action.Effect_Render_Type || action.VFX_Type || '' } } },
+        m: { boss: { action: { Action_Move_Type: action.Move_Type || action.Action_Move_Type || '', Move_Type: action.Move_Type || '', VFX_Type: action.VFX_Type || action.Effect_Render_Type || '', Effect_Render_Type: action.VFX_Type || action.Effect_Render_Type || '' } } },
         d: d,
         renderType: d.renderType || d.Model_Render_Type || 'RENDER_KASIYAS_P1',
         w: w,
@@ -287,11 +295,16 @@ GameRenderer.drawKasiyasTerrainObject = function(ctx, obj) {
     const sx = rect.x;
     const sy = this.GROUND_BASE_Y + rect.y;
     const sw = Math.max(1, rect.w);
-    const sh = Math.max(1, rect.h);
     const t = (Date.now() / 1000 + (obj.timer || 0)) % 1000;
     const pulse = 0.5 + Math.sin(Date.now() / 120) * 0.5;
     const stageH = (this.gameState && this.gameState.WORLD_DEPTH) || 400;
     const isTopZone = rect.centerY <= stageH * 0.5;
+    const isP3M3P2Terrain = !!(obj.p3m3Terrain && String(obj.p3m3TerrainRole || '').trim().toUpperCase() === 'P2_CLONE' && String(obj.sourcePatternId || '').trim() === '232003');
+    const mapBottomY = this.GROUND_BASE_Y + stageH;
+    const visualBottomY = isP3M3P2Terrain && !isTopZone
+        ? Math.max(sy + Math.max(1, rect.h), mapBottomY, this.canvas ? this.canvas.height - 6 : mapBottomY)
+        : sy + Math.max(1, rect.h);
+    const sh = Math.max(1, visualBottomY - sy);
 
     const drawJaggedEdge = (edgeY, topSide, alpha = 1) => {
         ctx.save();
@@ -455,15 +468,23 @@ GameRenderer.drawKasiyasTerrainObject = function(ctx, obj) {
     }
 
     if (isCollapse) {
-        ctx.globalAlpha = Math.max(0.10, 0.74 - (obj.timer || 0) * 0.28);
+        ctx.globalAlpha = isP3M3P2Terrain ? Math.max(0.20, 0.92 - (obj.timer || 0) * 0.18) : Math.max(0.10, 0.74 - (obj.timer || 0) * 0.28);
         ctx.fillStyle = 'rgba(12,5,3,0.86)';
         ctx.fillRect(sx, sy, sw, sh);
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = Math.max(0, 0.64 - (obj.timer || 0) * 0.42);
+        ctx.globalAlpha = isP3M3P2Terrain ? Math.max(0.18, 0.82 - (obj.timer || 0) * 0.28) : Math.max(0, 0.64 - (obj.timer || 0) * 0.42);
         ctx.fillStyle = 'rgba(255,94,54,0.20)';
         ctx.fillRect(sx - 8, sy - 8, sw + 16, sh + 16);
-        drawCracks(34, 'rgba(255,126,76,0.62)', 0.92, 1.35, true);
+        drawCracks(isP3M3P2Terrain ? 48 : 34, 'rgba(255,126,76,0.62)', isP3M3P2Terrain ? 1.0 : 0.92, isP3M3P2Terrain ? 1.65 : 1.35, true);
         drawJaggedEdge(isTopZone ? sy + sh : sy, !isTopZone, 0.95);
+        if (isP3M3P2Terrain && !isTopZone) {
+            ctx.strokeStyle = 'rgba(255,210,140,0.58)';
+            ctx.lineWidth = 3.2;
+            ctx.beginPath();
+            ctx.moveTo(sx + 8, sy + 8);
+            ctx.lineTo(sx + sw - 8, sy + 8);
+            ctx.stroke();
+        }
         ctx.restore();
         return;
     }
@@ -474,7 +495,7 @@ GameRenderer.drawKasiyasTerrainObject = function(ctx, obj) {
         abyss.addColorStop(0, 'rgba(2,2,5,0.90)');
         abyss.addColorStop(0.52, 'rgba(0,0,0,0.94)');
         abyss.addColorStop(1, 'rgba(12,4,3,0.88)');
-        ctx.globalAlpha = 0.86;
+        ctx.globalAlpha = isP3M3P2Terrain ? 0.96 : 0.86;
         ctx.fillStyle = abyss;
         ctx.fillRect(sx, sy, sw, sh);
         ctx.globalAlpha = 0.42;
@@ -486,8 +507,22 @@ GameRenderer.drawKasiyasTerrainObject = function(ctx, obj) {
             ctx.ellipse(px, py, 8 + (i % 4) * 3, 3 + (i % 3), (i % 5) * 0.4, 0, Math.PI * 2);
             ctx.fill();
         }
-        drawCracks(24, 'rgba(56,42,38,0.74)', 0.72, 0.85, false);
+        drawCracks(isP3M3P2Terrain ? 38 : 24, isP3M3P2Terrain ? 'rgba(255,122,72,0.46)' : 'rgba(56,42,38,0.74)', isP3M3P2Terrain ? 0.92 : 0.72, isP3M3P2Terrain ? 1.18 : 0.85, isP3M3P2Terrain);
         drawJaggedEdge(isTopZone ? sy + sh : sy, !isTopZone, 1.0);
+        if (isP3M3P2Terrain && !isTopZone) {
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.globalAlpha = 0.72;
+            ctx.strokeStyle = `rgba(255,166,88,${0.38 + pulse * 0.20})`;
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(sx + 8, sy + 6);
+            ctx.lineTo(sx + sw - 8, sy + 6);
+            ctx.stroke();
+            ctx.fillStyle = `rgba(255,80,40,${0.10 + pulse * 0.08})`;
+            ctx.fillRect(sx, sy, sw, Math.min(34, sh));
+            ctx.globalAlpha = 1;
+            ctx.globalCompositeOperation = 'source-over';
+        }
         // 안전 지대 쪽으로 살짝 튀어나온 깨진 판석을 그려 중앙 발판이 다리처럼 보이게 한다.
         ctx.save();
         ctx.globalAlpha = 0.70;
@@ -2340,6 +2375,100 @@ GameRenderer.drawKasiyasP2M2FiredGiantSwordObject = function(ctx, obj) {
     this.drawKasiyasP2M2GiantSwordBladeShape(ctx, len, bladeH, 0.98, { shadowBlur: 16 });
     ctx.restore();
 };
+
+GameRenderer.drawKasiyasCircleSwordWaveObject = function(ctx, obj) {
+    if (!obj || obj.active === false) return;
+    const data = obj.data || {};
+    const dir = obj.faceDir === -1 ? -1 : 1;
+    const w = Math.max(110, parseFloat(obj.w) || parseFloat(data.Hitbox_Size_X) || 250);
+    const h = Math.max(100, parseFloat(obj.h) || parseFloat(data.Hitbox_Size_Z) || 200);
+    const timer = Math.max(0, parseFloat(obj.timer) || 0);
+    const maxLife = Math.max(0.1, parseFloat(obj.maxLife) || parseFloat(data.Object_Internal_Duration) || 3);
+    const lifeT = Math.max(0, Math.min(1, timer / maxLife));
+    const alpha = Math.max(0.35, Math.min(1, 1 - lifeT * 0.20));
+    const drawY = this.GROUND_BASE_Y + (parseFloat(obj.y) || 0);
+    const drawZ = drawY - (parseFloat(obj.z) || h * 0.45);
+
+    ctx.save();
+    ctx.translate(parseFloat(obj.x) || 0, drawZ);
+    ctx.scale(dir, 1);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // 기본 패턴용 원형 검기: 두 개의 매끄러운 원형 궤도가 X자처럼 겹치는 형태.
+    const rx = Math.max(w * 0.43, 102);
+    const ry = Math.max(h * 0.24, 50);
+    const dark = `rgba(18,0,0,${0.84 * alpha})`;
+    const core = `rgba(255,58,42,${0.84 * alpha})`;
+    const hot = `rgba(255,224,174,${0.72 * alpha})`;
+    const violet = `rgba(126,36,184,${0.34 * alpha})`;
+
+    const aura = ctx.createRadialGradient(0, 0, 8, 0, 0, Math.max(rx, ry) * 1.10);
+    aura.addColorStop(0, `rgba(255,68,48,${0.055 * alpha})`);
+    aura.addColorStop(0.55, `rgba(104,0,0,${0.080 * alpha})`);
+    aura.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx * 1.04, ry * 1.28, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const drawTiltedRing = (rot, stroke, lineW, blur, scaleY = 1, alphaMul = 1) => {
+        ctx.save();
+        ctx.rotate(rot);
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = lineW;
+        ctx.shadowColor = stroke;
+        ctx.shadowBlur = blur;
+        ctx.globalAlpha *= alphaMul;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, rx, ry * scaleY, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    };
+
+    // 외곽 암색으로 두 원을 먼저 확실히 잡고, 안쪽 붉은/밝은 선을 올린다.
+    const tilt = 0.58;
+    drawTiltedRing( tilt, dark, Math.max(9.0, h * 0.052), 12, 0.92, 0.95);
+    drawTiltedRing(-tilt, dark, Math.max(9.0, h * 0.052), 12, 0.92, 0.95);
+    drawTiltedRing( tilt, violet, Math.max(5.0, h * 0.030), 12, 0.88, 0.88);
+    drawTiltedRing(-tilt, violet, Math.max(5.0, h * 0.030), 12, 0.88, 0.88);
+    drawTiltedRing( tilt, core, Math.max(3.6, h * 0.020), 10, 0.92, 1.0);
+    drawTiltedRing(-tilt, core, Math.max(3.6, h * 0.020), 10, 0.92, 1.0);
+    drawTiltedRing( tilt, hot, Math.max(1.4, h * 0.007), 6, 0.92, 0.78);
+    drawTiltedRing(-tilt, hot, Math.max(1.4, h * 0.007), 6, 0.92, 0.78);
+
+    // X자 교차 중심부 하이라이트.
+    ctx.save();
+    ctx.strokeStyle = `rgba(255,232,184,${0.36 * alpha})`;
+    ctx.lineWidth = Math.max(1.5, h * 0.008);
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = ctx.strokeStyle;
+    ctx.beginPath();
+    ctx.moveTo(-rx * 0.48, -ry * 0.42);
+    ctx.quadraticCurveTo(0, 0, rx * 0.48, ry * 0.42);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-rx * 0.48, ry * 0.42);
+    ctx.quadraticCurveTo(0, 0, rx * 0.48, -ry * 0.42);
+    ctx.stroke();
+    ctx.restore();
+
+    // 사출 속도선은 왼쪽 후방에 짧고 깔끔하게만 남긴다.
+    for (let i = 0; i < 4; i++) {
+        const yy = -ry * 0.46 + i * ry * 0.30;
+        ctx.strokeStyle = i % 2 ? `rgba(255,64,44,${0.18 * alpha})` : `rgba(22,0,0,${0.30 * alpha})`;
+        ctx.lineWidth = i % 2 ? 1.2 : 2.0;
+        ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.moveTo(-rx * (1.18 + lifeT * 0.08), yy);
+        ctx.quadraticCurveTo(-rx * 0.84, yy * 0.88, -rx * 0.56, yy * 0.50);
+        ctx.stroke();
+    }
+
+    ctx.restore();
+};
+
 
 GameRenderer.drawKasiyasCrossSwordWaveObject = function(ctx, obj) {
     if (!obj || obj.active === false) return;

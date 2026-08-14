@@ -5,6 +5,11 @@
 
 const MonsterUpdateSystem = {
     update: function(deltaTime, gameState) {
+        // P3_M3 대화 중에는 분신 AI/보스 패턴/전용 오브젝트 타이머를 멈춘다.
+        if (typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.isDialogueActive && P3M3FinalIssenSystem.isDialogueActive(gameState)) {
+            return;
+        }
+
         this.updateBossAttackObjects(deltaTime, gameState);
 
         if (gameState.isAutoSpawn) {
@@ -65,6 +70,13 @@ const MonsterUpdateSystem = {
             const aiDistX = canEngage ? distX : 999999;
             const aiDistY = canEngage ? distY : 999999;
             const aiDist2D = canEngage ? weightedDist2D : 999999;
+
+            if (typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.handleMonsterUpdate && P3M3FinalIssenSystem.handleMonsterUpdate(m, deltaTime, gameState)) {
+                const marginX = d.bodyX * m.scale / 2;
+                m.x = Math.max(marginX, Math.min(gameState.WORLD_WIDTH - marginX, m.x));
+                m.y = Math.max(0, Math.min(gameState.WORLD_DEPTH, m.y));
+                continue;
+            }
 
             if (this.isBossPatternMonster(m)) {
                 this.updateBossPatternMonster(m, deltaTime, distX, distY, weightedDist2D, gameState);

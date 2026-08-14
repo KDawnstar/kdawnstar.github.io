@@ -8,6 +8,44 @@
 // 실제 구현은 이 파일의 BossCombatSystem이 담당한다.
 
 const BossCombatSystem = {
+    // 기본/후반부 피해 배율을 한 곳에서 선택한다.
+    // 후반부 값이 없거나 구버전 JSON을 사용하는 경우 기존 기본 피해 배율로 자동 fallback한다.
+    getBossRuntimeDamageRate: function(owner, data, baseField, lateField, fallbackFields = [], defaultRate = 1) {
+        const source = data || {};
+        const boss = owner && owner.boss ? owner.boss : null;
+        const readPositive = (field) => {
+            if (!field) return null;
+            const raw = source[field];
+            if (raw === null || raw === undefined || raw === '') return null;
+            const value = parseFloat(raw);
+            return (!isNaN(value) && value > 0) ? value : null;
+        };
+
+        if (boss && boss.isLatePhase) {
+            const lateRate = readPositive(lateField);
+            if (lateRate !== null) return lateRate;
+        }
+
+        const baseRate = readPositive(baseField);
+        if (baseRate !== null) return baseRate;
+        for (const field of (Array.isArray(fallbackFields) ? fallbackFields : [])) {
+            const fallbackRate = readPositive(field);
+            if (fallbackRate !== null) return fallbackRate;
+        }
+        return defaultRate;
+    },
+
+    getBossActionDamageRate: function(m, action, defaultRate = 1) {
+        return this.getBossRuntimeDamageRate(m, action, 'ATK_Damage_Rate', 'Late_Phase_ATK_Damage_Rate', ['Damage_Rate'], defaultRate);
+    },
+
+    getBossObjectActionDamageRate: function(owner, action, defaultRate = 1) {
+        return this.getBossRuntimeDamageRate(owner, action, 'ATK_Damage_Rate', 'Late_Phase_ATK_Damage_Rate', ['Damage_Rate'], defaultRate);
+    },
+
+    getBossObjectDamageRate: function(owner, data, defaultRate = 1) {
+        return this.getBossRuntimeDamageRate(owner, data, 'Object_DMG_Rate', 'Late_Phase_Object_DMG_Rate', ['ATK_Damage_Rate', 'Damage_Rate'], defaultRate);
+    },
     getBossParryWindow: function(m, action) {
         const boss = m && m.boss ? m.boss : null;
         if (!action) return { enabled: false, start: 0, end: 0 };
@@ -623,7 +661,6 @@ const BossCombatSystem = {
                 const textY = isPortalBreak ? ey : m.y;
                 const textZ = isPortalBreak ? ez + 90 : m.z + bodyZForEffect + 76;
             }
-            try { pushSystemNotice(isPortalBreak ? '거대한 검이 차원문을 붕괴시켰다!' : '거대한 검이 카시야스를 저지했다!', '#86f4ff', 1.1); } catch(e) {}
         }
 
         if (!pending.flashed && pending.timer >= pending.flashTime) {
@@ -845,85 +882,131 @@ const BossCombatSystem = {
         if (!mark || !mark.active || !result) return;
         const kind = String(sourceKind || '').trim().toUpperCase();
         const guarded = !!result.guarded;
+
         if (guarded) {
-            if (kind === 'CLONE') mark.cloneGuardCount = (parseInt(mark.cloneGuardCount) || 0) + 1;
-            else mark.bossGuardCount = (parseInt(mark.bossGuardCount) || 0) + 1;
+            const removeCond = String(mark.removeCond || '').trim().toUpperCase();
+            const removeExtraCond = String(mark.removeExtraCond || '').trim().toUpperCase();
+            let counted = false;
+
+            if (kind === 'CLONE' && (!removeExtraCond || removeExtraCond === 'GUARD_BOSS_CLONE_ATK')) {
+                mark.cloneGuardCount = (parseInt(mark.cloneGuardCount) || 0) + 1;
+                counted = true;
+            } else if (kind === 'BOSS' && (!removeCond || removeCond === 'GUARD_BOSS_ATK')) {
+                mark.bossGuardCount = (parseInt(mark.bossGuardCount) || 0) + 1;
+                counted = true;
+            } else if (!removeCond && !removeExtraCond) {
+                mark.bossGuardCount = (parseInt(mark.bossGuardCount) || 0) + 1;
+                counted = true;
+            }
+
+            if (!counted) return;
             mark.flashTimer = Math.max(parseFloat(mark.flashTimer) || 0, 0.45);
-            if ((mark.bossGuardCount || 0) >= (mark.requireBossGuard || 2) && (mark.cloneGuardCount || 0) >= (mark.requireCloneGuard || 2)) {
+
+            const bossGuardDone = !removeCond
+                || (removeCond === 'GUARD_BOSS_ATK' && (mark.bossGuardCount || 0) >= (mark.requireBossGuard || 2));
+            const cloneGuardDone = !removeExtraCond
+                || (removeExtraCond === 'GUARD_BOSS_CLONE_ATK' && (mark.cloneGuardCount || 0) >= (mark.requireCloneGuard || 2));
+
+            if (bossGuardDone && cloneGuardDone) {
                 mark.active = false;
-                p.kasiyasTemperedBladeReady = true;
-                p.kasiyasTemperedBladeFlashTimer = 1.0;
                 const buffType = String(mark.removeEffectType || '').trim().toUpperCase();
                 const buffValue = Math.max(0, parseFloat(mark.removeEffectValue) || 0);
-                if (buffType && buffValue > 0) {
+                const grantTemperedBlade = buffType === 'GRANT_TEMPERED_BLADE_GUARD' && buffValue > 0;
+
+                p.kasiyasTemperedBladeReady = grantTemperedBlade;
+                p.kasiyasTemperedBladeFlashTimer = grantTemperedBlade ? 1.0 : 0;
+                if (grantTemperedBlade) {
                     p.kasiyasOniMarkGuardBuff = { type: buffType, value: buffValue, oneShot: true };
                 }
-                gameState.effects.push({
-                    type: 'guard',
-                    renderType: 'EFT_KASIYAS_ONI_MARK_BURST',
-                    x: p.x,
-                    y: p.y,
-                    z: p.z + (p.bodyZ || 100) * 0.75,
-                    w: Math.max(130, (p.bodyX || 60) * (p.scale || 1) * 2.0),
-                    h: Math.max(130, (p.bodyZ || 100) * (p.scale || 1) * 1.2),
-                    life: 0.45,
-                    maxLife: 0.45
-                });
-                gameState.effects.push({
-                    type: 'hitSpark',
-                    renderType: 'EFT_KASIYAS_TEMPERED_BLADE_READY',
-                    x: p.x,
-                    y: p.y,
-                    z: p.z + (p.bodyZ || 100) * 0.70,
-                    w: Math.max(150, (p.bodyX || 60) * (p.scale || 1) * 2.6),
-                    h: Math.max(160, (p.bodyZ || 100) * (p.scale || 1) * 1.35),
-                    life: 0.70,
-                    maxLife: 0.70,
-                    burstScale: 1.6,
-                    color: 'rgba(255,232,104,0.98)',
-                    accentColor: 'rgba(170,238,255,0.86)'
-                });
 
+                if (Array.isArray(gameState.effects)) {
+                    gameState.effects.push({
+                        type: 'guard',
+                        renderType: mark.vfxType || 'EFT_KASIYAS_ONI_MARK_BURST',
+                        x: p.x,
+                        y: p.y,
+                        z: p.z + (p.bodyZ || 100) * 0.75,
+                        w: Math.max(130, (p.bodyX || 60) * (p.scale || 1) * 2.0),
+                        h: Math.max(130, (p.bodyZ || 100) * (p.scale || 1) * 1.2),
+                        life: 0.45,
+                        maxLife: 0.45
+                    });
+                    if (grantTemperedBlade) {
+                        gameState.effects.push({
+                            type: 'hitSpark',
+                            renderType: 'EFT_KASIYAS_TEMPERED_BLADE_READY',
+                            x: p.x,
+                            y: p.y,
+                            z: p.z + (p.bodyZ || 100) * 0.70,
+                            w: Math.max(150, (p.bodyX || 60) * (p.scale || 1) * 2.6),
+                            h: Math.max(160, (p.bodyZ || 100) * (p.scale || 1) * 1.35),
+                            life: 0.70,
+                            maxLife: 0.70,
+                            burstScale: 1.6,
+                            color: 'rgba(255,232,104,0.98)',
+                            accentColor: 'rgba(170,238,255,0.86)'
+                        });
+                    }
+                }
             }
             return;
         }
 
+        const stackIncreaseCond = String(mark.stackIncreaseCond || '').trim().toUpperCase();
+        const stackIncreaseAllowed = !stackIncreaseCond
+            || stackIncreaseCond === 'HIT_FROM_ENEMY'
+            || (stackIncreaseCond === 'HIT_FROM_BOSS' && kind === 'BOSS')
+            || (stackIncreaseCond === 'HIT_FROM_BOSS_CLONE' && kind === 'CLONE');
+        if (!stackIncreaseAllowed) return;
+
         mark.stack = (parseInt(mark.stack) || 0) + 1;
         mark.flashTimer = Math.max(parseFloat(mark.flashTimer) || 0, 0.75);
         if ((mark.stack || 0) >= (mark.maxStack || 3)) {
+            const stackOverEffectType = String(mark.stackOverEffectType || 'DAMAGE_ON_MARKER').trim().toUpperCase();
+            if (stackOverEffectType !== 'DAMAGE_ON_MARKER') {
+                mark.stack = Math.max(0, mark.maxStack || 3);
+                return;
+            }
+
             const owner = attacker && attacker.owner ? attacker.owner : attacker;
             const atk = owner && owner.d ? (parseFloat(owner.d.atk) || 50) : 50;
             const dmgRate = Math.max(1, parseFloat(mark.burstDamageRate) || 5);
             const damage = Math.max(1, atk * dmgRate - (parseFloat(p.def) || 0));
-            if (!(typeof PlayerManager !== 'undefined' && PlayerManager.isPracticeModeHpInvincible ? PlayerManager.isPracticeModeHpInvincible(gameState) : false)) p.hp = Math.max(0, (parseFloat(p.hp) || 0) - damage);
-            if (typeof PlayerManager !== 'undefined' && PlayerManager.loseFightingSpirit) PlayerManager.loseFightingSpirit(gameState, p.fightingSpirit || 0);
-            gameState.effects.push({
-                type: 'hitSpark',
-                renderType: 'EFT_KASIYAS_ONI_MARK_BURST',
-                x: p.x,
-                y: p.y,
-                z: p.z + (p.bodyZ || 100) * 0.72,
-                w: 170,
-                h: 170,
-                life: 0.48,
-                maxLife: 0.48,
-                color: 'rgba(255,32,44,0.96)',
-                accentColor: 'rgba(36,0,0,0.92)'
-            });
-            gameState.effects.push({
-                type: 'hitSpark',
-                renderType: 'EFT_KASIYAS_ONI_MARK_SLASH_WOUNDS',
-                x: p.x,
-                y: p.y,
-                z: p.z + (p.bodyZ || 100) * 0.48,
-                w: Math.max(120, (p.bodyX || 60) * (p.scale || 1) * 2.2),
-                h: Math.max(150, (p.bodyZ || 100) * (p.scale || 1) * 1.25),
-                life: 0.78,
-                maxLife: 0.78,
-                burstScale: 1.45,
-                color: 'rgba(255,42,46,0.96)',
-                accentColor: 'rgba(20,0,0,0.96)'
-            });
+            if (!(typeof PlayerManager !== 'undefined' && PlayerManager.isPracticeModeHpInvincible ? PlayerManager.isPracticeModeHpInvincible(gameState) : false)) {
+                p.hp = Math.max(0, (parseFloat(p.hp) || 0) - damage);
+            }
+            if (typeof PlayerManager !== 'undefined' && PlayerManager.loseFightingSpirit) {
+                PlayerManager.loseFightingSpirit(gameState, p.fightingSpirit || 0);
+            }
+            if (Array.isArray(gameState.effects)) {
+                gameState.effects.push({
+                    type: 'hitSpark',
+                    renderType: mark.vfxType || 'EFT_KASIYAS_ONI_MARK_BURST',
+                    x: p.x,
+                    y: p.y,
+                    z: p.z + (p.bodyZ || 100) * 0.72,
+                    w: 170,
+                    h: 170,
+                    life: 0.48,
+                    maxLife: 0.48,
+                    color: 'rgba(255,32,44,0.96)',
+                    accentColor: 'rgba(36,0,0,0.92)'
+                });
+                gameState.effects.push({
+                    type: 'hitSpark',
+                    renderType: 'EFT_KASIYAS_ONI_MARK_SLASH_WOUNDS',
+                    x: p.x,
+                    y: p.y,
+                    z: p.z + (p.bodyZ || 100) * 0.48,
+                    w: Math.max(120, (p.bodyX || 60) * (p.scale || 1) * 2.2),
+                    h: Math.max(150, (p.bodyZ || 100) * (p.scale || 1) * 1.25),
+                    life: 0.78,
+                    maxLife: 0.78,
+                    burstScale: 1.45,
+                    color: 'rgba(255,42,46,0.96)',
+                    accentColor: 'rgba(20,0,0,0.96)'
+                });
+            }
             p.state = 'Hit';
             p.atkTimer = Math.max(parseFloat(p.atkTimer) || 0, Math.max(0.65, (parseFloat(p.hitDur) || 0.25) * 2.6));
             p.isRunning = false;
@@ -932,15 +1015,17 @@ const BossCombatSystem = {
             p.kbVx = 0;
             p.kbVy = 0;
             gameState.screenHitFlash = { life: 0.30, maxLife: 0.30, strength: 0.92, mode: 'red' };
-            gameState.floatingTexts.push({
-                x: p.x,
-                y: p.y,
-                z: p.z + (p.bodyZ || 100) + 92,
-                text: '낙인 폭발',
-                color: '#ff3030',
-                size: '28px',
-                timer: 1.0
-            });
+            if (Array.isArray(gameState.floatingTexts)) {
+                gameState.floatingTexts.push({
+                    x: p.x,
+                    y: p.y,
+                    z: p.z + (p.bodyZ || 100) + 92,
+                    text: '낙인 폭발',
+                    color: '#ff3030',
+                    size: '28px',
+                    timer: 1.0
+                });
+            }
             p.kasiyasOniMark = null;
         }
     },
@@ -948,14 +1033,73 @@ const BossCombatSystem = {
     enterBossGroggyFromParry: function(m, action, gameState) {
         const boss = m && m.boss ? m.boss : null;
         if (!boss || !action) return;
+        if (typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.onBossParrySuccess) {
+            const p3m3ConsumedParry = P3M3FinalIssenSystem.onBossParrySuccess(m, action, gameState);
+            if (p3m3ConsumedParry) {
+                boss.parryWindowActive = false;
+                boss.parryCueTimer = 0;
+                boss.actionHitFired = false;
+                boss.actionHitsDone = 0;
+                return;
+            }
+        }
 
-        // 저주 상태에서 공격으로 받아내는 일반 루트는 Parry_Result_Value(짧은 그로기)를 우선 사용한다.
+        // Parry_Result_Type을 우선 확인해 패링 성공 결과를 데이터로 명시한다.
+        // 값이 없거나 알 수 없는 경우에는 기존처럼 Parry_Result_Value / Groggy_Time 기반 그로기로 처리한다.
+        const parryResultType = String(action.Parry_Result_Type || '').trim().toUpperCase();
         const parryResultValue = parseFloat(action.Parry_Result_Value);
         const groggyTimeData = parseFloat(action.Groggy_Time);
         const groggyTime = Math.max(0.2, (!isNaN(parryResultValue) && parryResultValue > 0) ? parryResultValue : ((!isNaN(groggyTimeData) && groggyTimeData > 0) ? groggyTimeData : 2));
         const groggyPose = String(action.Groggy_Pose_Type || 'POSE_KASIYAS_P1_GROGGY').trim() || 'POSE_KASIYAS_P1_GROGGY';
         const successEffect = String(action.Parry_Success_EFT_Type || 'EFT_SUCCESS_PARRY').trim() || 'EFT_SUCCESS_PARRY';
         const pattern = boss.activePattern;
+
+        if (parryResultType === 'PATTERN_END') {
+            if (pattern) {
+                const patternId = String(pattern.Pattern_ID || '').trim();
+                this.pushBossDebugLog(
+                    gameState,
+                    'PARRY',
+                    `${patternId} ${this.getBossDebugName(pattern)}`,
+                    'success / pattern end'
+                );
+            }
+            const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
+            gameState.effects.push({
+                type: 'hitSpark',
+                renderType: successEffect,
+                x: m.x,
+                y: m.y,
+                z: m.z + bodyZ * 0.70,
+                dir: m.faceDir || 1,
+                w: ((m.d && m.d.bodyX) || 80) * (m.scale || 1) * 1.8,
+                h: bodyZ,
+                burstScale: 2.1,
+                life: 0.45,
+                maxLife: 0.45,
+                color: 'rgba(255,238,90,0.98)',
+                accentColor: 'rgba(255,255,255,0.96)'
+            });
+            boss.parryWindowActive = false;
+            boss.parryCueTimer = 0;
+            boss.actionHitFired = false;
+            boss.actionHitsDone = 0;
+            if (typeof this.finishBossPattern === 'function') {
+                this.finishBossPattern(m, gameState);
+            } else {
+                boss.activePattern = null;
+                boss.currentActionIndex = -1;
+                boss.currentLoopIndex = 0;
+                boss.loopCount = 1;
+                boss.action = null;
+                boss.actionMove = null;
+                boss.noPatternWaitTimer = parseFloat(boss.phase && boss.phase.No_Pattern_Wait_Time) || 0.2;
+                m.state = 'IDLE';
+                m.timer = 0;
+                m.hasFired = false;
+            }
+            return;
+        }
 
         if (pattern) {
             const patternId = String(pattern.Pattern_ID || '').trim();
@@ -1102,6 +1246,10 @@ const BossCombatSystem = {
         const explicitActionRate = this.getBossExplicitActionDamageRate(action);
         const defenceType = String(action && action.Action_Defence_Type || '').trim().toUpperCase();
 
+        if (m && m.p3m3MainBossSuppressed) {
+            return;
+        }
+
         if (boss && boss.kasiyasP2M2Hidden) {
             const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
             if (gameState && Array.isArray(gameState.floatingTexts)) {
@@ -1115,6 +1263,10 @@ const BossCombatSystem = {
 
         if (this.tryResolveBossParryByPlayerHit && this.tryResolveBossParryByPlayerHit(m, gameState)) {
             return;
+        }
+
+        if (typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.onMonsterPlayerHit) {
+            P3M3FinalIssenSystem.onMonsterPlayerHit(m, baseDmg, gameState);
         }
 
         if (this.isBossFrontDamageImmuneAgainstPlayer && this.isBossFrontDamageImmuneAgainstPlayer(m, gameState)) {
@@ -1131,7 +1283,7 @@ const BossCombatSystem = {
             if (Array.isArray(gameState.effects)) {
                 gameState.effects.push({
                     type: 'hitSpark',
-                    renderType: 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_SPIN',
+                    renderType: 'EFT_GUARD_SUCCESS',
                     x: m.x + (m.faceDir === -1 ? -1 : 1) * (((m.d && m.d.bodyX) || 80) * (m.scale || 1) * 0.72),
                     y: m.y,
                     z: m.z + bodyZ * 0.50,
@@ -1468,7 +1620,7 @@ const BossCombatSystem = {
         const m1FinalDmgMul = (typeof this.getKasiyasP2MajorPattern1FinalDamageMultiplier === 'function')
             ? this.getKasiyasP2MajorPattern1FinalDamageMultiplier(m, action)
             : 1;
-        const dmgRate = (parseFloat(action.ATK_Damage_Rate) || 1) * Math.max(0.01, m1FinalDmgMul || 1);
+        const dmgRate = this.getBossActionDamageRate(m, action, 1) * Math.max(0.01, m1FinalDmgMul || 1);
         const baseDmg = m.d.atk * dmgRate;
         const p = gameState.player;
         if (!p || !p.active || p.hp <= 0) return false;
@@ -1488,6 +1640,7 @@ const BossCombatSystem = {
             this.pushPathSlashEffects(path, width, height, action.VFX_Type || 'EFT_KASIYAS_RUSH_SLASH', gameState);
             if (this.isPlayerInsidePathHitbox(path, width, height, gameState)) {
                 const result = PlayerManager.takeDamage(gameState, calcScaledDamage(m.d.level, p.level, baseDmg), m.x, m.y, null, 0, 0, this.buildGuardInfoFromAttackData(action, m)) || {};
+                if (typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.onPlayerGuardResult) P3M3FinalIssenSystem.onPlayerGuardResult(m, action, result, gameState);
                 if (typeof this.registerKasiyasP2MajorPattern1ResponseResult === 'function') this.registerKasiyasP2MajorPattern1ResponseResult(m, action, gameState, result);
                 this.applyKasiyasOniMarkAttackResult(gameState, 'BOSS', action, result, m);
                 this.trySpawnBossGuardSuccessObject(m, action, gameState, result, m.x, m.y);
@@ -1530,7 +1683,10 @@ const BossCombatSystem = {
                 const atkD = hitbox.d;
                 const atkH = hitbox.h;
                 const upperVfx = String(action.VFX_Type || '').toUpperCase();
-                if (action.VFX_Type && upperVfx !== 'EFT_KASIYAS_SHOULDER_ATK') {
+                if (action.VFX_Type && upperVfx !== 'EFT_KASIYAS_SHOULDER_ATK'
+                    && upperVfx !== 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_SPIN'
+                    && upperVfx !== 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_SPIN_SLASH'
+                    && upperVfx !== 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_ARC_SLASH') {
                     gameState.effects.push({
                         type: 'hitSpark',
                         renderType: action.VFX_Type,
@@ -1549,6 +1705,7 @@ const BossCombatSystem = {
                     });
                 }
                 const result = PlayerManager.takeDamage(gameState, calcScaledDamage(m.d.level, p.level, baseDmg), atkX, atkY, null, 0, 0, this.buildGuardInfoFromAttackData(action, m)) || {};
+                if (typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.onPlayerGuardResult) P3M3FinalIssenSystem.onPlayerGuardResult(m, action, result, gameState);
                 if (typeof this.registerKasiyasP2MajorPattern1ResponseResult === 'function') this.registerKasiyasP2MajorPattern1ResponseResult(m, action, gameState, result);
                 this.applyKasiyasOniMarkAttackResult(gameState, 'BOSS', action, result, m);
                 this.tryApplyBossGuardSpecialResult(m, action, result, gameState);
@@ -1563,6 +1720,7 @@ const BossCombatSystem = {
             this.pushBossPatternActionEffect(m, action, hitbox.x, hitbox.y, hitbox.z, hitbox.w, hitbox.d, hitbox.h, gameState);
             if (this.isPlayerInsideCircleHitbox(hitbox, gameState)) {
                 const result = PlayerManager.takeDamage(gameState, calcScaledDamage(m.d.level, p.level, baseDmg), hitbox.x, hitbox.y, null, 0, 0, this.buildGuardInfoFromAttackData(action, m)) || {};
+                if (typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.onPlayerGuardResult) P3M3FinalIssenSystem.onPlayerGuardResult(m, action, result, gameState);
                 if (typeof this.registerKasiyasP2MajorPattern1ResponseResult === 'function') this.registerKasiyasP2MajorPattern1ResponseResult(m, action, gameState, result);
                 this.applyKasiyasOniMarkAttackResult(gameState, 'BOSS', action, result, m);
                 this.trySpawnBossGuardSuccessObject(m, action, gameState, result, hitbox.x, hitbox.y);
@@ -1581,10 +1739,16 @@ const BossCombatSystem = {
         const atkH = hitbox.h;
 
         gameState.hitboxes.push({ ...hitbox, life: 0.1 });
-        this.pushBossPatternActionEffect(m, action, atkX, atkY, atkZ, atkW, atkD, atkH, gameState);
+        const isP3M3FinalIssen = typeof P3M3FinalIssenSystem !== 'undefined'
+            && P3M3FinalIssenSystem.isFinalIssenAttackAction
+            && P3M3FinalIssenSystem.isFinalIssenAttackAction(action, gameState);
+        if (!isP3M3FinalIssen) {
+            this.pushBossPatternActionEffect(m, action, atkX, atkY, atkZ, atkW, atkD, atkH, gameState);
+        }
 
         if (this.isPlayerInsideBoxHitbox(hitbox, gameState)) {
             const result = PlayerManager.takeDamage(gameState, calcScaledDamage(m.d.level, p.level, baseDmg), atkX, atkY, null, 0, 0, this.buildGuardInfoFromAttackData(action, m)) || {};
+            if (typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.onPlayerGuardResult) P3M3FinalIssenSystem.onPlayerGuardResult(m, action, result, gameState);
             if (typeof this.registerKasiyasP2MajorPattern1ResponseResult === 'function') this.registerKasiyasP2MajorPattern1ResponseResult(m, action, gameState, result);
             this.applyKasiyasOniMarkAttackResult(gameState, 'BOSS', action, result, m);
             this.trySpawnBossGuardSuccessObject(m, action, gameState, result, atkX, atkY);
@@ -1716,7 +1880,7 @@ const BossCombatSystem = {
         if (!hitBox) return false;
         const owner = obj.owner;
         if (owner && owner.hp > 0) {
-            const dmgRate = parseFloat(action.ATK_Damage_Rate) || parseFloat(action.Damage_Rate) || 1;
+            const dmgRate = this.getBossObjectActionDamageRate(owner, action, 1);
             const baseDmg = owner.d.atk * dmgRate;
             this.pushBossDebugLog && this.pushBossDebugLog(gameState, 'OBJECT_HIT', `${String(action.Object_Action_ID || '').trim()} ${this.getBossDebugName(action)}`, `SWORD_WALL / damage ${baseDmg.toFixed(1)}`);
             PlayerManager.takeDamage(
@@ -1821,7 +1985,7 @@ const BossCombatSystem = {
         if (isHit) {
             const owner = obj.owner;
             if (owner && owner.hp > 0) {
-                const dmgRate = parseFloat(action.ATK_Damage_Rate) || parseFloat(action.Damage_Rate) || 1;
+                const dmgRate = this.getBossObjectActionDamageRate(owner, action, 1);
                 const baseDmg = owner.d.atk * dmgRate;
                 this.pushBossDebugLog(
                     gameState,

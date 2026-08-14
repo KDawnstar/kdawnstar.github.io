@@ -281,9 +281,10 @@ function normalizeBossPatternActionRuntimeRow(row) {
     const newRow = { ...row };
     newRow.Action_ID = pickRuntimeValue(row.Action_ID, row.Dev_Name);
     newRow.Pattern_ID = pickRuntimeValue(row.Pattern_ID, row.Owner_Pattern_ID);
-    // 최신 카시야스 데이터에서는 이펙트 컬럼명을 Effect_Render_Type으로 정리했다.
-    // 기존 런타임은 VFX_Type을 읽으므로 양쪽 이름을 호환시킨다.
+    // 보스 패턴 관련 데이터의 정식 이펙트 컬럼은 VFX_Type이다.
+    // Effect_Render_Type / Action_Effect_Render_Type은 구버전 데이터 호환용으로만 읽는다.
     newRow.VFX_Type = pickRuntimeValue(row.VFX_Type, row.Effect_Render_Type, row.Action_Effect_Render_Type);
+    newRow.Effect_Render_Type = pickRuntimeValue(row.Effect_Render_Type, newRow.VFX_Type);
     newRow.Warning_Render_Type = pickRuntimeValue(row.Warning_Render_Type, row.Warning_Effect_Render_Type);
     return newRow;
 }
@@ -292,7 +293,8 @@ function normalizeBossPatternObjectRuntimeRow(row) {
     const newRow = { ...row };
     newRow.Object_ID = pickRuntimeValue(row.Object_ID, row.Attack_Object_ID, row.Dev_Name);
     newRow.Attack_Object_ID = pickRuntimeValue(row.Attack_Object_ID, newRow.Object_ID, row.Dev_Name);
-    newRow.Effect_Render_Type = pickRuntimeValue(row.Effect_Render_Type, row.VFX_Type, row.Action_Effect_Render_Type);
+    newRow.VFX_Type = pickRuntimeValue(row.VFX_Type, row.Effect_Render_Type, row.Action_Effect_Render_Type);
+    newRow.Effect_Render_Type = pickRuntimeValue(row.Effect_Render_Type, newRow.VFX_Type);
     return newRow;
 }
 
@@ -301,6 +303,7 @@ function normalizeBossPatternObjectActionRuntimeRow(row) {
     newRow.Object_Action_ID = pickRuntimeValue(row.Object_Action_ID, row.Dev_Name);
     newRow.Object_ID = pickRuntimeValue(row.Object_ID, row.Attack_Object_ID, row.Owner_Object_ID);
     newRow.VFX_Type = pickRuntimeValue(row.VFX_Type, row.Effect_Render_Type, row.Action_Effect_Render_Type);
+    newRow.Effect_Render_Type = pickRuntimeValue(row.Effect_Render_Type, newRow.VFX_Type);
     newRow.Warning_Render_Type = pickRuntimeValue(row.Warning_Render_Type, row.Warning_Effect_Render_Type);
     return newRow;
 }
@@ -327,6 +330,8 @@ function buildBossRuntimeTables(phaseData, patternData, actionData, objectData, 
 
         if (actionId) gameState.DB_BOSS_PATTERN_ACTION[actionId] = action;
         if (patternId) {
+            const cond = String(action.Action_Condition_Type || '').trim().toUpperCase();
+            if (cond === 'P3_M3_ROUTE_ACTION_ONLY') return;
             if (!actionsByPattern[patternId]) actionsByPattern[patternId] = [];
             actionsByPattern[patternId].push(action);
         }

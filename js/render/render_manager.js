@@ -133,6 +133,9 @@ const GameRenderer = {
         }
 
         this.drawBackground(gameState);
+        if (typeof this.drawP3M3WorldBackground === 'function') {
+            this.drawP3M3WorldBackground(ctx, canvas, gameState);
+        }
 
         ctx.save();
         const shakeX = Number.isFinite(parseFloat(camera && camera.shakeX)) ? parseFloat(camera.shakeX) : 0;
@@ -208,7 +211,8 @@ const GameRenderer = {
         }
 
         for (let m of monsters) {
-            if (m.active) {
+            const suppressP3M3BossModel = gameState && gameState.specialMode === 'P3_M3_FINAL_ISSEN' && m && m.p3m3MainBossSuppressed;
+            if (m.active && !suppressP3M3BossModel) {
                 renderables.push({
                     y: m.y,
                     draw: function() {
@@ -367,6 +371,12 @@ const GameRenderer = {
         ctx.globalAlpha = 1.0;
 
         this.drawStageWarp(gameState);
+        if (typeof this.drawP3M3Portals === 'function') {
+            this.drawP3M3Portals(ctx, gameState);
+        }
+        if (isDebugView && typeof this.drawP3M3MonsterDebug === 'function') {
+            this.drawP3M3MonsterDebug(ctx, gameState);
+        }
 
         if (isDebugView) {
             this.drawDebugOverlay(ctx, gameState);
@@ -384,7 +394,16 @@ const GameRenderer = {
         if (typeof this.drawBossPatternDialogue === 'function') {
             this.drawBossPatternDialogue(ctx, canvas, gameState);
         }
+        if (typeof this.drawP3M3Overlay === 'function') {
+            this.drawP3M3Overlay(ctx, canvas, gameState);
+        }
+        if (typeof this.drawP3M3Dialogue === 'function') {
+            this.drawP3M3Dialogue(ctx, canvas, gameState);
+        }
         this.drawTargetUI(ctx, canvas, targetUI, gameState);
+        if (typeof this.drawP3M3TimeLimitUI === 'function') {
+            this.drawP3M3TimeLimitUI(ctx, canvas, gameState);
+        }
         this.drawScreenHitFeedback(ctx, canvas, gameState.screenHitFlash);
     },
 

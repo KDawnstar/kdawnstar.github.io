@@ -39,26 +39,17 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
             return true;
         }
 
-        if (gameState.bossPatternDialogue) {
-            const d = gameState.bossPatternDialogue;
-            if ((parseFloat(d.delay) || 0) > 0) {
-                d.delay = Math.max(0, (parseFloat(d.delay) || 0) - deltaTime);
-            } else {
-                d.timer = Math.max(0, (parseFloat(d.timer) || 0) - deltaTime);
-                if (d.timer <= 0) gameState.bossPatternDialogue = null;
-            }
-        }
+        // bossPatternDialogue의 수명은 전용 모드/컷신에서도 멈추지 않도록 game_app.updateEnvironment에서 공통 갱신한다.
 
         this.updateBossCooldowns(m, deltaTime);
 
         const hpRate = (parseFloat(m.hp) || 0) / Math.max(1, parseFloat(m.maxHp) || 1);
         const lateThreshold = this.getBossLatePhaseThreshold(boss.phase);
         const wasLatePhase = !!boss.isLatePhase;
-        boss.isLatePhase = hpRate <= lateThreshold;
+        boss.isLatePhase = boss.p3m3ForceLatePhase ? true : (hpRate <= lateThreshold);
 
         if (boss.isLatePhase && !boss.lateNoticeShown) {
             boss.lateNoticeShown = true;
-            pushSystemNotice('⚠️ 카시야스 후반부 돌입', '#e67e22', 1.8);
         }
 
         // 후반부 개시 패턴은 후반부 진입 순간 예약해 두고,
@@ -181,6 +172,57 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
             this.updateBossParryCue(m, boss.action, deltaTime, gameState);
 
             const actionType = String(boss.action.Action_Type || '').trim().toUpperCase();
+            if (actionType === 'P3_M3_EXCLUSIVE_MODE_START') {
+                const p = gameState && gameState.player;
+                if (p) {
+                    p.z = 0;
+                    p.vz = 0;
+                    p.kbVx = 0;
+                    p.kbVy = 0;
+                    p.vx = 0;
+                    p.vy = 0;
+                    p.isGrounded = true;
+                    if (p.state === 'Hit' || p.state === 'HIT') p.state = 'Idle';
+                }
+                m.z = 0;
+                m.kbVx = 0;
+                m.kbVy = 0;
+
+                if (boss.p3m3ExclusiveModeStarted && !(typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.isActive && P3M3FinalIssenSystem.isActive(gameState))) {
+                    boss.p3m3ExclusiveModeStarted = false;
+                }
+
+                if (!boss.p3m3ExclusiveModeStarted && typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.startFromPattern) {
+                    const patternIdForP3M3 = String(boss.action.Pattern_ID || boss.activePattern && boss.activePattern.Pattern_ID || '233008');
+                    const sourceActionIdForP3M3 = String(boss.action.Action_ID || '');
+                    let startedP3M3 = false;
+                    try {
+                        const introDurationForP3M3 = (typeof this.getBossActionDuration === 'function')
+                            ? this.getBossActionDuration(m, boss.action, gameState)
+                            : (parseFloat(boss.action && boss.action.Action_Anim_Duration) || 0);
+                        startedP3M3 = P3M3FinalIssenSystem.startFromPattern(gameState, m, {
+                            patternId: patternIdForP3M3,
+                            sourceActionId: sourceActionIdForP3M3,
+                            introDuration: introDurationForP3M3
+                        });
+                    } catch (e) {
+                        console.warn('[P3M3] startFromPattern failed', e);
+                        startedP3M3 = false;
+                    }
+                    boss.p3m3ExclusiveModeStarted = !!startedP3M3;
+                    if (typeof this.pushBossDebugLog === 'function') {
+                        this.pushBossDebugLog(
+                            gameState,
+                            boss.p3m3ExclusiveModeStarted ? 'P3_M3_START' : 'P3_M3_START_FAIL',
+                            `${sourceActionIdForP3M3 || '243075'} 세계를 가르는 일섬 시작`,
+                            `started=${!!startedP3M3}, specialMode=${String(gameState && gameState.specialMode || '-')}`
+                        );
+                    }
+                    if (boss.p3m3ExclusiveModeStarted) return true;
+                }
+                boss.p3m3ExclusiveModeStarted = false;
+                return true;
+            }
             if (actionType === 'P2_M3_EXCLUSIVE_MODE_START') {
                 // step213: 지면 붕괴 DIRECT_ACT가 끝난 직후 배우들이 음수 Z/피격 상태로 남아 있으면
                 // 전용 모드 시작 실패 시 화면이 빈 기존 맵 상태로 멈춰 보일 수 있으므로, 시작 직전에 안전 복구한다.
@@ -277,7 +319,7 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
                 this.updateBossInlineActionWarning(m, boss.action, gameState);
             }
 
-            if (!['WAIT','WARNING_PATH','WARNING','SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT','MOVE','REMOVE_ALL_OBJECT','CLEAR_PATTERN_TERRAIN_OBJECTS','DIRECT_ACT','P2_M3_EXCLUSIVE_MODE_START'].includes(actionType)) {
+            if (!['WAIT','WARNING_PATH','WARNING','SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT','MOVE','REMOVE_ALL_OBJECT','CLEAR_PATTERN_TERRAIN_OBJECTS','DIRECT_ACT','P2_M3_EXCLUSIVE_MODE_START','P3_M3_EXCLUSIVE_MODE_START'].includes(actionType)) {
                 const rawHitEnd = parseFloat(boss.action.Hitbox_End_Time);
                 const moveWaitUntil = boss.actionMove && boss.actionMove.attackAfterMove
                     ? Math.max(0, parseFloat(boss.actionMove.duration) || parseFloat(boss.attackAfterMoveUntil) || 0)
@@ -292,6 +334,12 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
                 const hitCycle = isBodyCollision
                     ? Math.max(0.02, (!isNaN(rawCycle) && rawCycle > 0) ? rawCycle : 0.035)
                     : Math.max(0.01, (!isNaN(rawCycle) && rawCycle > 0) ? rawCycle : 0.12);
+                if (typeof this.trySpawnBossPatternActionObjectsAtTiming === 'function' && m.timer >= adjustedHitStart) {
+                    this.trySpawnBossPatternActionObjectsAtTiming(m, boss.action, gameState, 'ATK_HITBOX_START');
+                }
+                if (typeof this.trySpawnBossPatternActionObjectsAtTiming === 'function' && m.timer >= effectiveHitEnd) {
+                    this.trySpawnBossPatternActionObjectsAtTiming(m, boss.action, gameState, 'ATK_HITBOX_END');
+                }
                 if (m.timer >= adjustedHitStart && m.timer <= effectiveHitEnd && (boss.actionHitsDone || 0) < hitCount) {
                     boss.actionCycleTimer = (boss.actionCycleTimer || 0) + deltaTime;
                     if (boss.actionCycleTimer >= hitCycle) {
@@ -337,7 +385,13 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
             return true;
         }
 
-        if (gameState.bossPractice && gameState.bossPractice.enabled) {
+        const isP3M3RuntimeMonster = !!(
+            gameState &&
+            gameState.specialMode === 'P3_M3_FINAL_ISSEN' &&
+            m &&
+            m.isP3M3Monster
+        );
+        if (gameState.bossPractice && gameState.bossPractice.enabled && !isP3M3RuntimeMonster) {
             m.state = 'IDLE';
             m.kbVx = 0;
             m.kbVy = 0;

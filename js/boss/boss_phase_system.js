@@ -181,7 +181,10 @@ const BossPhaseSystem = {
         const defaultTransitionDuration = transitionTypeKey === 'KASIYAS_P2_TO_P3' ? 9.0 : 10.0;
         const duration = !isNaN(durationRaw) && durationRaw > 0 ? durationRaw : defaultTransitionDuration;
         const restoreType = String(boss.phase.Next_Phase_HP_Restore_Type || 'FULL').trim().toUpperCase();
-        const startText = String(boss.phase.Next_Phase_Start_Text || nextPhase.Phase_Name || '다음 페이즈 돌입').trim();
+        const rawStartText = String(boss.phase.Next_Phase_Start_Text || nextPhase.Phase_Name || '다음 단계 돌입').trim();
+        const startText = typeof formatKasiyasPublicText === 'function'
+            ? formatKasiyasPublicText(rawStartText, { phaseStep: true, latePhase: false })
+            : rawStartText.replace(/1페이즈/g, '1단계').replace(/2페이즈/g, '2단계').replace(/3페이즈/g, '3단계');
 
         this.clearBossPhaseTransitionRuntime(m, gameState);
         this.resetPlayerForBossPhaseTransition(m, gameState);
@@ -245,9 +248,6 @@ const BossPhaseSystem = {
         gameState.screenHitFlash = { life: 0.32, maxLife: 0.32, strength: 0.55, mode: 'red' };
         if (gameState.targetUI && gameState.targetUI.monster === m) gameState.targetUI.timer = 999999;
 
-        if (typeof pushSystemNotice === 'function') {
-            pushSystemNotice(isP2ToP3Transition ? '카시야스가 두 검을 버립니다' : '카시야스가 차원을 열기 시작합니다', '#c0392b', 1.8);
-        }
         if (typeof this.pushBossDebugLog === 'function') {
             this.pushBossDebugLog(gameState, 'PHASE', String(transition.fromPhaseId || '') + ' → ' + String(transition.nextPhaseId || ''), transition.type);
         }
@@ -294,12 +294,6 @@ const BossPhaseSystem = {
                 m.x = Number.isFinite(tx) ? tx : m.x;
                 m.y = Number.isFinite(ty) ? ty : m.y;
                 if (gameState) gameState.screenHitFlash = { life: 0.20, maxLife: 0.20, strength: 0.30, mode: 'red' };
-                if (typeof pushSystemNotice === 'function') {
-                    const cutsceneNotice = String(transition.type || '').trim().toUpperCase() === 'KASIYAS_P2_TO_P3'
-                        ? '카시야스가 새로운 검을 꺼내기 시작합니다'
-                        : '카시야스가 두 번째 검을 불러냅니다';
-                    pushSystemNotice(cutsceneNotice, '#c0392b', 1.4);
-                }
             }
             return true;
         }
@@ -381,9 +375,6 @@ const BossPhaseSystem = {
         gameState.phaseTransition = null;
         gameState.screenHitFlash = { life: 0.24, maxLife: 0.24, strength: 0.42, mode: 'red' };
 
-        if (transition.startText && typeof pushSystemNotice === 'function') {
-            pushSystemNotice(transition.startText, '#e74c3c', 2.0);
-        }
         if (typeof this.pushBossDebugLog === 'function') {
             this.pushBossDebugLog(gameState, 'PHASE_START', String(nextPhase.Phase_ID || '').trim(), transition.startText || '');
         }

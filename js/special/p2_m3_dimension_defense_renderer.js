@@ -408,14 +408,47 @@
         const w = layout.laneW * (maxLane - minLane + 1) - 16 * layout.scale;
         const ratio = Math.max(0, Math.min(1, slash.warningTimer / Math.max(0.001, slash.warningMax || 1)));
         const pulse = 0.4 + Math.sin(Date.now() / 80) * 0.2;
+        const warningType = String(
+            slash.warningRenderType || slash.data && slash.data.Warning_Render_Type || ''
+        ).trim().toUpperCase();
+
+        // Warning_Render_Type은 경고 범위가 아니라 전조의 시각 테마를 선택한다.
+        // 미입력·미지원 값은 기존 검기 크기 기반 표현을 그대로 사용한다.
+        let fillStyle = slash.isGiant
+            ? 'rgba(255,65,65,0.26)'
+            : (lanes.length >= 2 ? 'rgba(166,54,255,0.22)' : 'rgba(255,80,92,0.20)');
+        let strokeRgb = '255,230,150';
+        let lineWidth = 3;
+        let dash = [12, 8];
+
+        if (warningType === 'WARNING_P2M3_SLASH_NORMAL') {
+            fillStyle = 'rgba(255,80,92,0.20)';
+        } else if (warningType === 'WARNING_P2M3_SLASH_X_SLASH') {
+            fillStyle = 'rgba(255,62,72,0.24)';
+            strokeRgb = '255,205,175';
+        } else if (warningType === 'WARNING_P2M3_SLASH_APOSTLE_ENERGY') {
+            fillStyle = 'rgba(166,54,255,0.22)';
+            strokeRgb = '226,187,255';
+        } else if (warningType === 'WARNING_P2M3_SLASH_GIANT_SLASH') {
+            fillStyle = 'rgba(255,65,65,0.26)';
+            strokeRgb = '255,226,150';
+            lineWidth = 4;
+            dash = [16, 7];
+        } else if (warningType === 'WARNING_P2M3_SLASH_KASIYAS_FINAL_ATTACK') {
+            fillStyle = 'rgba(112,42,170,0.25)';
+            strokeRgb = '255,214,150';
+            lineWidth = 4;
+            dash = [18, 6];
+        }
+
         ctx.save();
         ctx.globalAlpha = 0.28 + (1 - ratio) * 0.44;
-        ctx.fillStyle = slash.isGiant ? 'rgba(255,65,65,0.26)' : (lanes.length >= 2 ? 'rgba(166,54,255,0.22)' : 'rgba(255,80,92,0.20)');
+        ctx.fillStyle = fillStyle;
         this.roundRect(ctx, x, layout.warningTopY, w, layout.floorY - layout.warningTopY, 12 * layout.scale);
         ctx.fill();
-        ctx.strokeStyle = `rgba(255,230,150,${pulse})`;
-        ctx.lineWidth = 3 * layout.scale;
-        ctx.setLineDash([12 * layout.scale, 8 * layout.scale]);
+        ctx.strokeStyle = `rgba(${strokeRgb},${pulse})`;
+        ctx.lineWidth = lineWidth * layout.scale;
+        ctx.setLineDash(dash.map(v => v * layout.scale));
         this.roundRect(ctx, x, layout.warningTopY, w, layout.floorY - layout.warningTopY, 12 * layout.scale);
         ctx.stroke();
         ctx.setLineDash([]);

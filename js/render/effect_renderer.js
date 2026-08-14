@@ -540,7 +540,322 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
     alpha = Math.max(0, Math.min(1, alpha));
     ctx.globalAlpha = alpha;
 
-    if (eff.type === 'p3DimensionCrackSuction') {
+    // 2페이즈 기본5 양날검 회전 계열의 공용 slash/hitSpark 렌더가
+    // 242037 마무리 원형 베기에서 붉은/흰색 회전 이펙트처럼 남아 보이는 문제를 차단한다.
+    // 전용 원호 검호(kasiyasP2DoubleEdgedArcSlash / legacy kasiyasP2DoubleEdgedSpinSlash)는 아래 별도 분기에서만 그린다.
+    const __kasiyasRtUpper = String(eff && eff.renderType || '').trim().toUpperCase();
+    if ((eff.type === 'slash' || eff.type === 'hitSpark' || eff.type === 'afterimageDashTrail') &&
+        (__kasiyasRtUpper === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_SPIN' || __kasiyasRtUpper === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_SPIN_SLASH' || __kasiyasRtUpper === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_ARC_SLASH')) {
+        ctx.restore();
+        return;
+    }
+
+    if (eff.type === 'kasiyasP2DoubleEdgedSpinSlash' || eff.type === 'kasiyasP2DoubleEdgedArcSlash') {
+        const w = Math.max(500, parseFloat(eff.w) || 640);
+        const d = Math.max(175, parseFloat(eff.d) || 205);
+        const core = eff.color || 'rgba(255,58,40,0.98)';
+        const dark = eff.accentColor || 'rgba(20,0,0,0.98)';
+        const hot = eff.hotColor || 'rgba(255,236,190,0.86)';
+        const prog = 1 - alpha;
+        ctx.save();
+        ctx.scale(eff.dir || 1, 1);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // 242037 전용: 얇은 stroke가 아니라 두께가 있는 면형 원호 검호를 그린다.
+        // 앞쪽/뒤쪽 반원을 엇갈리게 배치하고, 그 주변을 칼바람 리본이 감싸게 한다.
+        const rx = w * 0.49;
+        const ry = d * 0.38;
+        const swing = prog * 0.055;
+        const pointOnEllipse = (angle, ex, ey, tilt) => {
+            const ca = Math.cos(angle);
+            const sa = Math.sin(angle);
+            const ct = Math.cos(tilt || 0);
+            const st = Math.sin(tilt || 0);
+            const x0 = ca * ex;
+            const y0 = sa * ey;
+            return { x: x0 * ct - y0 * st, y: x0 * st + y0 * ct };
+        };
+        const drawRibbonArc = (cx, cy, tilt, start, end, outerX, outerY, innerX, innerY, fillStyle, strokeStyle, lineW, shadowBlur, alphaMul, steps = 32) => {
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.fillStyle = fillStyle;
+            ctx.strokeStyle = strokeStyle || fillStyle;
+            ctx.lineWidth = lineW || 1;
+            ctx.shadowColor = strokeStyle || fillStyle;
+            ctx.shadowBlur = shadowBlur || 0;
+            ctx.globalAlpha *= alphaMul;
+            ctx.beginPath();
+            for (let i = 0; i <= steps; i++) {
+                const q = i / steps;
+                const a = start + (end - start) * q;
+                const p = pointOnEllipse(a, outerX, outerY, tilt);
+                if (i === 0) ctx.moveTo(p.x, p.y);
+                else ctx.lineTo(p.x, p.y);
+            }
+            for (let i = steps; i >= 0; i--) {
+                const q = i / steps;
+                const a = start + (end - start) * q;
+                const p = pointOnEllipse(a, innerX, innerY, tilt);
+                ctx.lineTo(p.x, p.y);
+            }
+            ctx.closePath();
+            ctx.fill();
+            if (lineW > 0) ctx.stroke();
+            ctx.restore();
+        };
+        const drawArcStroke = (cx, cy, tilt, start, end, ex, ey, strokeStyle, lineW, blur, alphaMul, steps = 32) => {
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.strokeStyle = strokeStyle;
+            ctx.lineWidth = lineW;
+            ctx.shadowColor = strokeStyle;
+            ctx.shadowBlur = blur;
+            ctx.globalAlpha *= alphaMul;
+            ctx.beginPath();
+            for (let i = 0; i <= steps; i++) {
+                const a = start + (end - start) * (i / steps);
+                const p = pointOnEllipse(a, ex, ey, tilt);
+                if (i === 0) ctx.moveTo(p.x, p.y);
+                else ctx.lineTo(p.x, p.y);
+            }
+            ctx.stroke();
+            ctx.restore();
+        };
+
+        const frontStart = -Math.PI * 0.98 + swing;
+        const frontEnd = Math.PI * 0.12 + swing;
+        const backStart = Math.PI * 0.05 + swing * 0.35;
+        const backEnd = Math.PI * 1.18 + swing * 0.35;
+
+        // 원호를 감싸는 바람 리본: 원호보다 바깥에 큰 면으로 배치해 화면에서 확실히 보이게 한다.
+        drawRibbonArc(rx * 0.05, ry * 0.10, -0.11, frontStart - 0.04, frontEnd + 0.03, rx * 1.05, ry * 1.08, rx * 0.96, ry * 0.95, 'rgba(255,220,182,0.32)', 'rgba(255,236,202,0.38)', Math.max(2.2, d * 0.012), 10, 0.95, 36);
+        drawRibbonArc(-rx * 0.06, -ry * 0.09, 0.10, backStart - 0.04, backEnd + 0.04, rx * 1.02, ry * 1.05, rx * 0.94, ry * 0.94, 'rgba(255,172,126,0.24)', 'rgba(255,218,184,0.32)', Math.max(1.9, d * 0.010), 8, 0.90, 36);
+        drawArcStroke(rx * 0.06, ry * 0.10, -0.11, frontStart, frontEnd, rx * 1.08, ry * 1.10, 'rgba(255,240,214,0.42)', Math.max(3.8, d * 0.020), 12, 0.96, 36);
+        drawArcStroke(-rx * 0.06, -ry * 0.09, 0.10, backStart, backEnd, rx * 1.06, ry * 1.07, 'rgba(255,196,154,0.34)', Math.max(3.2, d * 0.017), 10, 0.90, 36);
+
+        // 굵은 면형 검호 본체. 어두운 외곽 면 → 붉은 코어 면 → 밝은 칼날 하이라이트 순으로 겹친다.
+        drawRibbonArc(rx * 0.03, ry * 0.07, -0.055, frontStart, frontEnd, rx * 0.99, ry * 0.98, rx * 0.82, ry * 0.76, 'rgba(30,0,0,0.92)', 'rgba(12,0,0,0.98)', Math.max(4.8, d * 0.024), 12, 1.0, 40);
+        drawRibbonArc(rx * 0.03, ry * 0.07, -0.055, frontStart + 0.015, frontEnd - 0.012, rx * 0.94, ry * 0.92, rx * 0.86, ry * 0.80, 'rgba(255,54,38,0.76)', core, Math.max(3.0, d * 0.016), 18, 1.0, 40);
+        drawArcStroke(rx * 0.03, ry * 0.07, -0.055, frontStart + 0.05, frontEnd - 0.05, rx * 0.91, ry * 0.87, hot, Math.max(5.0, d * 0.026), 12, 1.0, 36);
+
+        drawRibbonArc(-rx * 0.05, -ry * 0.07, 0.060, backStart, backEnd, rx * 0.96, ry * 0.95, rx * 0.80, ry * 0.74, 'rgba(22,0,0,0.84)', 'rgba(10,0,0,0.94)', Math.max(4.2, d * 0.021), 10, 0.94, 40);
+        drawRibbonArc(-rx * 0.05, -ry * 0.07, 0.060, backStart + 0.015, backEnd - 0.012, rx * 0.91, ry * 0.89, rx * 0.84, ry * 0.78, 'rgba(208,34,32,0.62)', 'rgba(255,56,40,0.72)', Math.max(2.6, d * 0.014), 14, 0.92, 40);
+        drawArcStroke(-rx * 0.05, -ry * 0.07, 0.060, backStart + 0.06, backEnd - 0.06, rx * 0.88, ry * 0.84, 'rgba(255,204,156,0.62)', Math.max(4.2, d * 0.022), 10, 0.90, 36);
+
+        // 원호 주변을 휘감는 칼바람 잔광. 소극적인 짧은 선이 아니라 큰 곡선으로 둘러준다.
+        const drawWindTail = (start, end, offsetX, offsetY, tilt, scale, color, width, blur, alphaMul) => {
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.shadowColor = color;
+            ctx.shadowBlur = blur;
+            ctx.globalAlpha *= alphaMul;
+            ctx.beginPath();
+            const steps = 18;
+            for (let i = 0; i <= steps; i++) {
+                const q = i / steps;
+                const a = start + (end - start) * q;
+                const wave = Math.sin(q * Math.PI) * d * 0.055;
+                const p = pointOnEllipse(a, rx * scale, ry * (scale * 0.96), tilt);
+                const nx = Math.cos(a) * wave;
+                const ny = Math.sin(a) * wave;
+                if (i === 0) ctx.moveTo(p.x + nx, p.y + ny);
+                else ctx.lineTo(p.x + nx, p.y + ny);
+            }
+            ctx.stroke();
+            ctx.restore();
+        };
+        drawWindTail(frontStart + 0.10, frontEnd - 0.05, rx * 0.04, ry * 0.08, -0.11, 1.10, 'rgba(255,238,218,0.52)', Math.max(5.4, d * 0.030), 12, 1.0);
+        drawWindTail(frontStart + 0.18, frontEnd - 0.12, rx * 0.06, ry * 0.12, -0.12, 1.16, 'rgba(255,162,122,0.36)', Math.max(4.4, d * 0.024), 8, 0.92);
+        drawWindTail(backStart + 0.08, backEnd - 0.10, -rx * 0.06, -ry * 0.09, 0.10, 1.08, 'rgba(255,218,194,0.40)', Math.max(4.8, d * 0.026), 10, 0.92);
+
+        // 절단 방향을 보여주는 강한 내부 칼날 잔광.
+        for (let i = 0; i < 7; i++) {
+            const q = i / 6;
+            const a = frontStart + (frontEnd - frontStart) * (0.18 + q * 0.58);
+            const p = pointOnEllipse(a, rx * 0.78, ry * 0.72, -0.055);
+            const len = 26 + i * 3;
+            const tx = -Math.sin(a);
+            const ty = Math.cos(a);
+            ctx.strokeStyle = i % 2 ? 'rgba(255,236,194,0.40)' : 'rgba(88,0,0,0.36)';
+            ctx.lineWidth = i % 2 ? Math.max(2.0, d * 0.010) : Math.max(3.0, d * 0.015);
+            ctx.shadowBlur = i % 2 ? 6 : 2;
+            ctx.shadowColor = ctx.strokeStyle;
+            ctx.beginPath();
+            ctx.moveTo(p.x - tx * len * 0.35, p.y - ty * len * 0.20);
+            ctx.lineTo(p.x + tx * len * 0.75, p.y + ty * len * 0.38);
+            ctx.stroke();
+        }
+
+        ctx.restore();
+    } else if (eff.type === 'kasiyasP3ApostleEnergyEruption') {
+        const t = 1 - alpha;
+        const w = Math.max(760, parseFloat(eff.w) || 1000);
+        const d = Math.max(220, parseFloat(eff.d) || 312);
+        const h = Math.max(160, parseFloat(eff.h) || 260);
+        const core = eff.color || `rgba(196,92,255,${0.98 * alpha})`;
+        const accent = eff.accentColor || `rgba(138,0,54,${0.94 * alpha})`;
+        const dark = eff.darkColor || `rgba(0,0,0,${0.98 * alpha})`;
+        const hot = eff.hotColor || `rgba(255,98,72,${0.90 * alpha})`;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        const centerY = d * 0.05;
+        const outerRx = w * 0.495;
+        const outerRy = d * 0.47;
+        const innerRx = outerRx * 0.72;
+        const innerRy = outerRy * 0.64;
+
+        // 바닥 장판은 너무 흐릿하지 않게, 실제 범위를 읽을 수 있을 정도로 선명하게 깐다.
+        const ground = ctx.createRadialGradient(0, centerY, 18, 0, centerY, outerRx * 1.04);
+        ground.addColorStop(0.00, `rgba(255,96,72,${0.14 * alpha})`);
+        ground.addColorStop(0.20, `rgba(194,86,255,${0.28 * alpha})`);
+        ground.addColorStop(0.52, `rgba(98,10,118,${0.24 * alpha})`);
+        ground.addColorStop(0.82, `rgba(34,0,40,${0.16 * alpha})`);
+        ground.addColorStop(1.00, 'rgba(0,0,0,0)');
+        ctx.fillStyle = ground;
+        ctx.beginPath();
+        ctx.ellipse(0, centerY, outerRx * 1.02, outerRy * 1.00, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 실제 범위 끝 원에 먼저 균열/기운이 형성되는 느낌을 준다.
+        const drawEdgeBurstRing = (phase, ringScale, alphaMul, yScale, colorA, colorB, shadowColor) => {
+            const rx = outerRx * ringScale;
+            const ry = outerRy * yScale;
+            const ringAlpha = alpha * alphaMul * (0.60 + Math.sin(Math.min(1, phase) * Math.PI) * 0.40);
+            // 메인 외곽 고리
+            ctx.save();
+            ctx.strokeStyle = colorA;
+            ctx.lineWidth = Math.max(7, d * 0.040);
+            ctx.shadowBlur = 22;
+            ctx.shadowColor = shadowColor;
+            ctx.globalAlpha = ringAlpha;
+            ctx.beginPath();
+            ctx.ellipse(0, centerY, rx, ry, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+            // 밝은 하이라이트 고리
+            ctx.save();
+            ctx.strokeStyle = colorB;
+            ctx.lineWidth = Math.max(3, d * 0.018);
+            ctx.shadowBlur = 14;
+            ctx.shadowColor = colorB;
+            ctx.globalAlpha = ringAlpha * 0.95;
+            ctx.beginPath();
+            ctx.ellipse(0, centerY, rx * 0.988, ry * 0.984, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+
+            // 외곽 원 부분에서 즉시 솟는 분출/가시. 실제 범위를 읽게 만드는 핵심.
+            const count = 28;
+            for (let i = 0; i < count; i++) {
+                const a = i * Math.PI * 2 / count + phase * 0.24 + (i % 2 ? 0.04 : -0.04);
+                const px = Math.cos(a) * rx;
+                const py = centerY + Math.sin(a) * ry;
+                const radialX = Math.cos(a);
+                const radialY = Math.sin(a);
+                const tangentX = -Math.sin(a);
+                const tangentY = Math.cos(a);
+                const burst = h * (0.22 + 0.20 * Math.sin(phase * Math.PI)) * (0.88 + (i % 3) * 0.12);
+                // 넓은 기운 리본
+                ctx.save();
+                ctx.fillStyle = i % 3 === 0 ? `rgba(18,0,18,${0.42 * alpha})` : (i % 2 ? `rgba(160,18,62,${0.34 * alpha})` : `rgba(166,74,255,${0.36 * alpha})`);
+                ctx.beginPath();
+                ctx.moveTo(px - tangentX * 9, py - tangentY * 9);
+                ctx.quadraticCurveTo(
+                    px + radialX * 8,
+                    py + radialY * 8 - burst * 0.35,
+                    px + radialX * 18 + tangentX * 10,
+                    py + radialY * 16 - burst
+                );
+                ctx.quadraticCurveTo(
+                    px + radialX * 6,
+                    py + radialY * 8 - burst * 0.40,
+                    px + tangentX * 7,
+                    py + tangentY * 7
+                );
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+
+                // 중심을 향해 갈라지는 균열성 스파크
+                ctx.strokeStyle = i % 3 === 0 ? dark : (i % 2 ? accent : core);
+                ctx.lineWidth = i % 3 === 0 ? 6.5 : 4.2;
+                ctx.shadowBlur = i % 3 === 0 ? 12 : 24;
+                ctx.shadowColor = i % 3 === 0 ? 'rgba(0,0,0,0.75)' : (i % 2 ? 'rgba(180,0,76,0.85)' : 'rgba(166,74,255,0.85)');
+                ctx.globalAlpha = ringAlpha;
+                ctx.beginPath();
+                ctx.moveTo(px - radialX * 4, py - radialY * 4);
+                ctx.lineTo(px + radialX * 8 + tangentX * 3, py + radialY * 8 - burst * 0.82);
+                ctx.stroke();
+            }
+        };
+
+        // 시작부터 외곽 분출이 보이도록 2중 외곽 고리를 먼저 만든다.
+        drawEdgeBurstRing(Math.min(1, t * 1.20 + 0.10), 1.00, 0.92, 1.00, accent, core, 'rgba(168,0,88,0.82)');
+        drawEdgeBurstRing(Math.min(1, t * 1.05 + 0.04), 0.90, 0.72, 0.92, `rgba(88,0,26,${0.84 * alpha})`, hot, 'rgba(166,74,255,0.70)');
+
+        // 내부는 보조 분출이 끓어오르는 느낌으로 강화.
+        for (let ring = 0; ring < 3; ring++) {
+            const phase = Math.max(0, Math.min(1, t * 1.24 - ring * 0.16));
+            if (phase <= 0) continue;
+            const ringAlpha = alpha * (0.74 - ring * 0.10) * (0.58 + Math.sin(phase * Math.PI) * 0.42);
+            const rx = innerRx * (0.52 + phase * (0.28 + ring * 0.08));
+            const ry = innerRy * (0.48 + phase * (0.22 + ring * 0.05));
+            ctx.strokeStyle = ring % 2 ? accent : core;
+            ctx.lineWidth = Math.max(6.5, d * (0.034 - ring * 0.003));
+            ctx.shadowBlur = 24;
+            ctx.shadowColor = ring % 2 ? 'rgba(172,0,80,0.78)' : 'rgba(166,74,255,0.82)';
+            ctx.globalAlpha = ringAlpha;
+            ctx.beginPath();
+            ctx.ellipse(0, centerY, rx, ry, 0, 0, Math.PI * 2);
+            ctx.stroke();
+
+            const count = 16 + ring * 4;
+            for (let i = 0; i < count; i++) {
+                const a = i * Math.PI * 2 / count + ring * 0.18;
+                const px = Math.cos(a) * rx;
+                const py = centerY + Math.sin(a) * ry;
+                const spikeH = h * (0.22 + 0.24 * Math.sin(phase * Math.PI)) * (0.78 + (i % 3) * 0.14);
+                ctx.strokeStyle = i % 3 === 0 ? dark : (i % 3 === 1 ? core : hot);
+                ctx.lineWidth = i % 3 === 0 ? 8 : 4.8;
+                ctx.shadowBlur = i % 3 === 0 ? 12 : 24;
+                ctx.beginPath();
+                ctx.moveTo(px, py + 10);
+                ctx.lineTo(px + Math.cos(a) * 10, py - spikeH);
+                ctx.stroke();
+            }
+        }
+
+        // 중심 응축부와 마무리 범위 외곽선. 중심도 약하지 않게 강화.
+        const coreGlow = ctx.createRadialGradient(0, centerY - h * 0.05, 8, 0, centerY - h * 0.05, innerRx * 0.72);
+        coreGlow.addColorStop(0.00, `rgba(255,138,110,${0.24 * alpha})`);
+        coreGlow.addColorStop(0.24, `rgba(202,92,255,${0.34 * alpha})`);
+        coreGlow.addColorStop(0.66, `rgba(80,0,92,${0.20 * alpha})`);
+        coreGlow.addColorStop(1.00, 'rgba(0,0,0,0)');
+        ctx.fillStyle = coreGlow;
+        ctx.beginPath();
+        ctx.ellipse(0, centerY - h * 0.05, innerRx * 0.80, innerRy * 0.78, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = `rgba(0,0,0,${0.82 * alpha})`;
+        ctx.lineWidth = 4.0;
+        ctx.beginPath();
+        ctx.ellipse(0, centerY, outerRx * 1.00, outerRy * 1.00, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(208,98,255,${0.52 * alpha})`;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.ellipse(0, centerY, outerRx * 0.992, outerRy * 0.988, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    } else if (eff.type === 'p3DimensionCrackSuction') {
         // 중앙 균열을 기준으로 맵 전체가 빨려 들어가는 느낌의 원형 수렴 이펙트.
         const t = 1 - alpha;
         const w = Math.max(360, parseFloat(eff.w) || 900);
@@ -2513,7 +2828,54 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
-        if (mode === 'HORIZONTAL') {
+        if (mode === 'CIRCLE') {
+            // 243041 귀면족의 저주 3차 원형 베기.
+            // 243037의 원형 횡베기 문법을 유지하되, 중심 기준의 전방위 타원 검호로 확장한다.
+            const rx = Math.max(halfW * 0.96, 420);
+            const ry = Math.max(halfD * 1.03, halfH * 0.52, 142);
+            const yBase = 0;
+            const tilt = -0.025;
+            const arcPath = (mulX, mulY, start, end, yOff = 0) => (c) => {
+                c.ellipse(0, yBase + yOff, rx * mulX, ry * mulY, tilt, start, end);
+            };
+            const fullEllipse = (mulX, mulY, yOff = 0) => (c) => {
+                c.ellipse(0, yBase + yOff, rx * mulX, ry * mulY, tilt, 0, Math.PI * 2);
+            };
+
+            const grad = ctx.createRadialGradient(0, yBase, 8, 0, yBase, Math.max(rx, ry) * 1.12);
+            grad.addColorStop(0.00, `rgba(255,72,58,${0.035 * alpha})`);
+            grad.addColorStop(0.38, `rgba(172,76,255,${0.135 * alpha})`);
+            grad.addColorStop(0.74, `rgba(0,0,0,${0.18 * alpha})`);
+            grad.addColorStop(1.00, 'rgba(0,0,0,0)');
+            fillPath(fullEllipse(1.03, 1.08), grad, 0, 0.92, 'lighter');
+
+            // 외곽 검은 절단면 → 보라 사도의 기운 → 검붉은 코어 → 밝은 칼날 하이라이트 순서.
+            strokePath(fullEllipse(1.02, 1.02), Math.max(28, ry * 0.28), `rgba(0,0,0,${0.72 * alpha})`, 12, 0.94, 'source-over');
+            strokePath(arcPath(0.99, 0.98, -Math.PI * 1.04, Math.PI * 0.30, ry * 0.02), Math.max(19, ry * 0.19), purple, 30, 1.0, 'lighter');
+            strokePath(arcPath(0.97, 0.96, Math.PI * 0.08, Math.PI * 1.26, -ry * 0.03), Math.max(17, ry * 0.17), `rgba(118,0,64,${0.70 * alpha})`, 24, 0.92, 'lighter');
+            strokePath(arcPath(0.93, 0.91, -Math.PI * 0.98, Math.PI * 0.26, ry * 0.02), Math.max(11, ry * 0.11), red, 24, 0.95, 'lighter');
+            strokePath(arcPath(0.91, 0.90, Math.PI * 0.10, Math.PI * 1.19, -ry * 0.03), Math.max(9, ry * 0.09), `rgba(210,38,92,${0.58 * alpha})`, 20, 0.85, 'lighter');
+            strokePath(arcPath(0.72, 0.70, -Math.PI * 0.75, -Math.PI * 0.05, -ry * 0.04), Math.max(4.2, ry * 0.040), hot, 14, 0.92, 'lighter');
+            strokePath(arcPath(0.78, 0.76, Math.PI * 0.28, Math.PI * 0.86, ry * 0.04), Math.max(3.6, ry * 0.036), `rgba(255,210,235,${0.62 * alpha})`, 11, 0.78, 'lighter');
+
+            // 실제 원형 히트박스 외곽을 읽을 수 있도록 범위 끝쪽에 사도의 기운 잔광 링을 추가한다.
+            strokePath(fullEllipse(1.08 + pulse * 0.018, 1.10 + pulse * 0.020), Math.max(5.0, ry * 0.048), `rgba(176,92,255,${0.46 * alpha})`, 18, 0.88, 'lighter');
+            strokePath(fullEllipse(1.00 + pulse * 0.016, 1.02 + pulse * 0.018), Math.max(7.5, ry * 0.072), `rgba(255,52,44,${0.38 * alpha})`, 16, 0.70, 'lighter');
+            strokePath(fullEllipse(1.13 + pulse * 0.025, 1.15 + pulse * 0.026), Math.max(8.5, ry * 0.080), `rgba(0,0,0,${0.36 * alpha})`, 12, 0.62, 'source-over');
+
+            // 원호가 단순 원으로만 보이지 않도록, 절단 방향의 갈퀴/잔광을 외곽으로 흩뿌린다.
+            for (let i = 0; i < 30; i++) {
+                const a = -Math.PI * 0.96 + i * Math.PI * 2.02 / 29 + (i % 2) * 0.018;
+                const inner = 0.55 + (i % 4) * 0.035;
+                const outer = 0.95 + (i % 3) * 0.030 + pulse * 0.020;
+                const x0 = Math.cos(a) * rx * inner;
+                const y0 = yBase + Math.sin(a) * ry * inner;
+                const x1 = Math.cos(a + 0.050) * rx * outer;
+                const y1 = yBase + Math.sin(a + 0.050) * ry * outer;
+                const darkLine = i % 3 === 0;
+                strokePath((c)=>{ c.moveTo(x0, y0); c.lineTo(x1, y1); }, darkLine ? 4.6 : 2.4, darkLine ? `rgba(0,0,0,${0.52 * alpha})` : (i % 3 === 1 ? `rgba(255,62,52,${0.38 * alpha})` : `rgba(188,118,255,${0.34 * alpha})`), darkLine ? 7 : 12, 0.94, darkLine ? 'source-over' : 'lighter');
+            }
+        } else if (mode === 'HORIZONTAL') {
             // 3페이즈 대형1 전용 횡베기: 기존 기본 베기와 공유하지 않는 굵은 검호.
             // 전진 원형베기와 마찬가지로 호가 아래쪽으로 오도록 M1 횡베기만 상하 반전한다.
             ctx.scale(1, -1);
@@ -2603,6 +2965,153 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
             }
         }
 
+        ctx.restore();
+
+    } else if (eff.type === 'kasiyasFullPowerOniSlash') {
+        // 전력 카시야스 전용 검격: 기존 3페이즈 밝은 보라 검호와 분리한 귀참 계열 흑귀/진홍 참격.
+        const mode = String(eff.slashMode || 'HORIZONTAL').toUpperCase();
+        const slashW = Math.max(240, eff.w || 680);
+        const slashD = Math.max(100, eff.d || 220);
+        const slashH = Math.max(150, eff.h || 300);
+        const dir = eff.dir === -1 ? -1 : 1;
+        const pulse = 1 - alpha;
+        const core = eff.color || `rgba(142,0,42,${0.94 * alpha})`;
+        const accent = eff.accentColor || `rgba(76,0,112,${0.82 * alpha})`;
+        const dark = eff.darkColor || `rgba(0,0,0,${0.98 * alpha})`;
+        const hot = eff.hotColor || `rgba(255,44,38,${0.66 * alpha})`;
+        const halfW = slashW * 0.50;
+        const halfH = slashH * 0.50;
+        const halfD = slashD * 0.50;
+
+        ctx.save();
+        ctx.scale(dir, 1);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        const strokePath = (drawFn, lineW, stroke, blur, aMul = 1, comp = 'lighter') => {
+            ctx.save();
+            ctx.globalCompositeOperation = comp;
+            ctx.globalAlpha *= aMul;
+            ctx.shadowBlur = blur;
+            ctx.shadowColor = stroke;
+            ctx.strokeStyle = stroke;
+            ctx.lineWidth = lineW;
+            ctx.beginPath();
+            drawFn(ctx);
+            ctx.stroke();
+            ctx.restore();
+        };
+        const fillPath = (drawFn, fill, blur = 0, aMul = 1, comp = 'source-over') => {
+            ctx.save();
+            ctx.globalCompositeOperation = comp;
+            ctx.globalAlpha *= aMul;
+            ctx.shadowBlur = blur;
+            ctx.shadowColor = fill;
+            ctx.fillStyle = fill;
+            ctx.beginPath();
+            drawFn(ctx);
+            ctx.fill();
+            ctx.restore();
+        };
+        const drawWisp = (x0, y0, x1, y1, seed, aMul = 1) => {
+            const cx = (x0 + x1) * 0.5 + Math.sin(seed * 1.7) * halfW * 0.10;
+            const cy = (y0 + y1) * 0.5 + Math.cos(seed * 1.3) * halfH * 0.10;
+            strokePath(c => { c.moveTo(x0, y0); c.quadraticCurveTo(cx, cy, x1, y1); }, 1.5 + (seed % 3) * 0.55, seed % 2 ? `rgba(92,0,120,${0.32 * alpha})` : `rgba(0,0,0,${0.44 * alpha})`, 7, aMul, seed % 2 ? 'lighter' : 'source-over');
+        };
+
+        if (mode === 'HORIZONTAL') {
+            // 횡귀참: 청명한 빛 궤적이 아니라 검은 먹물 같은 반월이 앞으로 찢고 나가는 형태.
+            ctx.scale(1, -1);
+            const rx = Math.max(halfW * 0.94, 240);
+            const ry = Math.max(halfH * 0.66, halfD * 1.05, 110);
+            const yBase = -ry * 0.02;
+            const bg = ctx.createRadialGradient(0, yBase, 10, 0, yBase, Math.max(rx, ry) * 1.12);
+            bg.addColorStop(0.00, `rgba(255,36,34,${0.035 * alpha})`);
+            bg.addColorStop(0.30, `rgba(92,0,120,${0.115 * alpha})`);
+            bg.addColorStop(0.64, `rgba(0,0,0,${0.235 * alpha})`);
+            bg.addColorStop(1.00, 'rgba(0,0,0,0)');
+            fillPath(c => { c.ellipse(0, yBase, rx * 1.03, ry * 1.05, -0.03, 0, Math.PI * 2); }, bg, 0, 0.95, 'source-over');
+
+            const arc = (mul, yMul, start, end) => c => { c.ellipse(0, yBase + ry * yMul, rx * mul, ry * 0.97, -0.025, start, end); };
+            strokePath(arc(1.06, 0.08, -Math.PI * 1.02, Math.PI * 0.30), Math.max(42, ry * 0.42), `rgba(0,0,0,${0.78 * alpha})`, 16, 0.98, 'source-over');
+            strokePath(arc(1.00, 0.05, -Math.PI * 0.99, Math.PI * 0.26), Math.max(30, ry * 0.29), accent, 36, 0.82, 'lighter');
+            strokePath(arc(0.96, 0.03, -Math.PI * 0.96, Math.PI * 0.22), Math.max(18, ry * 0.18), core, 28, 0.95, 'lighter');
+            strokePath(arc(0.74, -0.06, -Math.PI * 0.78, -Math.PI * 0.06), Math.max(5, ry * 0.052), hot, 16, 0.78, 'lighter');
+
+            // 검격 안쪽의 귀기 갈퀴와 검은 파편.
+            for (let i = 0; i < 24; i++) {
+                const a = -Math.PI * 0.98 + i * Math.PI * 0.064;
+                const x0 = Math.cos(a) * rx * (0.58 + (i % 4) * 0.035);
+                const y0 = yBase + Math.sin(a) * ry * (0.58 + (i % 3) * 0.040);
+                const x1 = Math.cos(a + 0.045) * rx * (0.98 + (i % 3) * 0.035);
+                const y1 = yBase + Math.sin(a + 0.045) * ry * (0.94 + (i % 2) * 0.035);
+                strokePath(c => { c.moveTo(x0, y0); c.lineTo(x1, y1); }, i % 3 === 0 ? 4.8 : 2.5, i % 3 === 0 ? `rgba(0,0,0,${0.58 * alpha})` : (i % 3 === 1 ? `rgba(150,0,46,${0.42 * alpha})` : `rgba(74,0,112,${0.34 * alpha})`), i % 3 === 0 ? 8 : 13, 0.96, i % 3 === 0 ? 'source-over' : 'lighter');
+            }
+            for (let i = 0; i < 12; i++) {
+                const a = -Math.PI * 0.90 + i * Math.PI * 0.105;
+                drawWisp(Math.cos(a) * rx * 0.20, yBase + Math.sin(a) * ry * 0.24, Math.cos(a + 0.18) * rx * 0.88, yBase + Math.sin(a + 0.18) * ry * 0.92, i, 0.9);
+            }
+        } else if (mode === 'DOWN') {
+            // 내려귀참: 화면을 누르며 떨어지는 두꺼운 흑색 절단면과 지면으로 번지는 귀기.
+            const p0 = [-halfW * 0.72, -halfH * 0.98];
+            const p1 = [ halfW * 0.06, -halfH * 0.12];
+            const p2 = [ halfW * 0.62,  halfH * 0.98];
+            const cut = c => { c.moveTo(p0[0], p0[1]); c.quadraticCurveTo(p1[0], p1[1], p2[0], p2[1]); };
+            const cut2 = c => { c.moveTo(-p0[0] * 0.65, p0[1] * 0.84); c.quadraticCurveTo(-p1[0] * 0.12, p1[1] * 0.20, -p2[0] * 0.72, p2[1] * 0.78); };
+            const bg = ctx.createRadialGradient(0, 0, 8, 0, 0, Math.max(halfW, halfH) * 1.18);
+            bg.addColorStop(0.00, `rgba(255,36,34,${0.052 * alpha})`);
+            bg.addColorStop(0.36, `rgba(78,0,116,${0.135 * alpha})`);
+            bg.addColorStop(0.70, `rgba(0,0,0,${0.255 * alpha})`);
+            bg.addColorStop(1.00, 'rgba(0,0,0,0)');
+            fillPath(c => { c.ellipse(0, 0, halfW * 0.95, halfH * 1.03, 0.08, 0, Math.PI * 2); }, bg, 0, 0.98, 'source-over');
+            strokePath(cut, Math.max(46, Math.min(slashW, slashH) * 0.22), `rgba(0,0,0,${0.84 * alpha})`, 18, 1.0, 'source-over');
+            strokePath(cut, Math.max(29, Math.min(slashW, slashH) * 0.145), accent, 38, 0.86, 'lighter');
+            strokePath(cut, Math.max(17, Math.min(slashW, slashH) * 0.085), core, 28, 0.95, 'lighter');
+            strokePath(cut, Math.max(5, Math.min(slashW, slashH) * 0.026), hot, 14, 0.72, 'lighter');
+            strokePath(cut2, Math.max(18, Math.min(slashW, slashH) * 0.09), `rgba(0,0,0,${0.54 * alpha})`, 12, 0.72, 'source-over');
+            strokePath(cut2, Math.max(6, Math.min(slashW, slashH) * 0.034), `rgba(120,0,44,${0.38 * alpha})`, 18, 0.70, 'lighter');
+            for (let i = 0; i < 18; i++) {
+                const t = i / 17;
+                const x = p0[0] * (1 - t) + p2[0] * t + Math.sin(t * Math.PI * 5) * 26;
+                const y = p0[1] * (1 - t) + p2[1] * t;
+                strokePath(c => { c.moveTo(x, y); c.lineTo(x + (i % 2 ? -1 : 1) * (12 + t * 22), y + 12 + t * 18); }, i % 3 === 0 ? 3.6 : 2.0, i % 3 === 0 ? `rgba(0,0,0,${0.52 * alpha})` : `rgba(132,0,58,${0.34 * alpha})`, 7, 0.92, i % 3 === 0 ? 'source-over' : 'lighter');
+            }
+        } else {
+            // 대각귀참: 검은 장막 같은 대각 절단면 안쪽에 붉은 코어가 짧게 번뜩인다.
+            const p0 = [-halfW * 0.98, -halfH * 0.92];
+            const p1 = [ halfW * 0.98,  halfH * 0.92];
+            const slashPoly = (wide) => c => {
+                const dx = p1[0] - p0[0], dy = p1[1] - p0[1];
+                const len = Math.max(1, Math.hypot(dx, dy));
+                const nx = -dy / len, ny = dx / len;
+                c.moveTo(p0[0] + nx * wide, p0[1] + ny * wide);
+                c.lineTo(p1[0] + nx * wide, p1[1] + ny * wide);
+                c.lineTo(p1[0] - nx * wide, p1[1] - ny * wide);
+                c.lineTo(p0[0] - nx * wide, p0[1] - ny * wide);
+                c.closePath();
+            };
+            const mist = ctx.createLinearGradient(p0[0], p0[1], p1[0], p1[1]);
+            mist.addColorStop(0.00, 'rgba(0,0,0,0)');
+            mist.addColorStop(0.18, `rgba(0,0,0,${0.26 * alpha})`);
+            mist.addColorStop(0.50, `rgba(92,0,120,${0.16 * alpha})`);
+            mist.addColorStop(0.82, `rgba(0,0,0,${0.24 * alpha})`);
+            mist.addColorStop(1.00, 'rgba(0,0,0,0)');
+            fillPath(c => { c.ellipse(0, 0, halfW * 1.02, halfH * 0.96, -0.52, 0, Math.PI * 2); }, mist, 0, 1.0, 'source-over');
+            fillPath(slashPoly(Math.max(38, Math.min(slashW, slashH) * 0.17)), `rgba(0,0,0,${0.56 * alpha})`, 10, 0.92, 'source-over');
+            fillPath(slashPoly(Math.max(22, Math.min(slashW, slashH) * 0.10)), `rgba(72,0,110,${0.24 * alpha})`, 24, 0.82, 'lighter');
+            fillPath(slashPoly(Math.max(12, Math.min(slashW, slashH) * 0.055)), `rgba(150,0,42,${0.34 * alpha})`, 20, 0.85, 'lighter');
+            strokePath(c => { c.moveTo(p0[0], p0[1]); c.lineTo(p1[0], p1[1]); }, Math.max(44, Math.min(slashW, slashH) * 0.18), `rgba(0,0,0,${0.84 * alpha})`, 18, 1.0, 'source-over');
+            strokePath(c => { c.moveTo(p0[0], p0[1]); c.lineTo(p1[0], p1[1]); }, Math.max(24, Math.min(slashW, slashH) * 0.105), accent, 36, 0.86, 'lighter');
+            strokePath(c => { c.moveTo(p0[0], p0[1]); c.lineTo(p1[0], p1[1]); }, Math.max(12, Math.min(slashW, slashH) * 0.052), core, 26, 0.92, 'lighter');
+            strokePath(c => { c.moveTo(p0[0] + halfW * 0.02, p0[1] - halfH * 0.02); c.lineTo(p1[0] - halfW * 0.02, p1[1] + halfH * 0.02); }, Math.max(4.5, Math.min(slashW, slashH) * 0.020), hot, 13, 0.72, 'lighter');
+            for (let i = 0; i < 24; i++) {
+                const t = i / 23;
+                const x = p0[0] * (1 - t) + p1[0] * t;
+                const y = p0[1] * (1 - t) + p1[1] * t;
+                const side = i % 2 ? -1 : 1;
+                strokePath(c => { c.moveTo(x, y); c.lineTo(x + side * (16 + 28 * Math.sin(t * Math.PI)), y - side * (10 + 16 * Math.cos(t * Math.PI))); }, i % 3 === 0 ? 3.2 : 1.9, i % 3 === 0 ? `rgba(0,0,0,${0.48 * alpha})` : (i % 3 === 1 ? `rgba(150,0,42,${0.34 * alpha})` : `rgba(76,0,112,${0.28 * alpha})`), 7, 0.92, i % 3 === 0 ? 'source-over' : 'lighter');
+            }
+        }
         ctx.restore();
 
     } else if (eff.type === 'kasiyasP3HeavySlash') {
@@ -3263,7 +3772,9 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
 
         ctx.save();
         ctx.beginPath();
-        ctx.rect(-clipW * 0.5, -clipH * 0.5, clipW, clipH);
+        const clipPadX = mode === 'UP_DOWN' ? clipW * 0.14 : 0;
+        const clipPadY = mode === 'UP_DOWN' ? clipH * 0.18 : 0;
+        ctx.rect(-clipW * 0.5 - clipPadX, -clipH * 0.5 - clipPadY, clipW + clipPadX * 2, clipH + clipPadY * 2);
         ctx.clip();
         // CROSS 계열은 베어내는 끝 방향이 전방으로 가도록 반전하고, UP_DOWN은 기존 읽힘을 유지한다.
         ctx.scale(mode === 'CROSS' ? -dir : dir, 1);
@@ -3271,18 +3782,86 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         ctx.lineCap = 'butt';
         ctx.lineJoin = 'miter';
         if (mode === 'UP_DOWN') {
-            drawBlade(-clipW * 0.50, -clipH * 0.12, clipW * 0.50, -clipH * 0.50, 1, 0.92);
-            drawBlade(-clipW * 0.50, clipH * 0.12, clipW * 0.50, clipH * 0.50, -1, 0.92);
-            ctx.shadowBlur = 8;
-            ctx.shadowColor = 'rgba(220,0,0,0.50)';
-            ctx.strokeStyle = `rgba(255,108,82,${0.22 * alpha})`;
-            ctx.lineWidth = Math.max(1.4, clipH * 0.012);
+            // 후반부 추가 양손 위아래 베기는 화면 상/하단을 가르는 긴 띠가 아니라,
+            // 카시야스의 양손 검 위치에서 출발해 전방으로 벌어지는 초승달형 검격으로 표현한다.
+            const originX = -clipW * 0.36;
+            const originGap = Math.max(5, clipH * 0.045);
+            const bladeW = Math.max(22, clipH * 0.24);
+            const drawFanBlade = (side) => {
+                const x0 = originX;
+                const y0 = side * originGap;
+                const x1 = clipW * 0.45;
+                const y1 = side * clipH * 0.29;
+                const c1x = -clipW * 0.23;
+                const c1y = side * clipH * 0.54;
+                const c2x = clipW * 0.12;
+                const c2y = side * clipH * 0.61;
+                const grad = ctx.createLinearGradient(x0, y0, x1, y1);
+                grad.addColorStop(0.00, 'rgba(0,0,0,0)');
+                grad.addColorStop(0.10, `rgba(34,0,0,${0.55 * alpha})`);
+                grad.addColorStop(0.26, accent);
+                grad.addColorStop(0.53, core);
+                grad.addColorStop(0.72, `rgba(255,126,88,${0.82 * alpha})`);
+                grad.addColorStop(0.90, hot);
+                grad.addColorStop(1.00, 'rgba(0,0,0,0)');
+
+                // 검격 본체보다 조금 두꺼운 어두운 잔광을 먼저 깔아 외곽을 잡는다.
+                renderer.drawKasiyasSharpBladeRibbon(ctx, {
+                    x0, y0, c1x, c1y, c2x, c2y, x1, y1,
+                    width: bladeW * 1.18,
+                    fillStyle: `rgba(70,0,0,${0.32 * alpha})`,
+                    edgeStyle: `rgba(18,0,0,${0.62 * alpha})`,
+                    coreStyle: `rgba(255,56,42,${0.32 * alpha})`,
+                    hotStyle: `rgba(255,216,188,${0.20 * alpha})`,
+                    shadowColor: 'rgba(230,0,0,0.58)',
+                    bodyBlur: 16, edgeBlur: 12, coreBlur: 10, hotBlur: 6,
+                    profile: 'slash', tailScale: 0.018, tipScale: 0.026,
+                    edgeWidthMul: 0.24, coreWidthMul: 0.11, hotWidthMul: 0.035
+                });
+
+                renderer.drawKasiyasSharpBladeRibbon(ctx, {
+                    x0, y0, c1x, c1y, c2x, c2y, x1, y1,
+                    width: bladeW,
+                    fillStyle: grad,
+                    edgeStyle: accent,
+                    coreStyle: core,
+                    hotStyle: hot,
+                    shadowColor: 'rgba(225,0,0,0.72)',
+                    bodyBlur: 9, edgeBlur: 9, coreBlur: 9, hotBlur: 5,
+                    profile: 'slash', tailScale: 0.020, tipScale: 0.030,
+                    edgeWidthMul: 0.30, coreWidthMul: 0.13, hotWidthMul: 0.045,
+                    hotOffset: side < 0 ? -0.05 : 0.05
+                });
+
+                // 참고 이미지처럼 안쪽에 밝은 날선을 얹어 검이 지나간 궤적을 강조한다.
+                ctx.save();
+                ctx.shadowBlur = 7;
+                ctx.shadowColor = 'rgba(255,210,180,0.62)';
+                ctx.strokeStyle = `rgba(255,236,212,${0.58 * alpha})`;
+                ctx.lineWidth = Math.max(1.5, clipH * 0.018);
+                ctx.beginPath();
+                ctx.moveTo(x0 + clipW * 0.06, y0 + side * clipH * 0.025);
+                ctx.bezierCurveTo(
+                    c1x + clipW * 0.08, c1y - side * clipH * 0.11,
+                    c2x + clipW * 0.05, c2y - side * clipH * 0.12,
+                    x1 - clipW * 0.04, y1 - side * clipH * 0.05
+                );
+                ctx.stroke();
+                ctx.restore();
+            };
+
+            drawFanBlade(-1);
+            drawFanBlade(1);
+
+            // 양손 검이 갈라져 나가는 시작점을 묶어 주어 두 줄이 따로 떠 보이지 않게 한다.
+            const burstGrad = ctx.createRadialGradient(originX, 0, 2, originX, 0, clipH * 0.22);
+            burstGrad.addColorStop(0, `rgba(255,246,222,${0.44 * alpha})`);
+            burstGrad.addColorStop(0.36, `rgba(255,96,64,${0.24 * alpha})`);
+            burstGrad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = burstGrad;
             ctx.beginPath();
-            ctx.moveTo(-clipW * 0.46, -clipH * 0.38);
-            ctx.bezierCurveTo(-clipW * 0.12, -clipH * 0.50, clipW * 0.20, -clipH * 0.42, clipW * 0.48, -clipH * 0.50);
-            ctx.moveTo(-clipW * 0.46, clipH * 0.38);
-            ctx.bezierCurveTo(-clipW * 0.12, clipH * 0.50, clipW * 0.20, clipH * 0.42, clipW * 0.48, clipH * 0.50);
-            ctx.stroke();
+            ctx.ellipse(originX, 0, clipW * 0.10, clipH * 0.18, 0, 0, Math.PI * 2);
+            ctx.fill();
         } else {
             // X자 베기는 박스형 히트박스의 대각선 끝과 끝이 곧 공격 범위로 보이도록 한다.
             drawBlade(-clipW * 0.5, clipH * 0.5, clipW * 0.5, -clipH * 0.5, 1, 1.02);
@@ -4942,6 +5521,29 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
                 ctx.ellipse(0, 0, w * (0.30 + pulse * (0.24 + r * 0.045)), d * (0.18 + pulse * (0.15 + r * 0.040)), 0, 0, Math.PI * 2);
                 ctx.stroke();
             }
+            if (eff.rangeMatched) {
+                // 243042: 중심 먼지뿐 아니라 실제 판정 외곽 원에서도 지면 균열/검붉은 파동이 보이게 한다.
+                const outerRx = Math.max(80, w * (0.46 + pulse * 0.045));
+                const outerRy = Math.max(40, d * (0.46 + pulse * 0.045));
+                const outerGrad = ctx.createRadialGradient(0, 0, 8, 0, 0, Math.max(outerRx, outerRy) * 1.06);
+                outerGrad.addColorStop(0.00, `rgba(255,64,52,${0.030 * alpha})`);
+                outerGrad.addColorStop(0.48, `rgba(160,72,255,${0.105 * alpha})`);
+                outerGrad.addColorStop(0.82, `rgba(0,0,0,${0.155 * alpha})`);
+                outerGrad.addColorStop(1.00, 'rgba(0,0,0,0)');
+                ctx.fillStyle = outerGrad;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, outerRx, outerRy, 0, 0, Math.PI * 2);
+                ctx.fill();
+                for (let ring = 0; ring < 3; ring++) {
+                    ctx.strokeStyle = ring === 0 ? `rgba(0,0,0,${0.64 * alpha})` : (ring === 1 ? `rgba(180,104,255,${0.58 * alpha})` : `rgba(255,62,50,${0.50 * alpha})`);
+                    ctx.lineWidth = ring === 0 ? Math.max(8, outerRy * 0.050) : (ring === 1 ? Math.max(4.2, outerRy * 0.030) : Math.max(2.6, outerRy * 0.020));
+                    ctx.shadowBlur = ring === 0 ? 10 : 20;
+                    ctx.shadowColor = ctx.strokeStyle;
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, outerRx * (0.82 + ring * 0.085), outerRy * (0.82 + ring * 0.085), 0, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            }
             for (let i = 0; i < 16; i++) {
                 const a = (Math.PI * 2 / 16) * i + 0.08;
                 const sx = Math.cos(a) * w * 0.05;
@@ -4954,6 +5556,26 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
                 ctx.moveTo(sx, sy);
                 ctx.lineTo(ex, ey);
                 ctx.stroke();
+            }
+            if (eff.rangeMatched) {
+                // 243042 radial outer cracks: 실제 원형 판정 가장자리까지 뻗는 추가 파열선.
+                const outerRx = Math.max(80, w * 0.50);
+                const outerRy = Math.max(40, d * 0.50);
+                for (let i = 0; i < 26; i++) {
+                    const a = (Math.PI * 2 / 26) * i + 0.04 + pulse * 0.05;
+                    const sx = Math.cos(a) * outerRx * (0.18 + (i % 3) * 0.020);
+                    const sy = Math.sin(a) * outerRy * (0.18 + (i % 2) * 0.020);
+                    const ex = Math.cos(a + (i % 2 ? 0.035 : -0.025)) * outerRx * (0.82 + (i % 4) * 0.040);
+                    const ey = Math.sin(a + (i % 2 ? 0.035 : -0.025)) * outerRy * (0.82 + (i % 3) * 0.035);
+                    ctx.strokeStyle = i % 3 === 0 ? `rgba(0,0,0,${0.52 * alpha})` : (i % 3 === 1 ? `rgba(255,64,52,${0.40 * alpha})` : `rgba(192,128,255,${0.38 * alpha})`);
+                    ctx.lineWidth = i % 3 === 0 ? 3.8 : 2.1;
+                    ctx.shadowBlur = i % 3 === 0 ? 5 : 11;
+                    ctx.shadowColor = ctx.strokeStyle;
+                    ctx.beginPath();
+                    ctx.moveTo(sx, sy);
+                    ctx.lineTo(ex, ey);
+                    ctx.stroke();
+                }
             }
             ctx.restore();
         }
@@ -4973,27 +5595,30 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
             const red = eff.accentColor || `rgba(255,50,42,${0.90 * alpha})`;
             const dark = eff.darkColor || `rgba(0,0,0,${0.96 * alpha})`;
 
-            // 전방 공격이 아니라 카시야스 중심 전방위 원형 포효. 지면에 붙는 타원형 파동을 여러 겹으로 출력한다.
-            ctx.shadowBlur = 28;
-            ctx.shadowColor = 'rgba(146,70,255,0.90)';
-            for (let ring = 0; ring < 3; ring++) {
-                const rPulse = Math.min(1, pulse + ring * 0.13);
-                const rw = w * (0.18 + rPulse * (0.30 + ring * 0.055));
-                const rd = d * (0.14 + rPulse * (0.27 + ring * 0.055));
-                ctx.strokeStyle = ring === 0 ? dark : (ring === 1 ? purple : red);
-                ctx.lineWidth = ring === 0 ? 13 : (ring === 1 ? 7 : 4);
+            // 전방 공격이 아니라 카시야스 중심 전방위 원형 포효. 지면에 붙는 타원형 파동을 실제 판정 외곽까지 출력한다.
+            const rangeMatched = !!eff.rangeMatched;
+            const rangeRx = Math.max(52, rangeMatched ? w * 0.50 : w * 0.58);
+            const rangeRy = Math.max(28, rangeMatched ? d * 0.50 : d * 0.50);
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = 'rgba(146,70,255,0.94)';
+            for (let ring = 0; ring < 4; ring++) {
+                const rPulse = Math.min(1, pulse * 1.08 + ring * 0.075);
+                const rw = rangeRx * Math.min(1.07, 0.34 + rPulse * (0.58 + ring * 0.035));
+                const rd = rangeRy * Math.min(1.07, 0.34 + rPulse * (0.58 + ring * 0.035));
+                ctx.strokeStyle = ring === 0 ? dark : (ring === 1 ? purple : (ring === 2 ? red : `rgba(214,166,255,${0.42 * alpha})`));
+                ctx.lineWidth = ring === 0 ? Math.max(10, rangeRy * 0.070) : (ring === 1 ? Math.max(6, rangeRy * 0.042) : (ring === 2 ? Math.max(3.4, rangeRy * 0.027) : Math.max(2.2, rangeRy * 0.018)));
                 ctx.beginPath();
                 ctx.ellipse(0, 0, rw, rd, 0, 0, Math.PI * 2);
                 ctx.stroke();
             }
-            const groundGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, Math.max(w, d) * 0.58);
-            groundGrad.addColorStop(0.00, `rgba(255,80,64,${0.10 * alpha})`);
-            groundGrad.addColorStop(0.28, `rgba(168,78,255,${0.12 * alpha})`);
-            groundGrad.addColorStop(0.72, `rgba(0,0,0,${0.16 * alpha})`);
+            const groundGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, Math.max(rangeRx, rangeRy) * 1.08);
+            groundGrad.addColorStop(0.00, `rgba(255,80,64,${0.105 * alpha})`);
+            groundGrad.addColorStop(0.30, `rgba(168,78,255,${0.135 * alpha})`);
+            groundGrad.addColorStop(0.76, `rgba(0,0,0,${0.175 * alpha})`);
             groundGrad.addColorStop(1.00, 'rgba(0,0,0,0)');
             ctx.fillStyle = groundGrad;
             ctx.beginPath();
-            ctx.ellipse(0, 0, w * 0.44, d * 0.40, 0, 0, Math.PI * 2);
+            ctx.ellipse(0, 0, rangeRx * 1.02, rangeRy * 1.02, 0, 0, Math.PI * 2);
             ctx.fill();
 
             // 카시야스 문양 기반 귀면 환영. 돼지형 얼굴이 아니라 문양처럼 날카로운 뿔/눈/장식 실루엣으로 처리한다.
@@ -5147,18 +5772,22 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
             ctx.restore();
 
             // 지면 파열선: 원형 범위를 강조하되 사방으로 균등하게 뻗는다.
-            ctx.shadowBlur = 8;
-            for (let i = 0; i < 18; i++) {
-                const a = (Math.PI * 2 / 18) * i + pulse * 0.10;
-                const r0x = w * (0.08 + (i % 3) * 0.012);
-                const r0y = d * (0.06 + (i % 2) * 0.012);
-                const r1x = w * (0.24 + pulse * 0.18 + (i % 3) * 0.014);
-                const r1y = d * (0.18 + pulse * 0.15 + (i % 2) * 0.012);
+            ctx.shadowBlur = 9;
+            const crackRx = Math.max(52, (eff.rangeMatched ? w : w * 1.08) * 0.50);
+            const crackRy = Math.max(28, (eff.rangeMatched ? d : d * 1.02) * 0.50);
+            for (let i = 0; i < (eff.rangeMatched ? 28 : 18); i++) {
+                const count = eff.rangeMatched ? 28 : 18;
+                const a = (Math.PI * 2 / count) * i + pulse * 0.10;
+                const r0x = crackRx * (0.16 + (i % 3) * 0.018);
+                const r0y = crackRy * (0.15 + (i % 2) * 0.018);
+                const r1x = crackRx * (0.72 + pulse * 0.20 + (i % 4) * 0.020);
+                const r1y = crackRy * (0.72 + pulse * 0.20 + (i % 3) * 0.020);
                 ctx.strokeStyle = i % 3 === 0 ? `rgba(0,0,0,${0.55 * alpha})` : (i % 3 === 1 ? `rgba(255,64,52,${0.42 * alpha})` : `rgba(186,122,255,${0.42 * alpha})`);
-                ctx.lineWidth = i % 3 === 0 ? 3.6 : 2.2;
+                ctx.lineWidth = i % 3 === 0 ? 3.8 : 2.2;
+                ctx.shadowColor = ctx.strokeStyle;
                 ctx.beginPath();
                 ctx.moveTo(Math.cos(a) * r0x, Math.sin(a) * r0y);
-                ctx.lineTo(Math.cos(a) * r1x, Math.sin(a) * r1y);
+                ctx.lineTo(Math.cos(a + (i % 2 ? 0.035 : -0.025)) * r1x, Math.sin(a + (i % 2 ? 0.035 : -0.025)) * r1y);
                 ctx.stroke();
             }
             ctx.restore();

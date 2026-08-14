@@ -73,7 +73,7 @@ GameRenderer.drawTargetUI = function(ctx, canvas, targetUI, gameState = null) {
     };
 
     const getDisplayName = function(data) {
-        return String(
+        const raw = String(
             (data && (
                 data.Pattern_Name ||
                 data.Action_Name ||
@@ -86,6 +86,9 @@ GameRenderer.drawTargetUI = function(ctx, canvas, targetUI, gameState = null) {
                 data.Object_Action_ID
             )) || ''
         ).trim();
+        return typeof formatKasiyasPublicText === 'function'
+            ? formatKasiyasPublicText(raw, { phaseStep: false, latePhase: true })
+            : raw.replace(/후반부/g, '2페이즈');
     };
 
     const getPatternNumber = function(pattern, category) {
@@ -1190,24 +1193,7 @@ GameRenderer.drawBossPhaseTransitionOverlay = function(ctx, canvas, gameState) {
 
     // HP 회복 연출은 별도 게이지를 띄우지 않고, 기존 보스 상태창 HP바를 사용한다.
 
-    const titleAlpha = Math.min(1, Math.max(0, (timer - 5.4) / 0.65)) * Math.min(1, (duration - timer) / 0.85);
-    if (titleAlpha > 0) {
-        ctx.save();
-        ctx.globalAlpha = alpha * titleAlpha;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.font = `900 30px ${uiFont}`;
-        const text = timer < 7.2 ? '두 번째 검이 뽑혔다' : '카시야스 2페이즈 돌입';
-        ctx.lineWidth = 7;
-        ctx.strokeStyle = 'rgba(0,0,0,0.92)';
-        ctx.strokeText(text, w / 2, 94);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = 'rgba(116,0,0,0.80)';
-        ctx.strokeText(text, w / 2, 94);
-        ctx.fillStyle = 'rgba(255,238,214,0.98)';
-        ctx.fillText(text, w / 2, 94);
-        ctx.restore();
-    }
+    // 페이즈 전환 설명 텍스트는 화면 연출만 남기기 위해 표시하지 않는다.
 
     ctx.restore();
 };
@@ -1421,27 +1407,7 @@ GameRenderer.drawKasiyasP2ToP3TransitionOverlay = function(ctx, canvas, gameStat
         ctx.restore();
     }
 
-    const titleAlpha = Math.min(1, Math.max(0, (timer - 0.25) / 0.40)) * Math.min(1, (duration - timer) / 0.70);
-    if (titleAlpha > 0) {
-        let text = '카시야스가 두 검을 버린다';
-        if (timer >= 1.5 && timer < 3.85) text = '차원에서 새로운 검을 꺼낸다';
-        else if (timer >= 3.85 && timer < 5.10) text = '검의 상태를 가볍게 시험한다';
-        else if (timer >= 5.10) text = '카시야스 3페이즈 돌입';
-        ctx.save();
-        ctx.globalAlpha = alpha * titleAlpha;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.font = `900 30px ${uiFont}`;
-        ctx.lineWidth = 7;
-        ctx.strokeStyle = 'rgba(0,0,0,0.94)';
-        ctx.strokeText(text, w / 2, 94);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = 'rgba(74,0,100,0.86)';
-        ctx.strokeText(text, w / 2, 94);
-        ctx.fillStyle = 'rgba(255,238,255,0.98)';
-        ctx.fillText(text, w / 2, 94);
-        ctx.restore();
-    }
+    // 페이즈 전환 설명 텍스트는 화면 연출만 남기기 위해 표시하지 않는다.
 
     ctx.restore();
 };

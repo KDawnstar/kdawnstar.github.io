@@ -430,7 +430,11 @@ const BossPatternSystem = {
 
         if (moveType === 'DASH') {
             if (boss && boss.actionMove && boss.actionMove.duration) {
-                return Math.max(0.05, (parseFloat(boss.actionMove.duration) || 0.001) * timeRate);
+                const moveDuration = parseFloat(boss.actionMove.duration) || 0.001;
+                // 일부 ATK+DASH 준비 이동은 시작 처리에서 이미 후반부 시간 배율이 반영된
+                // 실제 이동 시간을 저장한다. 이 경우 다시 timeRate를 곱하지 않는다.
+                if (boss.actionMove.durationIsEffective === true) return Math.max(0.05, moveDuration);
+                return Math.max(0.05, moveDuration * timeRate);
             }
 
             // MOVE_DASH 액션은 Action_Anim_Duration이 비어 있어도 1프레임에 스킵되면 안 된다.
@@ -508,9 +512,13 @@ const BossPatternSystem = {
         }
 
         const phase = boss.phase || {};
-        const patterns = gameState.DB_BOSS_PATTERN_BY_SET && gameState.DB_BOSS_PATTERN_BY_SET[boss.patternSetId]
+        let patterns = gameState.DB_BOSS_PATTERN_BY_SET && gameState.DB_BOSS_PATTERN_BY_SET[boss.patternSetId]
             ? gameState.DB_BOSS_PATTERN_BY_SET[boss.patternSetId]
             : [];
+        if (Array.isArray(boss.p3m3AllowedPatternIds)) {
+            const allowed = new Set(boss.p3m3AllowedPatternIds.map(id => String(id || '').trim()).filter(Boolean));
+            patterns = patterns.filter(pattern => allowed.has(String(pattern.Pattern_ID || '').trim()));
+        }
 
         const checks = [];
         const ready = [];
@@ -811,6 +819,35 @@ const BossPatternSystem = {
         const pattern = boss && boss.activePattern;
         if (!boss || !pattern) return;
 
+        if (
+            gameState &&
+            gameState.specialMode === 'P3_M3_FINAL_ISSEN' &&
+            m && m.isP3M3Monster &&
+            String(m.p3m3Role || '').trim().toUpperCase() === 'TRUE_BOSS' &&
+            boss.p3m3FinalQueued
+        ) {
+            // 히든 분기 HP 1% 도달 이후에는 현재 액션만 마무리하고, 같은 패턴의 다음 액션으로 이어가지 않는다.
+            // P3_M3 시스템이 다음 프레임에 중앙 이동 전용 시퀀스를 넘겨받는다.
+            boss.activePattern = null;
+            boss.currentActionIndex = -1;
+            boss.currentLoopIndex = 0;
+            boss.loopCount = 1;
+            boss.action = null;
+            boss.actionMove = null;
+            boss.actionMoveCompleted = false;
+            boss.runtimeActions = null;
+            boss.actionHitFired = false;
+            boss.actionObjectSpawnStartFired = false;
+            boss.actionObjectSpawnEndFired = false;
+            boss.actionHitsDone = 0;
+            boss.actionCycleTimer = 0;
+            boss.noPatternWaitTimer = 999999;
+            m.state = 'IDLE';
+            m.timer = 0;
+            m.hasFired = false;
+            return;
+        }
+
         const actions = boss.runtimeActions || pattern.Runtime_Actions || [];
 
         if (boss.action && typeof this.finalizeKasiyasP2MajorPattern1ActionAsDodgeIfNeeded === 'function') {
@@ -849,12 +886,29 @@ const BossPatternSystem = {
             boss.actionObjectSpawnEndFired = false;
             boss.actionHitsDone = 0;
             boss.actionCycleTimer = 999;
+            boss.actionSpawnSerial = (parseInt(boss.actionSpawnSerial) || 0) + 1;
             boss.lastP2DoubleSlashVisualEffectKey = null;
+            boss.lastP2SpinSlashVisualEffectKey = null;
+            boss.lastP2ArcSlashVisualEffectKey = null;
+            // 2페이즈 기본5: 회전 전진(242035) 종료 후 준비/마무리 액션에서는
+            // 이전 회전 전진용 잔류 이펙트가 다시 보이지 않도록 정리한다.
+            if (String(action.Action_ID || '').trim() === '242036' || String(action.Action_ID || '').trim() === '242037') {
+                try {
+                    if (gameState && Array.isArray(gameState.effects)) {
+                        gameState.effects = gameState.effects.filter(eff => {
+                            const rt = String(eff && eff.renderType || '').trim().toUpperCase();
+                            return rt !== 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_SPIN' && rt !== 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_ARC_SLASH';
+                        });
+                    }
+                    boss.lastP2SpinSlashVisualEffectKey = null;
+            boss.lastP2ArcSlashVisualEffectKey = null;
+                } catch (e) {}
+            }
             boss.parryWindowActive = false;
             boss.parryCueTimer = 0;
 
             const actionType = String(action.Action_Type || '').trim().toUpperCase();
-            if (['WAIT','WARNING_PATH','WARNING','SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT','MOVE','MOVE_GROUP','CALL_OBJECT_ACTION','DIRECT_ACT','P2_M3_EXCLUSIVE_MODE_START'].includes(actionType)) m.state = 'IDLE';
+            if (['WAIT','WARNING_PATH','WARNING','SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT','MOVE','MOVE_GROUP','CALL_OBJECT_ACTION','DIRECT_ACT','P2_M3_EXCLUSIVE_MODE_START','P3_M3_EXCLUSIVE_MODE_START'].includes(actionType)) m.state = 'IDLE';
             else m.state = 'ATK_MELEE';
 
             m.timer = 0;

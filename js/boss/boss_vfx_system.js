@@ -500,6 +500,138 @@ const BossVFXSystem = {
             // Hitbox_Size/Offset은 pushKasiyasRushBodyEffect에서 X/Y 기준으로 반영한다.
             return;
         }
+        if (upperEff === 'EFT_KASIYAS_P3_M3_FINAL_SLASH_NORMAL' || upperEff === 'EFT_KASIYAS_P3_M3_FINAL_SLASH_HIDDEN') {
+            // P3_M3 최종 일섬은 기존 공용 slash(고블린 기본 공격 계열)로 대체하지 않는다.
+            // 화면 전체를 대각선으로 가르는 전용 오버레이는 p3_m3_final_issen_renderer에서 rt.finalTimelineElapsed 기준으로 렌더한다.
+            const hidden = upperEff === 'EFT_KASIYAS_P3_M3_FINAL_SLASH_HIDDEN';
+            this.triggerScreenShake(gameState, hidden ? 18.0 : 13.0, hidden ? 0.62 : 0.48);
+            if (gameState) {
+                gameState.p3m3FinalIssenImpactFlash = {
+                    life: hidden ? 0.42 : 0.34,
+                    maxLife: hidden ? 0.42 : 0.34,
+                    hidden,
+                    renderType: upperEff
+                };
+            }
+            return;
+        }
+
+        if (upperEff === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_SPIN') {
+            // 회전 전진 동작은 모델/무기 자세로만 읽히게 하고, 공용 slash/hitSpark 회전 이펙트는 생성하지 않는다.
+            // 이 공용 이펙트가 다음 242037 원형 베기 구간까지 남아 붉은/흰색 회전 이펙트처럼 보이던 원인이었다.
+            return;
+        }
+
+        if (upperEff === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_ARC_SLASH') {
+            const boss = m && m.boss ? m.boss : null;
+            if (boss) {
+                const effectKey = [String(action && action.Action_ID || '').trim(), String(boss.activePattern && boss.activePattern.Pattern_ID || '').trim(), String(boss.currentActionIndex || 0), String(boss.currentLoopIndex || 0), String(boss.actionSpawnSerial || 0), upperEff].join(':');
+                if (boss.lastP2ArcSlashVisualEffectKey === effectKey) return;
+                boss.lastP2ArcSlashVisualEffectKey = effectKey;
+            }
+            if (gameState && Array.isArray(gameState.effects)) {
+                gameState.effects = gameState.effects.filter(eff => {
+                    const rt = String(eff && eff.renderType || eff && eff.warningRenderType || '').trim().toUpperCase();
+                    const type = String(eff && eff.type || '').trim();
+                    if (rt === 'WARNING_HITBOX') return true;
+                    if (rt === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_SPIN') return false;
+                    if (rt === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_ARC_SLASH' && type !== 'kasiyasP2DoubleEdgedArcSlash') return false;
+                    return true;
+                });
+            }
+            gameState.effects.push({
+                type: 'kasiyasP2DoubleEdgedArcSlash',
+                renderType: upperEff,
+                x: atkX,
+                y: atkY,
+                z: Math.max(10, Math.min(24, (parseFloat(atkZ) || 0) * 0.20)),
+                dir: m.faceDir || 1,
+                // 최근 원호 검호와 바람 연출이 실제 공격 범위보다 넓게 보이는 문제를 줄이기 위해,
+                // 전용 ARC_SLASH 이펙트의 기본 렌더 크기를 실제 히트박스보다 아주 약간 안쪽으로 맞춘다.
+                w: Math.max(640 * effectScale, atkW * 0.98),
+                d: Math.max(205 * effectScale, atkD * 0.92),
+                h: Math.max(125 * effectScale, atkH * 0.58),
+                life: 0.26,
+                maxLife: 0.26,
+                color: 'rgba(255,58,40,0.98)',
+                accentColor: 'rgba(20,0,0,0.98)',
+                hotColor: 'rgba(255,236,190,0.82)'
+            });
+            this.triggerScreenShake(gameState, 8.5, 0.28);
+            return;
+        }
+
+
+        if (upperEff === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_SPIN_SLASH') {
+            const boss = m && m.boss ? m.boss : null;
+            if (boss) {
+                const effectKey = [String(action && action.Action_ID || '').trim(), String(boss.activePattern && boss.activePattern.Pattern_ID || '').trim(), String(boss.currentActionIndex || 0), String(boss.currentLoopIndex || 0), String(boss.actionSpawnSerial || 0), upperEff].join(':');
+                if (boss.lastP2SpinSlashVisualEffectKey === effectKey) return;
+                boss.lastP2SpinSlashVisualEffectKey = effectKey;
+            }
+            if (gameState && Array.isArray(gameState.effects)) {
+                gameState.effects = gameState.effects.filter(eff => {
+                    const rt = String(eff && eff.renderType || eff && eff.warningRenderType || '').trim().toUpperCase();
+                    const type = String(eff && eff.type || '').trim();
+                    // 범위 전조(WARNING_HITBOX)는 유지하고, 공용 회전/히트스파크만 제거한다.
+                    if (rt === 'WARNING_HITBOX') return true;
+                    if (rt === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_SPIN') return false;
+                    if (rt === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_SPIN_SLASH' && type !== 'kasiyasP2DoubleEdgedSpinSlash') return false;
+                    return true;
+                });
+            }
+            gameState.effects.push({
+                type: 'kasiyasP2DoubleEdgedSpinSlash',
+                renderType: upperEff,
+                // 242037의 전용 검호는 카시야스 전방의 회전 이펙트가 아니라,
+                // 공격 범위 테두리를 따라 짧게 지나가는 원호형 검호로 처리한다.
+                // 따라서 위치 기준도 신체 앞쪽이 아니라 공격 히트박스 중심을 사용한다.
+                x: atkX,
+                y: atkY,
+                z: Math.max(10, Math.min(24, (parseFloat(atkZ) || 0) * 0.20)),
+                dir: m.faceDir || 1,
+                w: Math.max(620 * effectScale, atkW * 0.98),
+                d: Math.max(190 * effectScale, atkD * 0.88),
+                h: Math.max(120 * effectScale, atkH * 0.56),
+                life: 0.22,
+                maxLife: 0.22,
+                color: 'rgba(255,58,40,0.96)',
+                accentColor: 'rgba(20,0,0,0.96)',
+                hotColor: 'rgba(255,226,164,0.70)'
+            });
+            this.triggerScreenShake(gameState, 8.5, 0.28);
+            return;
+        }
+
+        if (upperEff === 'EFT_KASIYAS_P3_APOSTLE_ENERGY_ERUPTION') {
+            const boss = m && m.boss ? m.boss : null;
+            if (boss) {
+                const effectKey = [String(action && action.Action_ID || '').trim(), String(boss.activePattern && boss.activePattern.Pattern_ID || '').trim(), String(boss.currentActionIndex || 0), String(boss.currentLoopIndex || 0), String(boss.actionSpawnSerial || 0), upperEff].join(':');
+                if (boss.lastP3ApostleEruptionVisualEffectKey === effectKey) return;
+                boss.lastP3ApostleEruptionVisualEffectKey = effectKey;
+            }
+            gameState.effects.push({
+                type: 'kasiyasP3ApostleEnergyEruption',
+                renderType: upperEff,
+                x: atkX,
+                y: atkY,
+                z: Math.max(2, atkZ + 4),
+                dir: m.faceDir || 1,
+                // 실제 분출 범위가 이펙트보다 커 보이지 않도록, 렌더 기준도 히트박스 크기와 거의 맞춘다.
+                w: Math.max(980 * effectScale, atkW * 1.00),
+                d: Math.max(290 * effectScale, atkD * 1.04),
+                h: Math.max(220 * effectScale, atkH * 0.88),
+                life: 0.66,
+                maxLife: 0.66,
+                color: 'rgba(196,92,255,0.98)',
+                accentColor: 'rgba(138,0,54,0.94)',
+                darkColor: 'rgba(0,0,0,0.98)',
+                hotColor: 'rgba(255,98,72,0.90)'
+            });
+            this.triggerScreenShake(gameState, 11.0, 0.42);
+            return;
+        }
+
         if (upperEff === 'EFT_KASIYAS_P2_GROUND_PUNCH' || upperEff === 'EFT_KASIYAS_P2_GROUND_PUNCH_STRONG') {
             const strong = upperEff === 'EFT_KASIYAS_P2_GROUND_PUNCH_STRONG';
             gameState.effects.push({
@@ -551,8 +683,61 @@ const BossVFXSystem = {
             return;
         }
 
+        if (upperEff === 'EFT_KASIYAS_FULL_POWER_HORIZONTAL_SLASH' || upperEff === 'EFT_KASIYAS_FULL_POWER_DIAGONAL_SLASH' || upperEff === 'EFT_KASIYAS_FULL_POWER_SLASH_DOWN') {
+            const mode = upperEff === 'EFT_KASIYAS_FULL_POWER_HORIZONTAL_SLASH' ? 'HORIZONTAL' : (upperEff === 'EFT_KASIYAS_FULL_POWER_DIAGONAL_SLASH' ? 'DIAGONAL' : 'DOWN');
+            gameState.effects.push({
+                // 전력 검격은 기존 3페이즈 검격 재탕이 아니라 귀참 계열의 어둡고 묵직한 참격으로 별도 렌더링한다.
+                type: 'kasiyasFullPowerOniSlash',
+                renderType: upperEff,
+                slashMode: mode,
+                x: atkX,
+                y: atkY,
+                z: atkZ + atkH * 0.50,
+                dir: m.faceDir || 1,
+                w: Math.max(300 * effectScale, atkW * (mode === 'HORIZONTAL' ? 1.18 : 1.08)),
+                d: Math.max(125 * effectScale, atkD * 1.10),
+                h: Math.max(210 * effectScale, atkH * (mode === 'DOWN' ? 1.24 : 1.10)),
+                life: mode === 'HORIZONTAL' ? 0.68 : 0.76,
+                maxLife: mode === 'HORIZONTAL' ? 0.68 : 0.76,
+                color: 'rgba(142,0,42,0.98)',
+                accentColor: 'rgba(76,0,112,0.92)',
+                darkColor: 'rgba(0,0,0,0.98)',
+                hotColor: 'rgba(255,38,34,0.66)',
+                fullPower: true,
+                oniMajor: true
+            });
+            this.triggerScreenShake(gameState, mode === 'DOWN' ? 13.5 : 10.0, mode === 'DOWN' ? 0.36 : 0.28);
+            return;
+        }
+
         if (upperEff === 'EFT_KASIYAS_P3_AIM_SWORD_PLAYER' || upperEff === 'EFT_KASIYAS_P3_WALK_WITH_AURA') {
             // 이 둘은 보스 본체 렌더에서 지속형 자세/장판으로 표현한다. 다단히트마다 별도 이펙트를 생성하지 않는다.
+            return;
+        }
+
+        if (upperEff === 'EFT_KASIYAS_P3_M1_CIRCLE_SLASH') {
+            gameState.effects.push({
+                // 243041 귀면족의 저주 3차 전용: 직선 돌진 검격이 아니라 실제 원형 히트박스를 따라 도는 검호.
+                type: 'kasiyasP3M1Slash',
+                renderType: upperEff,
+                slashMode: 'CIRCLE',
+                x: atkX,
+                y: atkY,
+                z: Math.max(10, atkZ + Math.max(18, atkH * 0.20)),
+                dir: m.faceDir || 1,
+                w: Math.max(840 * effectScale, atkW * 1.02),
+                d: Math.max(260 * effectScale, atkD * 1.08),
+                h: Math.max(240 * effectScale, atkH * 0.86),
+                life: 0.78,
+                maxLife: 0.78,
+                color: 'rgba(168,76,255,1.0)',
+                accentColor: 'rgba(255,42,34,1.0)',
+                darkColor: 'rgba(0,0,0,0.98)',
+                hotColor: 'rgba(248,228,255,0.95)',
+                oniMajor: true,
+                circleSlash: true
+            });
+            this.triggerScreenShake(gameState, 11.0, 0.30);
             return;
         }
 
@@ -580,6 +765,7 @@ const BossVFXSystem = {
         }
 
         if (upperEff === 'EFT_KASIYAS_P3_SLAM_THE_SWORD_DOWN' || upperEff === 'EFT_KASIYAS_P3_M1_SLAM_THE_SWORD_DOWN') {
+            const isM1Slam = String(action && action.Pattern_ID || '').trim() === '233006' || upperEff === 'EFT_KASIYAS_P3_M1_SLAM_THE_SWORD_DOWN';
             gameState.effects.push({
                 type: 'stompDust',
                 renderType: upperEff,
@@ -587,37 +773,42 @@ const BossVFXSystem = {
                 x: atkX,
                 y: atkY,
                 z: 8,
-                w: Math.max(160 * effectScale, atkW * 0.66),
-                d: Math.max(90 * effectScale, atkD * 0.86),
-                h: Math.max(46, atkH * 0.22),
-                life: 0.66,
-                maxLife: 0.66,
-                color: 'rgba(154,76,255,0.90)',
-                accentColor: 'rgba(255,50,42,0.95)',
+                // 243042는 실제 원형 히트박스가 매우 넓으므로 외곽 원까지 파동/균열이 닿게 렌더 기준을 판정 범위에 맞춘다.
+                w: isM1Slam ? Math.max(1200 * effectScale, atkW * 1.00) : Math.max(160 * effectScale, atkW * 0.66),
+                d: isM1Slam ? Math.max(300 * effectScale, atkD * 1.00) : Math.max(90 * effectScale, atkD * 0.86),
+                h: isM1Slam ? Math.max(70, atkH * 0.34) : Math.max(46, atkH * 0.22),
+                life: isM1Slam ? 0.76 : 0.66,
+                maxLife: isM1Slam ? 0.76 : 0.66,
+                color: 'rgba(154,76,255,0.94)',
+                accentColor: 'rgba(255,50,42,0.98)',
                 darkColor: 'rgba(0,0,0,0.98)',
-                oniMajor: true
+                oniMajor: true,
+                rangeMatched: isM1Slam
             });
-            this.triggerScreenShake(gameState, 13.0, 0.38);
+            this.triggerScreenShake(gameState, isM1Slam ? 15.0 : 13.0, isM1Slam ? 0.46 : 0.38);
             return;
         }
 
         if (upperEff === 'EFT_KASIYAS_P3_ATK_ROAR' || upperEff === 'EFT_KASIYAS_P3_M1_ATK_ROAR') {
+            const isM1Roar = String(action && action.Pattern_ID || '').trim() === '233006' || upperEff === 'EFT_KASIYAS_P3_M1_ATK_ROAR';
             gameState.effects.push({
                 type: 'shockwave',
                 renderType: upperEff,
                 x: atkX,
                 y: atkY,
-                z: atkZ + Math.max(20, atkH * 0.48),
-                w: Math.max(160 * effectScale, atkW * 0.68),
-                d: Math.max(80 * effectScale, atkD * 0.72),
-                h: Math.max(120 * effectScale, atkH * 0.72),
-                life: 0.52,
-                maxLife: 0.52,
-                color: 'rgba(154,76,255,0.82)',
-                accentColor: 'rgba(255,50,42,0.90)',
-                darkColor: 'rgba(0,0,0,0.96)',
-                pulseCount: 3,
-                oniMajor: true
+                // 243043의 포효 파동은 지면 범위가 핵심이므로 파동 원점을 땅에 붙이고, 귀면 형상은 렌더 내부에서 위로 띄운다.
+                z: isM1Roar ? Math.max(6, atkZ + 8) : atkZ + Math.max(20, atkH * 0.48),
+                w: isM1Roar ? Math.max(720 * effectScale, atkW * 1.00) : Math.max(160 * effectScale, atkW * 0.68),
+                d: isM1Roar ? Math.max(220 * effectScale, atkD * 1.00) : Math.max(80 * effectScale, atkD * 0.72),
+                h: isM1Roar ? Math.max(260 * effectScale, atkH * 1.00) : Math.max(120 * effectScale, atkH * 0.72),
+                life: isM1Roar ? 0.72 : 0.52,
+                maxLife: isM1Roar ? 0.72 : 0.52,
+                color: 'rgba(154,76,255,0.92)',
+                accentColor: 'rgba(255,50,42,0.96)',
+                darkColor: 'rgba(0,0,0,0.98)',
+                pulseCount: 4,
+                oniMajor: true,
+                rangeMatched: isM1Roar
             });
             gameState.effects.push({
                 type: 'hitSpark',

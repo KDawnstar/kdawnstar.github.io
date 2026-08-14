@@ -88,6 +88,22 @@ const MonsterManager = {
         return BossCombatSystem.tryResolveBossParryByPlayerHit.apply(this, arguments);
     },
 
+    getBossRuntimeDamageRate: function() {
+        return BossCombatSystem.getBossRuntimeDamageRate.apply(this, arguments);
+    },
+
+    getBossActionDamageRate: function() {
+        return BossCombatSystem.getBossActionDamageRate.apply(this, arguments);
+    },
+
+    getBossObjectActionDamageRate: function() {
+        return BossCombatSystem.getBossObjectActionDamageRate.apply(this, arguments);
+    },
+
+    getBossObjectDamageRate: function() {
+        return BossCombatSystem.getBossObjectDamageRate.apply(this, arguments);
+    },
+
     getBossExplicitActionDamageRate: function() {
         return BossCombatSystem.getBossExplicitActionDamageRate.apply(this, arguments);
     },

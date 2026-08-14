@@ -179,12 +179,27 @@ const BossObjectSystem = {
         const objectType = String(data.Object_Type || '').trim().toUpperCase();
         const renderType = String(data.Object_Render_Type || '').trim().toUpperCase();
         const owner = (sourceObj && (sourceObj.owner || sourceObj.sourceCaster)) || (Array.isArray(gameState.monsters) && gameState.monsters[0]) || null;
+        const spawnPlaceType = String(data.Spawn_Place_Type || '').trim().toUpperCase();
+        const spawnPlaceValue = String(data.Spawn_Place_Value || '').trim();
+        if ((spawnPlaceType === 'PLACE_OBJECT_DESTROY' || spawnPlaceType === 'FIRE_FROM_OBJECT') && spawnPlaceValue) {
+            const sourceData = sourceObj && sourceObj.data ? sourceObj.data : {};
+            const sourceObjectId = String(sourceData.Object_ID || sourceObj && sourceObj.objectId || '').trim();
+            if (!sourceObj || sourceObjectId !== spawnPlaceValue) {
+                const detail = `source ${sourceObjectId || '-'} != required ${spawnPlaceValue}`;
+                if (typeof this.pushBossDebugLog === 'function') {
+                    this.pushBossDebugLog(gameState, 'OBJECT_SPAWN_WARN', `${id} ${this.getBossDebugName(data)}`, detail);
+                }
+                if (typeof console !== 'undefined' && console.warn) {
+                    console.warn(`[Kasiyas Object] ${id} spawn rejected: ${detail}`);
+                }
+                return null;
+            }
+        }
         const range = this.getBossObjectInteractRange(data, objectType === 'INTERACT_OBJECT' ? { x: 120, y: 80, z: 50 } : { x: 0, y: 0, z: 0 });
         const size = this.getKasiyasP2M2ObjectRenderSize(data, objectType === 'FIRE_OBJECT' ? { w: 300, d: 150, h: 150 } : { w: 560, d: 120, h: 180 });
         const baseX = Number.isFinite(parseFloat(options.x)) ? parseFloat(options.x) : (Number.isFinite(parseFloat(sourceObj && sourceObj.x)) ? parseFloat(sourceObj.x) : ((gameState.WORLD_WIDTH || 1400) * 0.5));
         const baseY = Number.isFinite(parseFloat(options.y)) ? parseFloat(options.y) : (Number.isFinite(parseFloat(sourceObj && sourceObj.y)) ? parseFloat(sourceObj.y) : ((gameState.WORLD_DEPTH || 400) * 0.5));
         let baseZ = Number.isFinite(parseFloat(options.z)) ? parseFloat(options.z) : (Number.isFinite(parseFloat(sourceObj && sourceObj.z)) ? parseFloat(sourceObj.z) : 0);
-        const spawnPlaceType = String(data.Spawn_Place_Type || '').trim().toUpperCase();
         if (spawnPlaceType === 'PLACE_OBJECT_DESTROY' && objectType === 'INTERACT_OBJECT') {
             // 파괴된 잔해는 지면 상호작용 오브젝트이므로 파괴 시점의 높이가 아니라 바닥 기준으로 보정한다.
             baseZ = Math.max(0, parseFloat(data.Spawn_Place_Z) || 0);
@@ -232,7 +247,7 @@ const BossObjectSystem = {
             obj.aimAngleSpeed = Math.max(1, parseFloat(data.Aim_Angle_Speed) || 45);
             obj.aimTimeLimit = Math.max(0.5, parseFloat(data.Aim_Time_Limit) || maxLife);
             obj.aimFireSpeed = Math.max(1, parseFloat(data.Aim_Fire_Speed) || 900);
-            obj.aimFireObjectId = String(data.Aim_Fire_Object_ID || data.Aim_Result_Value || data.Object_Interact_Value || '').trim();
+            obj.aimFireObjectId = String(data.Aim_Fire_Object_ID || '').trim();
             obj.aimPreviewLength = Math.max(80, parseFloat(data.Aim_Preview_Length) || 700);
             obj.fireDirection = String(data.Aim_Default_Direction || data.Aim_Direction || '').trim().toUpperCase();
             if (obj.fireDirection !== 'LEFT' && obj.fireDirection !== 'RIGHT') obj.fireDirection = ((parseFloat(obj.x) || 0) >= ((parseFloat(gameState && gameState.WORLD_WIDTH) || 1400) / 2)) ? 'LEFT' : 'RIGHT';
@@ -403,12 +418,19 @@ const BossObjectSystem = {
         obj.actionHitFired = true;
         obj.actionHitsDone = Math.max(obj.actionHitsDone || 0, parseInt(obj.action && obj.action.ATK_Hit_Count) || 1);
         obj.active = false;
+
+        const data = obj.data || {};
+        const removeEffectType = String(data.Object_Remove_Effect_Type || '').trim().toUpperCase();
+        const removeEffectValue = Math.max(0, parseFloat(data.Object_Remove_Effect_Value) || 0);
+        const grantApostleEnergy = removeEffectType === 'PLAYER_GET_APOSTLE_ENERGY' && removeEffectValue > 0;
         const p = gameState && gameState.player ? gameState.player : null;
-        if (p) {
+
+        if (grantApostleEnergy && p) {
             p.hasP2M2ApostleSwordEnergy = true;
             p.p2m2ApostleSwordEnergyTimer = 12;
             p.kasiyasApostleEnergyFlashTimer = Math.max(parseFloat(p.kasiyasApostleEnergyFlashTimer) || 0, 1.0);
         }
+
         if (gameState && Array.isArray(gameState.effects)) {
             gameState.effects.push({
                 type: 'p2m2GiantSwordBreak',
@@ -420,7 +442,7 @@ const BossObjectSystem = {
                 life: 0.78,
                 maxLife: 0.78
             });
-            if (p) {
+            if (grantApostleEnergy && p) {
                 gameState.effects.push({
                     type: 'p2m2ApostleEnergyAbsorb',
                     x: obj.x,
@@ -435,7 +457,8 @@ const BossObjectSystem = {
                 });
             }
         }
-        if (gameState && Array.isArray(gameState.floatingTexts)) {
+
+        if (grantApostleEnergy && gameState && Array.isArray(gameState.floatingTexts)) {
             gameState.floatingTexts.push({
                 x: p ? p.x : obj.x,
                 y: p ? p.y : obj.y,
@@ -446,27 +469,26 @@ const BossObjectSystem = {
                 timer: 1.1
             });
         }
-        const data = obj.data || {};
-        const effectValue = String(data.Object_Remove_Effect_Value || '').trim();
+
         const destroyResultType = typeof this.getBossObjectDestroyResultType === 'function'
             ? this.getBossObjectDestroyResultType(data)
             : String(data.Object_Destroy_Result_Type || data.Destroy_Result_Type || '').trim().toUpperCase();
         const destroyResultValue = typeof this.getBossObjectDestroyResultValue === 'function'
             ? this.getBossObjectDestroyResultValue(data)
             : String(data.Object_Destroy_Result_Value || data.Destroy_Result_Value || data.Object_Destroy_Result_Object_ID || data.Destroy_Result_Object_ID || '').trim();
-        let brokenObjectId = '';
-        if ((destroyResultType === 'SPAWN_OBJECT' || destroyResultType === 'SPAWN_NEXT_OBJECT' || destroyResultType === 'CREATE_OBJECT') && destroyResultValue) {
-            brokenObjectId = destroyResultValue;
-        } else if (destroyResultValue && !destroyResultType) {
-            brokenObjectId = destroyResultValue;
-        } else if (effectValue === '1') {
-            // 구버전 데이터 호환: 사도의 기운 획득 효과값만 있던 252020은 252021을 생성한다.
-            brokenObjectId = '252021';
-        }
-        const fallbackBrokenObjectId = '252021';
-        const spawnId = (brokenObjectId && gameState && gameState.DB_BOSS_PATTERN_OBJECT && gameState.DB_BOSS_PATTERN_OBJECT[brokenObjectId])
-            ? brokenObjectId
-            : ((gameState && gameState.DB_BOSS_PATTERN_OBJECT && gameState.DB_BOSS_PATTERN_OBJECT[fallbackBrokenObjectId] && effectValue === '1') ? fallbackBrokenObjectId : '');
+
+        const canSpawnResult = destroyResultType === 'SPAWN_OBJECT'
+            || destroyResultType === 'SPAWN_NEXT_OBJECT'
+            || destroyResultType === 'CREATE_OBJECT'
+            || destroyResultType === 'CALL_OBJECT';
+        const spawnId = canSpawnResult
+            && destroyResultValue
+            && gameState
+            && gameState.DB_BOSS_PATTERN_OBJECT
+            && gameState.DB_BOSS_PATTERN_OBJECT[destroyResultValue]
+            ? destroyResultValue
+            : '';
+
         if (spawnId && typeof this.queueKasiyasP2M2SpecialObjectSpawn === 'function') {
             const queued = this.queueKasiyasP2M2SpecialObjectSpawn(spawnId, gameState, obj, {
                 x: Number.isFinite(parseFloat(obj.x)) ? parseFloat(obj.x) : 0,
@@ -476,10 +498,18 @@ const BossObjectSystem = {
             if (queued && this.pushBossDebugLog) {
                 this.pushBossDebugLog(gameState, 'OBJECT_DESTROY', `${String(data.Object_ID || '').trim()} ${this.getBossDebugName ? this.getBossDebugName(data) : ''}`, `queue spawn ${spawnId}`);
             }
+        } else if (destroyResultType && destroyResultValue && typeof this.pushBossDebugLog === 'function') {
+            this.pushBossDebugLog(
+                gameState,
+                'OBJECT_DESTROY_WARN',
+                `${String(data.Object_ID || '').trim()} ${this.getBossDebugName ? this.getBossDebugName(data) : ''}`,
+                `invalid result ${destroyResultType}:${destroyResultValue}`
+            );
         }
+
         if (this.pushBossDebugLog) {
             const debugName = this.getBossDebugName ? this.getBossDebugName(obj.data) : String(obj.data && (obj.data.Object_Name || obj.data.Name || obj.data.Object_ID) || '');
-            this.pushBossDebugLog(gameState, 'OBJECT_DESTROY', `${String(obj.data && obj.data.Object_ID || '').trim()} ${debugName}`, 'apostle giant sword destroyed');
+            this.pushBossDebugLog(gameState, 'OBJECT_DESTROY', `${String(obj.data && obj.data.Object_ID || '').trim()} ${debugName}`, grantApostleEnergy ? 'apostle giant sword destroyed' : 'destructible object destroyed');
         }
     },
 
@@ -539,7 +569,7 @@ const BossObjectSystem = {
             const oldFace = parseFloat(p.faceDir) || 1;
             const bodyW = Math.max(42, (parseFloat(p.bodyX) || 60) * (parseFloat(p.scale) || 1));
             const bodyH = Math.max(90, (parseFloat(p.bodyZ) || 120) * (parseFloat(p.scale) || 1));
-            const dmgRate = parseFloat(action.ATK_Damage_Rate || action.Damage_Rate) || 1.5;
+            const dmgRate = this.getBossObjectActionDamageRate(owner, action, 1.5);
             const baseDmg = owner.d.atk * dmgRate;
             PlayerManager.takeDamage(gameState, calcScaledDamage(owner.d.level, p.level, baseDmg), rect.centerX, rect.centerY, null, 0, 0, this.buildGuardInfoFromAttackData(action, obj));
             if (gameState.effects) {
@@ -1222,37 +1252,45 @@ const BossObjectSystem = {
     applyKasiyasOniMarkFromObject: function(ownerBoss, objData, gameState) {
         const p = gameState && gameState.player ? gameState.player : null;
         if (!p || !objData) return false;
-        const maxStackRaw = parseInt(objData.Object_Max_Stack);
+        const maxStackRaw = parseInt(objData.Max_Object_Debuff_Stack);
         const removeBossRaw = parseInt(objData.Object_Remove_Value);
         const removeCloneRaw = parseInt(objData.Object_Remove_Extra_Value);
+        const vfxType = String(objData.VFX_Type || objData.Effect_Render_Type || 'EFT_KASIYAS_ONI_MARK_BURST').trim();
         p.kasiyasOniMark = {
             active: true,
             stack: 0,
             maxStack: !isNaN(maxStackRaw) && maxStackRaw > 0 ? maxStackRaw : 3,
+            stackIncreaseCond: String(objData.Object_Debuff_Stack_Increase_Cond || '').trim().toUpperCase(),
+            stackOverEffectType: String(objData.Object_Debuff_Stack_Over_Effect_Type || '').trim().toUpperCase(),
             bossGuardCount: 0,
             cloneGuardCount: 0,
+            removeCond: String(objData.Object_Remove_Cond || '').trim().toUpperCase(),
+            removeExtraCond: String(objData.Object_Remove_Extra_Cond || '').trim().toUpperCase(),
             requireBossGuard: !isNaN(removeBossRaw) && removeBossRaw > 0 ? removeBossRaw : 2,
             requireCloneGuard: !isNaN(removeCloneRaw) && removeCloneRaw > 0 ? removeCloneRaw : 2,
             pulse: false,
             flashTimer: 0.85,
-            burstDamageRate: Math.max(1, parseFloat(objData.Damage_Rate) || 5),
+            burstDamageRate: Math.max(1, this.getBossObjectDamageRate(ownerBoss, objData, 5)),
+            vfxType,
             removeEffectType: String(objData.Object_Remove_Effect_Type || '').trim().toUpperCase(),
             removeEffectValue: Math.max(0, parseFloat(objData.Object_Remove_Effect_Value) || 0),
             sourceObjectId: String(objData.Object_ID || '').trim()
         };
-        gameState.effects.push({
-            type: 'hitSpark',
-            renderType: objData.Effect_Render_Type || 'EFT_KASIYAS_ONI_MARK_BURST',
-            x: p.x,
-            y: p.y,
-            z: p.z + (p.bodyZ || 100) + 42,
-            w: 128,
-            h: 128,
-            life: 0.40,
-            maxLife: 0.40,
-            color: 'rgba(255,46,56,0.94)',
-            accentColor: 'rgba(34,0,0,0.92)'
-        });
+        if (Array.isArray(gameState.effects)) {
+            gameState.effects.push({
+                type: 'hitSpark',
+                renderType: vfxType,
+                x: p.x,
+                y: p.y,
+                z: p.z + (p.bodyZ || 100) + 42,
+                w: 128,
+                h: 128,
+                life: 0.40,
+                maxLife: 0.40,
+                color: 'rgba(255,46,56,0.94)',
+                accentColor: 'rgba(34,0,0,0.92)'
+            });
+        }
         this.pushBossDebugLog(gameState, 'MARK', `${String(objData.Object_ID || '').trim()} ${this.getBossDebugName(objData)}`, 'applied to player');
         return true;
     },
@@ -2117,15 +2155,27 @@ const BossObjectSystem = {
         }
 
         if (objectType.indexOf('TERRAIN_') === 0) {
-            const rect = this.getTerrainAreaRect(objData, gameState);
+            let rect = this.getTerrainAreaRect(objData, gameState);
             const safeRect = this.getTerrainSafeRect(objData, gameState);
             const renderType = String(objData.Object_Render_Type || '').trim().toUpperCase();
+            const sourceEntity = (m && m.owner) ? m.owner : m;
+            const isP3M3Terrain = !!(gameState && gameState.specialMode === 'P3_M3_FINAL_ISSEN' && sourceEntity && sourceEntity.isP3M3Monster);
+            const sourcePatternId = String(action.Pattern_ID || (m && m.boss && m.boss.activePattern && m.boss.activePattern.Pattern_ID) || '').trim();
+            const isP3M3P2Pattern3Terrain = !!(isP3M3Terrain && String(sourceEntity.p3m3Role || '').trim().toUpperCase() === 'P2_CLONE' && sourcePatternId === '232003');
+            if (isP3M3P2Pattern3Terrain && rect && rect.centerY > (Math.max(1, parseFloat(gameState && gameState.WORLD_DEPTH) || 400) * 0.5)) {
+                const worldD = Math.max(1, parseFloat(gameState && gameState.WORLD_DEPTH) || 400);
+                rect = {
+                    ...rect,
+                    h: Math.max(1, worldD - rect.y)
+                };
+                rect.centerY = rect.y + rect.h / 2;
+            }
             if (!gameState.bossAttackObjects) gameState.bossAttackObjects = [];
             const terrain = {
                 kind: 'terrain',
-                owner: (m && m.owner) ? m.owner : m,
+                owner: sourceEntity,
                 sourceCaster: m,
-                sourcePatternId: String(action.Pattern_ID || (m && m.boss && m.boss.activePattern && m.boss.activePattern.Pattern_ID) || '').trim(),
+                sourcePatternId,
                 data: objData,
                 active: true,
                 x: rect.centerX,
@@ -2138,7 +2188,10 @@ const BossObjectSystem = {
                 objectGroup: String(objData.Object_Group || '').trim(),
                 terrainArea: rect,
                 safeArea: safeRect,
-                actions: Array.isArray(objData.Runtime_Actions) ? [...objData.Runtime_Actions] : []
+                actions: Array.isArray(objData.Runtime_Actions) ? [...objData.Runtime_Actions] : [],
+                p3m3Terrain: isP3M3Terrain,
+                p3m3TerrainRole: isP3M3Terrain ? String(sourceEntity.p3m3Role || '').trim() : '',
+                p3m3TerrainAreaId: isP3M3Terrain && gameState.p3m3Runtime ? String(gameState.p3m3Runtime.currentAreaId || '').trim() : ''
             };
             gameState.bossAttackObjects.push(terrain);
             if (objectType === 'TERRAIN_COLLAPSE' || objectType === 'TERRAIN_COLLAPSE_HIT') {
@@ -2338,7 +2391,6 @@ const BossObjectSystem = {
                     p2m2SwordWall: objectType === 'SWORD_WALL' || objectType === 'SWORD_WALL_GIANT_SWORD' || String(objData.Object_Render_Type || '').toUpperCase().indexOf('P2_M2_SWORD_WALL') >= 0,
                     objectMaxHp: (Number.isFinite(parseFloat(objData.Object_HP)) && parseFloat(objData.Object_HP) > 0) ? parseFloat(objData.Object_HP) : null,
                     objectHp: (Number.isFinite(parseFloat(objData.Object_HP)) && parseFloat(objData.Object_HP) > 0) ? parseFloat(objData.Object_HP) : null,
-                    objectDefenceType: String(objData.Object_Defence_Type || '').trim().toUpperCase(),
                     objectGroup: String(objData.Object_Group || '').trim(),
                     slotKey: pos.slotKey || pos.cornerKey || '',
                     cornerKey: pos.cornerKey || ''
@@ -2369,7 +2421,6 @@ const BossObjectSystem = {
         const width = parseFloat(objData.Hitbox_Size_Y) || 120;
         const height = parseFloat(objData.Hitbox_Size_Z) || 120;
         const hitDuration = Math.max(0.05, parseFloat(objData.Hitbox_Duration) || 0.2);
-        const hitboxDelayType = String(objData.Hitbox_Delay_Type || '').trim().toUpperCase();
         const hitboxDelayTime = Math.max(0, parseFloat(objData.Hitbox_Delay_Time) || 0);
         const useLinkedResidualField = warningDurationType === 'REF_OWNER_ACTION_DURATION';
         const renderType = objData.VFX_Type || objData.Effect_Render_Type || (String(objData.Object_Render_Type || '').trim().toUpperCase() === 'OBJ_PATH_ONI_SLASH_BURST' ? 'EFT_KASIYAS_PATH_ONI_SLASH_LINES' : 'EFT_KASIYAS_PATH_SLASH_LINES');
@@ -2384,7 +2435,6 @@ const BossObjectSystem = {
             timer: 0,
             warningDuration: warningDuration,
             warningDurationType: warningDurationType,
-            hitboxDelayType: hitboxDelayType,
             hitboxDelayTime: hitboxDelayTime,
             hitDuration: hitDuration,
             width: width,
@@ -2553,7 +2603,15 @@ const BossObjectSystem = {
             broken.afterGetType = String(this.getBossObjectDataField(data, ['Object_After_Interact_Type', 'Object_After_Get_Type'], '')).trim().toUpperCase();
             return broken;
         }
-        return this.createKasiyasP2M2SpecialObject('252021', gameState, obj, { x: obj.x, y: obj.y, z: 0 });
+        const brokenSource = obj.sourceObject && obj.sourceObject.sourceObject ? obj.sourceObject.sourceObject : null;
+        const brokenSourceId = String(brokenSource && brokenSource.data && brokenSource.data.Object_ID || '').trim();
+        if (brokenSourceId !== '252020') {
+            if (typeof this.pushBossDebugLog === 'function') {
+                this.pushBossDebugLog(gameState, 'OBJECT_RESTORE_WARN', '252021 거대한 검_파괴된 상태', `source ${brokenSourceId || '-'} != required 252020`);
+            }
+            return null;
+        }
+        return this.createKasiyasP2M2SpecialObject('252021', gameState, brokenSource, { x: obj.x, y: obj.y, z: 0 });
     },
 
 
@@ -3046,7 +3104,6 @@ const BossObjectSystem = {
             traceKey,
             traceWidth,
             tracePaths: paths,
-            traceExplosionGroup: String(data.Trace_Explosion_Group || '').trim(),
             warningDuration: Math.max(0, parseFloat(data.Warning_Duration) || 0),
             hitStart: Math.max(0, parseFloat(data.Hitbox_Delay_Time) || parseFloat(data.Warning_Duration) || 0),
             hitDuration: Math.max(0.03, parseFloat(data.Hitbox_Duration) || 0.16),
@@ -3213,16 +3270,17 @@ const BossObjectSystem = {
                 didHit = true;
                 hitX = nearest.x;
                 hitY = nearest.y;
+                const dmgRate = this.getBossObjectDamageRate(owner, data, 1);
                 const attackData = {
                     ...data,
                     ATK_Hit_Count: data.Object_ATK_Hit_Count,
                     ATK_Cycle: data.Object_ATK_Cycle,
-                    ATK_Damage_Rate: data.Object_DMG_Rate,
+                    ATK_Damage_Rate: dmgRate,
                     Action_Anim_Duration: data.Object_Internal_Duration,
                     Action_Attack_Type: data.Object_Type,
                     Guard_Direction_Type: data.Guard_Direction_Type || 'ANY_DIRECTION'
                 };
-                const baseDmg = (parseFloat(owner.d.atk) || 1) * (parseFloat(data.Object_DMG_Rate) || 1);
+                const baseDmg = (parseFloat(owner.d.atk) || 1) * dmgRate;
                 PlayerManager.takeDamage(gameState, calcScaledDamage(owner.d.level || 1, p.level || 1, baseDmg), hitX, hitY, null, 0, 0, this.buildGuardInfoFromAttackData(attackData, obj));
             }
         }
@@ -3503,16 +3561,17 @@ const BossObjectSystem = {
                     const owner = obj.owner || obj.sourceCaster || (Array.isArray(gameState.monsters) && gameState.monsters[0]) || null;
                     if (owner && owner.d) {
                         const data = obj.data || {};
+                        const dmgRate = this.getBossObjectDamageRate(owner, data, 1);
                         const attackData = {
                             ...data,
                             ATK_Hit_Count: data.Object_ATK_Hit_Count,
                             ATK_Cycle: data.Object_ATK_Cycle,
-                            ATK_Damage_Rate: data.Object_DMG_Rate,
+                            ATK_Damage_Rate: dmgRate,
                             Action_Anim_Duration: data.Object_Internal_Duration,
                             Action_Attack_Type: data.Object_Type,
                             Guard_Direction_Type: data.Guard_Direction_Type || 'ACCORD_DIRECTION'
                         };
-                        const baseDmg = (parseFloat(owner.d.atk) || 1) * (parseFloat(data.Object_DMG_Rate) || 1);
+                        const baseDmg = (parseFloat(owner.d.atk) || 1) * dmgRate;
                         if (gameState.hitboxes) gameState.hitboxes.push({ x: obj.x, y: obj.y, z: 0, w: obj.w, d: obj.d, h: obj.h, life: 0.10, sourceObject: obj, sourceObjectId: String(data.Object_ID || '') });
                         PlayerManager.takeDamage(gameState, calcScaledDamage(owner.d.level || 1, p.level || 1, baseDmg), obj.x, obj.y, null, 0, 0, this.buildGuardInfoFromAttackData(attackData, obj));
                     }
@@ -3709,16 +3768,17 @@ const BossObjectSystem = {
                     const owner = obj.owner || obj.sourceCaster || (Array.isArray(gameState.monsters) && gameState.monsters[0]) || null;
                     if (owner && owner.d) {
                         const data = obj.data || {};
+                        const dmgRate = this.getBossObjectDamageRate(owner, data, 1);
                         const attackData = {
                             ...data,
                             ATK_Hit_Count: data.Object_ATK_Hit_Count,
                             ATK_Cycle: data.Object_ATK_Cycle,
-                            ATK_Damage_Rate: data.Object_DMG_Rate,
+                            ATK_Damage_Rate: dmgRate,
                             Action_Anim_Duration: data.Object_Internal_Duration,
                             Action_Attack_Type: data.Object_Type,
                             Guard_Direction_Type: data.Guard_Direction_Type || 'ANY_DIRECTION'
                         };
-                        const baseDmg = (parseFloat(owner.d.atk) || 1) * (parseFloat(data.Object_DMG_Rate) || 1);
+                        const baseDmg = (parseFloat(owner.d.atk) || 1) * dmgRate;
                         if (gameState.hitboxes) gameState.hitboxes.push({ x: obj.x, y: obj.y, z: 0, w: obj.w, d: obj.d, h: obj.h, life: 0.10, sourceObject: obj, sourceObjectId: String(data.Object_ID || '') });
                         PlayerManager.takeDamage(gameState, calcScaledDamage(owner.d.level || 1, p.level || 1, baseDmg), obj.x, obj.y, null, 0, 0, this.buildGuardInfoFromAttackData(attackData, obj));
                     }
@@ -3746,16 +3806,17 @@ const BossObjectSystem = {
                     const owner = obj.owner || obj.sourceCaster || (Array.isArray(gameState.monsters) && gameState.monsters[0]) || null;
                     if (owner && owner.d) {
                         const data = obj.data || {};
+                        const dmgRate = this.getBossObjectDamageRate(owner, data, 1);
                         const attackData = {
                             ...data,
                             ATK_Hit_Count: data.Object_ATK_Hit_Count,
                             ATK_Cycle: data.Object_ATK_Cycle,
-                            ATK_Damage_Rate: data.Object_DMG_Rate,
+                            ATK_Damage_Rate: dmgRate,
                             Action_Anim_Duration: data.Object_Internal_Duration,
                             Action_Attack_Type: data.Object_Type,
                             Guard_Direction_Type: data.Guard_Direction_Type || 'ANY_DIRECTION'
                         };
-                        const baseDmg = (parseFloat(owner.d.atk) || 1) * (parseFloat(data.Object_DMG_Rate) || 1);
+                        const baseDmg = (parseFloat(owner.d.atk) || 1) * dmgRate;
                         if (gameState.hitboxes) gameState.hitboxes.push({ x: obj.x, y: obj.y, z: 0, w: obj.w, d: obj.d, h: obj.h, life: 0.10, sourceObject: obj, sourceObjectId: String(data.Object_ID || '') });
                         PlayerManager.takeDamage(gameState, calcScaledDamage(owner.d.level || 1, p.level || 1, baseDmg), obj.x, obj.y, null, 0, 0, this.buildGuardInfoFromAttackData(attackData, obj));
                     }
@@ -3850,7 +3911,7 @@ const BossObjectSystem = {
             }
             const p = gameState.player || null;
             if (owner && owner.d && p && p.active && p.hp > 0 && typeof this.isPlayerInsideCircleHitbox === 'function' && this.isPlayerInsideCircleHitbox(hitbox, gameState)) {
-                const dmgRate = parseFloat(data.Object_DMG_Rate || data.ATK_Damage_Rate || data.Damage_Rate) || 0.8;
+                const dmgRate = this.getBossObjectDamageRate(owner, data, 0.8);
                 const baseDmg = (parseFloat(owner.d.atk) || 1) * dmgRate;
                 const attackData = {
                     ...data,
@@ -3990,7 +4051,7 @@ const BossObjectSystem = {
 
             const p = gameState.player || null;
             if (owner && owner.d && p && p.active && p.hp > 0 && typeof this.isPlayerInsideCircleHitbox === 'function' && this.isPlayerInsideCircleHitbox(hitbox, gameState)) {
-                const dmgRate = parseFloat(data.Object_DMG_Rate || data.ATK_Damage_Rate || data.Damage_Rate) || 0.2;
+                const dmgRate = this.getBossObjectDamageRate(owner, data, 0.2);
                 const baseDmg = (parseFloat(owner.d.atk) || 1) * dmgRate;
                 const attackData = {
                     ...data,
@@ -4225,7 +4286,7 @@ const BossObjectSystem = {
                         }
                         const isHit = this.isPlayerInsideCircleHitbox(hitbox, gameState);
                         if (isHit && owner && owner.hp > 0) {
-                            const dmgRate = parseFloat(data.Object_DMG_Rate || data.Damage_Rate || data.ATK_Damage_Rate) || 0.3;
+                            const dmgRate = this.getBossObjectDamageRate(owner, data, 0.3);
                             const baseDmg = owner.d.atk * dmgRate;
                             this.pushBossDebugLog(
                                 gameState,
@@ -4314,7 +4375,7 @@ const BossObjectSystem = {
                             record.count += 1;
                             record.lastTime = now;
                             if (obj.hitTargets) obj.hitTargets.set(p, record);
-                            const dmgRate = parseFloat(data.Object_DMG_Rate || data.Damage_Rate || data.ATK_Damage_Rate) || 0.3;
+                            const dmgRate = this.getBossObjectDamageRate(owner, data, 0.3);
                             const baseDmg = owner.d.atk * dmgRate;
                             this.pushBossDebugLog(gameState, 'OBJECT_HIT', `${String(data.Object_ID || '').trim()} ${this.getBossDebugName(data)}`, `sword wave / damage ${baseDmg.toFixed(1)} / hit ${record.count}/${hitCount}`);
                             const result = PlayerManager.takeDamage(gameState, calcScaledDamage(owner.d.level, p.level, baseDmg), hitbox.x, hitbox.y, null, 0, 0, this.buildGuardInfoFromAttackData(data, obj)) || {};
@@ -4372,7 +4433,7 @@ const BossObjectSystem = {
                             ? this.isPlayerInsideCircleHitbox(hitbox, gameState)
                             : this.isPlayerInsideBoxHitbox(hitbox, gameState);
                         if (isHit && obj.owner && obj.owner.hp > 0) {
-                            const baseDmg = obj.owner.d.atk * (parseFloat(data.Object_DMG_Rate || data.Damage_Rate || data.ATK_Damage_Rate) || 1);
+                            const baseDmg = obj.owner.d.atk * this.getBossObjectDamageRate(obj.owner, data, 1);
                             this.pushBossDebugLog(gameState, 'OBJECT_HIT', `${String(data.Object_ID || '').trim()} ${this.getBossDebugName(data)}`, `${hitboxType || 'HITBOX'} / damage ${baseDmg.toFixed(1)}`);
                             PlayerManager.takeDamage(gameState, calcScaledDamage(obj.owner.d.level, gameState.player.level, baseDmg), obj.x, obj.y, null, 0, 0, this.buildGuardInfoFromAttackData(data, obj));
                         }
@@ -4422,7 +4483,14 @@ const BossObjectSystem = {
                 if (fireDown && !obj.fireKeyLatch && !obj.fired) {
                     obj.fired = true;
                     obj.fireKeyLatch = true;
-                    const fireId = String(obj.aimFireObjectId || obj.data && (obj.data.Aim_Fire_Object_ID || obj.data.Aim_Result_Value || obj.data.Object_Interact_Value) || '252023').trim();
+                    const fireId = String(obj.aimFireObjectId || obj.data && obj.data.Aim_Fire_Object_ID || '').trim();
+                    if (!fireId) {
+                        obj.fired = false;
+                        if (typeof this.pushBossDebugLog === 'function') {
+                            this.pushBossDebugLog(gameState, 'OBJECT_AIM_WARN', `${String(obj.data && obj.data.Object_ID || '').trim()} ${this.getBossDebugName(obj.data || {})}`, 'Aim_Fire_Object_ID missing');
+                        }
+                        continue;
+                    }
                     const sourceX = obj.x;
                     const sourceY = obj.y;
                     const sourceZ = obj.z;
@@ -4539,7 +4607,7 @@ const BossObjectSystem = {
                     const actionHitboxType = String(obj.action.Hitbox_Type || '').trim().toUpperCase();
                     const moveActionHasAttack = actionType === 'MOVE'
                         && (actionHitboxType === 'HITBOX_BOX' || actionHitboxType === 'HITBOX_CIRCLE' || actionHitboxType === 'HITBOX_BODY_COLLISION')
-                        && !isNaN(parseFloat(obj.action.ATK_Damage_Rate || obj.action.Damage_Rate));
+                        && !isNaN(parseFloat(obj.action.ATK_Damage_Rate || obj.action.Late_Phase_ATK_Damage_Rate || obj.action.Damage_Rate));
                     if ((actionType === 'ATK' || moveActionHasAttack) && !obj.actionCancelled) {
                         const hitWindow = this.getBossObjectActionHitWindow(obj, obj.action);
                         const hitStart = hitWindow.start;
@@ -4654,7 +4722,7 @@ const BossObjectSystem = {
                         this.pushDebugPathHitbox(obj.path, obj.width, obj.height, 0.12, gameState);
                         if (this.isPlayerInsidePathHitbox(obj.path, obj.width, obj.height, gameState)) {
                             if (owner && owner.hp > 0) {
-                                const dmgRate = parseFloat(data.Object_DMG_Rate || data.Damage_Rate || data.ATK_Damage_Rate) || 1;
+                                const dmgRate = this.getBossObjectDamageRate(owner, data, 1);
                                 const baseDmg = owner.d.atk * dmgRate;
                                 this.pushBossDebugLog(
                                     gameState,
@@ -4708,7 +4776,7 @@ const BossObjectSystem = {
                     if (this.isPlayerInsidePathHitbox(obj.path, obj.width, obj.height, gameState)) {
                         const owner = obj.owner;
                         if (owner && owner.hp > 0) {
-                            const dmgRate = parseFloat(data.Object_DMG_Rate || data.Damage_Rate || data.ATK_Damage_Rate) || 1;
+                            const dmgRate = this.getBossObjectDamageRate(owner, data, 1);
                             const baseDmg = owner.d.atk * dmgRate;
                             this.pushBossDebugLog(
                                 gameState,
@@ -4745,4 +4813,3 @@ const BossObjectSystem = {
         }
     },
 };
-

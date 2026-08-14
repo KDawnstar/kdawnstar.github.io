@@ -125,12 +125,19 @@ const gameState = {
     DB_P2_M3_WAVE: [],
     DB_P2_M3_WAVE_SPAWN: [],
     DB_P2_M3_SLASH: [],
+    DB_P3_M3_SYSTEM: [],
+    DB_P3_M3_AREA: [],
+    DB_P3_M3_PORTAL: [],
+    DB_P3_M3_MONSTER: [],
+    DB_P3_M3_ROUTE: [],
+    DB_P3_M3_DIALOGUE: [],
     actions: [],
 
     // 특수 전용 모드. 현재는 2페이즈 대형 패턴3 차원 방어전 테스트 모드에서 사용한다.
     specialMode: null,
     p2m3DefenseRuntime: null,
     p2m3IntroRuntime: null,
+    p3m3Runtime: null,
     superDamageMode: false,
 
     isAutoSpawn: true,
@@ -192,6 +199,44 @@ function pushSystemNotice(text, color = '#f1c40f', duration = 1.8) {
     if (gameState.systemNotices.length > 4) {
         gameState.systemNotices.splice(0, gameState.systemNotices.length - 4);
     }
+}
+
+// 포트폴리오 용어와 플레이어 노출 UI 용어를 맞추기 위한 표시 전용 변환이다.
+// 내부 로직에서 참조하는 Action_Name/Object_Name/디버그 문자열은 원본 데이터를 유지한다.
+function formatKasiyasPublicText(value, options = {}) {
+    let text = String(value == null ? '' : value);
+    const opt = options || {};
+    if (opt.phaseStep !== false) {
+        text = text
+            .replace(/1페이즈/g, '1단계')
+            .replace(/2페이즈/g, '2단계')
+            .replace(/3페이즈/g, '3단계')
+            .replace(/페이즈 전환/g, '단계 전환')
+            .replace(/페이즈 복귀/g, '단계 복귀')
+            .replace(/페이즈 변경/g, '단계 변경')
+            .replace(/현재 페이즈/g, '현재 단계')
+            .replace(/다음 페이즈/g, '다음 단계')
+            .replace(/이전 페이즈/g, '이전 단계');
+    }
+    if (opt.latePhase !== false) {
+        text = text.replace(/후반부/g, '2페이즈');
+    }
+    return text;
+}
+window.formatKasiyasPublicText = formatKasiyasPublicText;
+
+function updateBossPatternDialogueTimer(deltaTime) {
+    const dlg = gameState.bossPatternDialogue;
+    if (!dlg) return;
+
+    const dt = Math.max(0, parseFloat(deltaTime) || 0);
+    if ((parseFloat(dlg.delay) || 0) > 0) {
+        dlg.delay = Math.max(0, (parseFloat(dlg.delay) || 0) - dt);
+        return;
+    }
+
+    dlg.timer = Math.max(0, (parseFloat(dlg.timer) || 0) - dt);
+    if (dlg.timer <= 0) gameState.bossPatternDialogue = null;
 }
 
 // ==========================================
@@ -552,9 +597,9 @@ function toggleGameMode() {
         const boss = gameState.monsters.find(m => m.active && m.isStageBoss) || (gameState.bossBattle && gameState.bossBattle.boss);
         const phase = boss && boss.boss ? boss.boss.phase : (gameState.bossBattle && gameState.bossBattle.phase);
         const hpRate = boss ? Math.max(0, boss.hp / Math.max(1, boss.maxHp)) : 0;
-        const lateText = boss && boss.boss && boss.boss.isLatePhase ? '후반부 ON' : '후반부 OFF';
+        const lateText = boss && boss.boss && boss.boss.isLatePhase ? '2페이즈' : '1페이즈';
         const patternName = boss && boss.boss && boss.boss.activePattern
-            ? boss.boss.activePattern.Pattern_Name
+            ? formatKasiyasPublicText(boss.boss.activePattern.Pattern_Name, { phaseStep: false, latePhase: true })
             : '기본 추적';
 
         const wrap = document.createElement('div');
@@ -572,7 +617,7 @@ function toggleGameMode() {
                 카시야스 전용 보스전
             </div>
             <div style="font-size:15px; color:#f1c40f; font-weight:800; margin-bottom:6px; line-height:1.3;">
-                ${phase ? phase.Phase_Name : '1페이즈 로딩 중...'}
+                ${phase ? formatKasiyasPublicText(phase.Phase_Name, { phaseStep: true, latePhase: false }) : '1단계 로딩 중...'}
             </div>
             <div style="font-size:11px; color:rgba(255,255,255,0.88); line-height:1.45;">
                 HP : ${(hpRate * 100).toFixed(1)}%<br>
@@ -630,11 +675,23 @@ async function loadGameDataAndInit() {
         const p2m3WaveData = GameDataNormalizer.normalizeRuntimeDataSet(rawData.p2M3WaveData, 'p2M3Wave');
         const p2m3WaveSpawnData = GameDataNormalizer.normalizeRuntimeDataSet(rawData.p2M3WaveSpawnData, 'p2M3WaveSpawn');
         const p2m3SlashData = GameDataNormalizer.normalizeRuntimeDataSet(rawData.p2M3SlashData, 'p2M3Slash');
+        const p3m3SystemData = GameDataNormalizer.normalizeRuntimeDataSet(rawData.p3M3SystemData, 'p3M3System');
+        const p3m3AreaData = GameDataNormalizer.normalizeRuntimeDataSet(rawData.p3M3AreaData, 'p3M3Area');
+        const p3m3PortalData = GameDataNormalizer.normalizeRuntimeDataSet(rawData.p3M3PortalData, 'p3M3Portal');
+        const p3m3MonsterData = GameDataNormalizer.normalizeRuntimeDataSet(rawData.p3M3MonsterData, 'p3M3Monster');
+        const p3m3RouteData = GameDataNormalizer.normalizeRuntimeDataSet(rawData.p3M3RouteData, 'p3M3Route');
+        const p3m3DialogueData = GameDataNormalizer.normalizeRuntimeDataSet(rawData.p3M3DialogueData, 'p3M3Dialogue');
 
         gameState.DB_P2_M3_PLAYER = p2m3PlayerData || [];
         gameState.DB_P2_M3_WAVE = p2m3WaveData || [];
         gameState.DB_P2_M3_WAVE_SPAWN = p2m3WaveSpawnData || [];
         gameState.DB_P2_M3_SLASH = p2m3SlashData || [];
+        gameState.DB_P3_M3_SYSTEM = p3m3SystemData || [];
+        gameState.DB_P3_M3_AREA = p3m3AreaData || [];
+        gameState.DB_P3_M3_PORTAL = p3m3PortalData || [];
+        gameState.DB_P3_M3_MONSTER = p3m3MonsterData || [];
+        gameState.DB_P3_M3_ROUTE = p3m3RouteData || [];
+        gameState.DB_P3_M3_DIALOGUE = p3m3DialogueData || [];
 
         PlayerManager.init(pData, aData, gameState);
 
@@ -671,23 +728,44 @@ window.onload = () => {
     loadGameDataAndInit();
 };
 
+function toggleP3M3HiddenRouteTestBuff() {
+    const p = gameState && gameState.player ? gameState.player : null;
+    if (!p) return false;
+    const enabled = !!(p.p3TrialWillBuff && p.p3TrialBodyBuff);
+    if (enabled) {
+        p.p3TrialWillBuff = false;
+        p.p3TrialBodyBuff = false;
+        p.p3TrialWillBuffFlashTimer = 0;
+        p.p3TrialBodyBuffFlashTimer = 0;
+        try { pushSystemNotice('F8 히든 분기 테스트 버프 제거', '#bbbbbb', 1.2); } catch (err) {}
+    } else {
+        p.p3TrialWillBuff = true;
+        p.p3TrialBodyBuff = true;
+        p.p3TrialWillBuffFlashTimer = Math.max(parseFloat(p.p3TrialWillBuffFlashTimer) || 0, 1.5);
+        p.p3TrialBodyBuffFlashTimer = Math.max(parseFloat(p.p3TrialBodyBuffFlashTimer) || 0, 1.5);
+        try { pushSystemNotice('F8 히든 분기 테스트 버프 획득', '#ffe9a6', 1.2); } catch (err) {}
+    }
+    return true;
+}
+
 window.addEventListener('keydown', e => {
     gameState.keys[e.code] = true;
 
-    if (gameState.specialMode === 'P2_M3_DIMENSION_DEFENSE') {
-        if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'KeyX', 'KeyD', 'KeyA', 'KeyC', 'Space', 'F8', 'F12'].includes(e.code)) {
-            e.preventDefault();
-        }
-        if (e.code === 'F8' && !e.repeat && typeof P2M3DimensionDefenseSystem !== 'undefined') {
-            P2M3DimensionDefenseSystem.forceEnd(gameState, 'CANCEL');
-            return;
-        }
+    if (e.code === 'F8' && !e.repeat) {
+        e.preventDefault();
+        toggleP3M3HiddenRouteTestBuff();
         return;
     }
 
-    if (e.code === 'F8' && !e.repeat && typeof P2M3DimensionDefenseSystem !== 'undefined') {
+    if (typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.handleDialogueKeyDown && P3M3FinalIssenSystem.handleDialogueKeyDown(gameState, e)) {
         e.preventDefault();
-        P2M3DimensionDefenseSystem.startTest(gameState);
+        return;
+    }
+
+    if (gameState.specialMode === 'P2_M3_DIMENSION_DEFENSE') {
+        if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'KeyX', 'KeyD', 'KeyA', 'KeyC', 'Space', 'F12'].includes(e.code)) {
+            e.preventDefault();
+        }
         return;
     }
 
@@ -785,6 +863,9 @@ function gameLoop(timestamp) {
             PlayerManager.update(deltaTime, gameState.keys, gameState);
         }
         MonsterManager.update(deltaTime, gameState);
+        if (typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.isActive(gameState)) {
+            P3M3FinalIssenSystem.update(gameState, deltaTime);
+        }
         updateEnvironment(deltaTime);
         if (!phaseTransitionActive) {
             updateStageFlow();
@@ -867,6 +948,8 @@ function gameLoop(timestamp) {
 }
 
 function updateEnvironment(deltaTime) {
+    updateBossPatternDialogueTimer(deltaTime);
+
     if (gameState.screenHitFlash) {
         gameState.screenHitFlash.life -= deltaTime;
         if (gameState.screenHitFlash.life <= 0) gameState.screenHitFlash = null;
@@ -1191,10 +1274,10 @@ function buildUIButtons() {
             <div class="control-guide-card">
                 <div class="control-guide-title">디버그</div>
                 <div class="control-row"><span class="keycap debug">V</span><span>히트박스 표시</span></div>
-                <div class="control-row"><span class="keycap debug">F8</span><span>2P 대형3 차원 방어전 테스트</span></div>
+                <div class="control-row"><span class="keycap debug">F8</span><span>3P 최종패턴 히든 버프 토글</span></div>
                 <div class="control-row"><span class="keycap debug">F9</span><span>카시야스 연습 모드</span></div>
-                <div class="control-row"><span class="keycap debug">F10</span><span>다음 페이즈 전환 테스트</span></div>
-                <div class="control-row"><span class="keycap debug">F11</span><span>이전 페이즈 복귀 테스트</span></div>
+                <div class="control-row"><span class="keycap debug">F10</span><span>다음 단계 전환 테스트</span></div>
+                <div class="control-row"><span class="keycap debug">F11</span><span>이전 단계 복귀 테스트</span></div>
                 <div class="control-row"><span class="keycap debug">R</span><span>사망 시 부활</span></div>
             </div>
         `;
@@ -1368,12 +1451,12 @@ function triggerBossPhaseTransitionDebug() {
             transition.timer = Math.max(parseFloat(transition.duration) || 0, parseFloat(transition.timer) || 0);
             transition.progress = 1;
             if (typeof MonsterManager.finishBossPhaseTransition === 'function' && MonsterManager.finishBossPhaseTransition(transitionBoss, gameState, transition)) {
-                pushSystemNotice('F10 · 페이즈 전환 즉시 완료', '#ff9f7f', 1.2);
+                pushSystemNotice('F10 · 단계 전환 즉시 완료', '#ff9f7f', 1.2);
                 buildUIButtons();
                 return true;
             }
         }
-        pushSystemNotice('페이즈 전환을 즉시 완료할 수 없습니다', '#ffd27f', 1.0);
+        pushSystemNotice('단계 전환을 즉시 완료할 수 없습니다', '#ffd27f', 1.0);
         return true;
     }
 
@@ -1382,7 +1465,7 @@ function triggerBossPhaseTransitionDebug() {
         : null;
     const transitionType = String(bossMonster.boss.phase && bossMonster.boss.phase.Phase_Transition_Type || '').trim();
     if (!nextPhase || !transitionType) {
-        pushSystemNotice('다음 페이즈 전환 데이터가 없습니다', '#ffb8b8', 1.4);
+        pushSystemNotice('다음 단계 전환 데이터가 없습니다', '#ffb8b8', 1.4);
         return false;
     }
 
@@ -1400,12 +1483,12 @@ function triggerBossPhaseTransitionDebug() {
     if (typeof MonsterManager.startBossPhaseTransition === 'function') {
         const started = MonsterManager.startBossPhaseTransition(bossMonster, gameState);
         if (started) {
-            pushSystemNotice('F10 · 카시야스 페이즈 전환 테스트', '#ff7777', 1.2);
+            pushSystemNotice('F10 · 카시야스 단계 전환 테스트', '#ff7777', 1.2);
             return true;
         }
     }
 
-    pushSystemNotice('페이즈 전환 시작에 실패했습니다', '#ffb8b8', 1.4);
+    pushSystemNotice('단계 전환 시작에 실패했습니다', '#ffb8b8', 1.4);
     return false;
 }
 
@@ -1441,14 +1524,14 @@ function rebuildBossPatternCooldownsForCurrentPhase(boss) {
 function switchKasiyasBossToPhaseDebug(targetPhase, options = {}) {
     const bossMonster = getKasiyasPracticeBoss();
     if (!bossMonster || !targetPhase) {
-        pushSystemNotice('전환할 카시야스 페이즈를 찾을 수 없습니다', '#ffb8b8', 1.2);
+        pushSystemNotice('전환할 카시야스 단계를 찾을 수 없습니다', '#ffb8b8', 1.2);
         return false;
     }
 
     const nextMonsterId = String(targetPhase.Phase_Monster_ID || '').trim();
     const nextData = gameState.DB_MONSTER ? gameState.DB_MONSTER[nextMonsterId] || null : null;
     if (!nextData) {
-        pushSystemNotice('대상 페이즈 몬스터 데이터가 없습니다', '#ffb8b8', 1.2);
+        pushSystemNotice('대상 단계 몬스터 데이터가 없습니다', '#ffb8b8', 1.2);
         return false;
     }
 
@@ -1527,32 +1610,33 @@ function switchKasiyasBossToPhaseDebug(targetPhase, options = {}) {
     buildUIButtons();
     renderBossAIPanel(gameState);
 
-    const phaseName = targetPhase.Phase_Name || `Phase ${targetPhase.Phase_ID || ''}`;
-    pushSystemNotice(`${options.noticePrefix || '페이즈 변경'} · ${phaseName}`, options.noticeColor || '#8fd3ff', 1.4);
+    const phaseName = formatKasiyasPublicText(targetPhase.Phase_Name || `Phase ${targetPhase.Phase_ID || ''}`, { phaseStep: true, latePhase: false });
+    const noticePrefix = formatKasiyasPublicText(options.noticePrefix || '단계 변경', { phaseStep: true, latePhase: false });
+    pushSystemNotice(`${noticePrefix} · ${phaseName}`, options.noticeColor || '#8fd3ff', 1.4);
     return true;
 }
 
 function triggerBossPreviousPhaseDebug() {
     const bossMonster = getKasiyasPracticeBoss();
     if (!bossMonster || !bossMonster.boss) {
-        pushSystemNotice('이전 페이즈로 되돌릴 카시야스가 없습니다', '#ffb8b8', 1.2);
+        pushSystemNotice('이전 단계로 되돌릴 카시야스가 없습니다', '#ffb8b8', 1.2);
         return false;
     }
 
     if (gameState.phaseTransition && gameState.phaseTransition.active) {
-        pushSystemNotice('페이즈 전환 중에는 이전 페이즈 복귀를 사용할 수 없습니다', '#ffd27f', 1.1);
+        pushSystemNotice('단계 전환 중에는 이전 단계 복귀를 사용할 수 없습니다', '#ffd27f', 1.1);
         return false;
     }
 
     const { phases, index } = getCurrentBossPhaseIndex(bossMonster);
     if (index <= 0 || !phases[index - 1]) {
-        pushSystemNotice('이미 첫 번째 페이즈입니다', '#ffd27f', 1.1);
+        pushSystemNotice('이미 첫 번째 단계입니다', '#ffd27f', 1.1);
         return false;
     }
 
     return switchKasiyasBossToPhaseDebug(phases[index - 1], {
         resetPosition: true,
-        noticePrefix: 'F11 · 이전 페이즈 복귀',
+        noticePrefix: 'F11 · 이전 단계 복귀',
         noticeColor: '#8fd3ff'
     });
 }
@@ -1637,7 +1721,7 @@ function getBossPracticePatternList() {
     const bossMonster = getKasiyasPracticeBoss();
     const boss = bossMonster && bossMonster.boss ? bossMonster.boss : null;
     const patternSetId = String(boss && boss.patternSetId || '').trim();
-    const phaseName = boss && boss.phase ? String(boss.phase.Phase_Name || '').trim() : '';
+    const phaseName = boss && boss.phase ? formatKasiyasPublicText(String(boss.phase.Phase_Name || '').trim(), { phaseStep: true, latePhase: false }) : '';
     const patterns = patternSetId && gameState.DB_BOSS_PATTERN_BY_SET && gameState.DB_BOSS_PATTERN_BY_SET[patternSetId]
         ? [...gameState.DB_BOSS_PATTERN_BY_SET[patternSetId]]
         : [];
@@ -1655,7 +1739,7 @@ function getBossPracticePatternList() {
         const group = category === 'MAJOR' ? 'major' : (category === 'BASIC' ? 'basic' : 'other');
         counters[group] = (counters[group] || 0) + 1;
         const prefix = group === 'major' ? '대형' : (group === 'basic' ? '기본' : '기타');
-        const name = String(pattern.Pattern_Name || pattern.Dev_Name || id).trim();
+        const name = formatKasiyasPublicText(String(pattern.Pattern_Name || pattern.Dev_Name || id).trim(), { phaseStep: false, latePhase: true });
         const ready = Array.isArray(pattern.Runtime_Actions) && pattern.Runtime_Actions.length > 0;
         return {
             group,
@@ -1804,7 +1888,7 @@ function restartBossBattleAfterPracticeMode() {
     }
 
     buildUIButtons();
-    pushSystemNotice('🧪 연습 모드 OFF · 현재 페이즈 전투 재시작', '#ffb8b8', 1.4);
+    pushSystemNotice('🧪 연습 모드 OFF · 현재 단계 전투 재시작', '#ffb8b8', 1.4);
 }
 
 function setBossPracticeModeEnabled(enabled) {
@@ -1820,7 +1904,7 @@ function setBossPracticeModeEnabled(enabled) {
     if (gameState.bossPractice.enabled) {
         const bossMonster = resetBossPracticeRuntimeState({ resetPosition: false });
         const phaseName = bossMonster && bossMonster.boss && bossMonster.boss.phase
-            ? String(bossMonster.boss.phase.Phase_Name || '').trim()
+            ? formatKasiyasPublicText(String(bossMonster.boss.phase.Phase_Name || '').trim(), { phaseStep: true, latePhase: false })
             : '';
         if (gameState.bossDebug) gameState.bossDebug.patternCheck = buildBossPatternCheckSnapshotForCurrentPhase(bossMonster);
         pushSystemNotice(`🧪 카시야스 연습 모드 ON${phaseName ? ' · ' + phaseName : ''}`, '#8ff0b0', 1.4);
@@ -1887,7 +1971,7 @@ function forceStartBossPracticePattern(patternId) {
     const currentSetId = String(bossMonster && bossMonster.boss && bossMonster.boss.patternSetId || '').trim();
     const patternSetId = String(pattern && pattern.Pattern_Set_ID || '').trim();
     if (pattern && currentSetId && patternSetId && currentSetId !== patternSetId) {
-        pushSystemNotice('연습 모드: 현재 페이즈의 패턴이 아닙니다', '#ffd27f', 1.2);
+        pushSystemNotice('연습 모드: 현재 단계의 패턴이 아닙니다', '#ffd27f', 1.2);
         buildUIButtons();
         return;
     }
@@ -1903,7 +1987,7 @@ function forceStartBossPracticePattern(patternId) {
 
     gameState.bossPractice.lastPatternId = id;
     MonsterManager.startBossPattern(bossMonster, pattern, gameState);
-    pushSystemNotice(`연습 실행: ${pattern.Pattern_Name || pattern.Dev_Name || id}`, '#f4d36a', 1.2);
+    pushSystemNotice(`연습 실행: ${formatKasiyasPublicText(pattern.Pattern_Name || pattern.Dev_Name || id, { phaseStep: false, latePhase: true })}`, '#f4d36a', 1.2);
     buildUIButtons();
 }
 
@@ -1932,7 +2016,7 @@ function renderBossPracticePanel(container) {
     const other = list.filter(item => item.group !== 'basic' && item.group !== 'major');
     const bossMonster = getKasiyasPracticeBoss();
     const phaseName = bossMonster && bossMonster.boss && bossMonster.boss.phase
-        ? String(bossMonster.boss.phase.Phase_Name || '').trim()
+        ? formatKasiyasPublicText(String(bossMonster.boss.phase.Phase_Name || '').trim(), { phaseStep: true, latePhase: false })
         : '';
 
     const makeButton = (item) => {
@@ -1952,7 +2036,7 @@ function renderBossPracticePanel(container) {
                 <span class="practice-status">${escapeDebugHtml(phaseName || 'ON')}</span>
             </div>
             <div class="practice-help">
-                현재 보스 페이즈의 패턴만 표시합니다. F10 다음 페이즈, F11 이전 페이즈, 숫자키는 구현된 패턴 순서대로 실행합니다.
+                현재 보스 단계의 패턴만 표시합니다. F10 다음 단계, F11 이전 단계, 숫자키는 구현된 패턴 순서대로 실행합니다.
             </div>
             <div class="practice-group-title">기본 패턴</div>
             <div class="practice-grid">

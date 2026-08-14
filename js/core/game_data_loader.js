@@ -20,7 +20,13 @@ const GameDataLoader = {
         p2M3PlayerData: './GameData/P2_M3_Player_info.json',
         p2M3WaveData: './GameData/P2_M3_Wave_info.json',
         p2M3WaveSpawnData: './GameData/P2_M3_Wave_Spawn_info.json',
-        p2M3SlashData: './GameData/P2_M3_Slash_info.json'
+        p2M3SlashData: './GameData/P2_M3_Slash_info.json',
+        p3M3SystemData: './GameData/P3_M3_System_info.json',
+        p3M3AreaData: './GameData/P3_M3_Area_info.json',
+        p3M3PortalData: './GameData/P3_M3_Portal_info.json',
+        p3M3MonsterData: './GameData/P3_M3_Monster_info.json',
+        p3M3RouteData: './GameData/P3_M3_Route_info.json',
+        p3M3DialogueData: './GameData/P3_M3_Dialogue_info.json'
     },
 
     async fetchJson(path) {

@@ -1,89 +1,89 @@
 [
   {
     "Wave_ID": 309001,
-    "Pattern_ID": 232008,
     "Wave_Order": 1,
     "Wave_Name": "웨이브 1차",
+    "Pattern_ID": 232008,
     "Wave_Start_Delay": 0.5,
     "Next_Wave_Delay": 1
   },
   {
     "Wave_ID": 309002,
-    "Pattern_ID": 232008,
     "Wave_Order": 2,
     "Wave_Name": "웨이브 2차",
+    "Pattern_ID": 232008,
     "Wave_Start_Delay": 0.5,
     "Next_Wave_Delay": 1
   },
   {
     "Wave_ID": 309003,
-    "Pattern_ID": 232008,
     "Wave_Order": 3,
     "Wave_Name": "웨이브 3차",
+    "Pattern_ID": 232008,
     "Wave_Start_Delay": 0.5,
     "Next_Wave_Delay": 1
   },
   {
     "Wave_ID": 309004,
-    "Pattern_ID": 232008,
     "Wave_Order": 4,
     "Wave_Name": "웨이브 4차",
+    "Pattern_ID": 232008,
     "Wave_Start_Delay": 0.5,
     "Next_Wave_Delay": 1
   },
   {
     "Wave_ID": 309005,
-    "Pattern_ID": 232008,
     "Wave_Order": 5,
     "Wave_Name": "웨이브 5차",
+    "Pattern_ID": 232008,
     "Wave_Start_Delay": 0.5,
     "Next_Wave_Delay": 1
   },
   {
     "Wave_ID": 309006,
-    "Pattern_ID": 232008,
     "Wave_Order": 6,
     "Wave_Name": "웨이브 6차",
+    "Pattern_ID": 232008,
     "Wave_Start_Delay": 0.5,
     "Next_Wave_Delay": 1
   },
   {
     "Wave_ID": 309007,
-    "Pattern_ID": 232008,
     "Wave_Order": 7,
     "Wave_Name": "웨이브 7차",
+    "Pattern_ID": 232008,
     "Wave_Start_Delay": 0.5,
     "Next_Wave_Delay": 1
   },
   {
     "Wave_ID": 309008,
-    "Pattern_ID": 232008,
     "Wave_Order": 8,
     "Wave_Name": "웨이브 8차",
+    "Pattern_ID": 232008,
     "Wave_Start_Delay": 0.5,
     "Next_Wave_Delay": 1
   },
   {
     "Wave_ID": 309009,
-    "Pattern_ID": 232008,
     "Wave_Order": 9,
     "Wave_Name": "웨이브 9차",
+    "Pattern_ID": 232008,
     "Wave_Start_Delay": 0.5,
     "Next_Wave_Delay": 1
   },
   {
     "Wave_ID": 309010,
-    "Pattern_ID": 232008,
     "Wave_Order": 10,
     "Wave_Name": "웨이브 10차_거대 검기",
+    "Pattern_ID": 232008,
     "Wave_Start_Delay": 0.5,
     "Next_Wave_Delay": 1
   },
   {
     "Wave_ID": 309011,
-    "Pattern_ID": 232008,
     "Wave_Order": 11,
     "Wave_Name": "카시야스 최종 공격",
+    "Pattern_ID": 232008,
     "Wave_Start_Delay": 0.5,
     "Next_Wave_Delay": 1
   }

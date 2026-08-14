@@ -65,6 +65,13 @@ const PlayerManager = {
     revive: function(gameState) {
         const p = gameState && gameState.player ? gameState.player : null;
         if (!p) return;
+        const p3m3Runtime = gameState && gameState.p3m3Runtime ? gameState.p3m3Runtime : null;
+        if (p3m3Runtime && p3m3Runtime.active && p3m3Runtime.failureSequence && p3m3Runtime.failureSequence.active) {
+            return;
+        }
+        if (p3m3Runtime && p3m3Runtime.active && p3m3Runtime.finalIssenDeathPending && p3m3Runtime.finalResolving) {
+            return;
+        }
         // 연습 모드에서는 실제 피해 테스트 후에도 R/버튼으로 즉시 복귀할 수 있어야 한다.
         // HP가 0보다 크더라도 Die 상태/게임오버 UI가 남은 경우를 함께 복구한다.
         if (p.hp > 0 && p.state !== 'Die') return;
@@ -93,6 +100,20 @@ const PlayerManager = {
         p.dashSpeedY = 0;
         p.isRunning = false;
         p.runDirection = null;
+        if (p3m3Runtime && p3m3Runtime.active && p3m3Runtime.playerDeathPending) {
+            const rx = parseFloat(p3m3Runtime.playerDeathReviveX);
+            const ry = parseFloat(p3m3Runtime.playerDeathReviveY);
+            if (typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.placePlayer) {
+                P3M3FinalIssenSystem.placePlayer(gameState, isFinite(rx) ? rx : p.x, isFinite(ry) ? ry : p.y, { forceIdle: true, clearKeys: true });
+            } else {
+                if (isFinite(rx)) p.x = rx;
+                if (isFinite(ry)) p.y = ry;
+            }
+            p3m3Runtime.playerDeathPending = false;
+            p.p3m3ReviveX = null;
+            p.p3m3ReviveY = null;
+            p.p3m3ReviveAreaId = null;
+        }
         p.p3OniCurseHpFlashTimer = 0;
         p.p3OniCurseBleedTimer = 0;
         let go = document.getElementById('gameOverScreen'); if(go) go.style.display = 'none';
@@ -571,14 +592,20 @@ const PlayerManager = {
             let specialSpiritCost = 0;
             const specialType = String(guardInfo && guardInfo.guardSpecialResultType || '').trim().toUpperCase();
             const specialCond = String(guardInfo && guardInfo.guardSpecialResultOccurrenceCond || '').trim().toUpperCase();
+            const rawSpecialCostType = String(guardInfo && guardInfo.guardSpecialResultCostType || '').trim().toUpperCase();
+            // Guard_Special_Result_Cost_Type은 특수 가드가 어떤 자원을 소모하는지 명시한다.
+            // 기존 데이터 호환을 위해 USE_FIGHTING_SPIRIT_BLOCK_ALL에서 Cost_Type이 비어 있으면 FIGHTING_SPIRIT로 간주한다.
+            const specialCostType = rawSpecialCostType || (specialType === 'USE_FIGHTING_SPIRIT_BLOCK_ALL' ? 'FIGHTING_SPIRIT' : '');
             if (specialType === 'USE_FIGHTING_SPIRIT_BLOCK_ALL') {
                 const rawCost = parseFloat(guardInfo && guardInfo.guardSpecialResultCostValue);
                 specialSpiritCost = !isNaN(rawCost) && rawCost > 0 ? rawCost : 50;
-                const enough = (parseFloat(p.fightingSpirit) || 0) >= specialSpiritCost;
-                const condOk = !specialCond || specialCond === 'FIGHTING_SPIRIT_OVER_OR_EQUAL_50' ? enough : enough;
-                if (condOk) {
-                    p.fightingSpirit = Math.max(0, (parseFloat(p.fightingSpirit) || 0) - specialSpiritCost);
-                    specialSpiritBlock = true;
+                if (specialCostType === 'FIGHTING_SPIRIT') {
+                    const enough = (parseFloat(p.fightingSpirit) || 0) >= specialSpiritCost;
+                    const condOk = !specialCond || specialCond === 'FIGHTING_SPIRIT_OVER_OR_EQUAL_50' ? enough : enough;
+                    if (condOk) {
+                        p.fightingSpirit = Math.max(0, (parseFloat(p.fightingSpirit) || 0) - specialSpiritCost);
+                        specialSpiritBlock = true;
+                    }
                 }
             }
             const finalBlockRate = (temperedCrossGuard || specialSpiritBlock) ? 1 : Math.max(0, Math.min(1, baseBlockRate + apostleGuardBonus));

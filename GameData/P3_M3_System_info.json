@@ -1,0 +1,17 @@
+[
+  {
+    "System_ID": 901001,
+    "System_Name": "P3_M3_MAIN",
+    "Pattern_ID": 233008,
+    "Center_Area_ID": 902001,
+    "Left_Area_ID": 902002,
+    "Right_Area_ID": 902003,
+    "Time_Limit": 120,
+    "Boss_Invincible": true,
+    "World_Mode": "INVERTED_BLACK_WHITE",
+    "Clear_Result_Type": "DUNGEON_CLEAR",
+    "Time_Limit_Fail_Result_Type": "FINAL_ATTACK_HIT_AND_RETURN_NORMAL_MAP",
+    "Time_Limit_Fail_Route_ID": 905001,
+    "Fail_Boss_HP_Restore_Type": "KEEP_CURRENT"
+  }
+]

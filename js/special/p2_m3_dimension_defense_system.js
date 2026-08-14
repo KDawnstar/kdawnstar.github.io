@@ -1,7 +1,6 @@
 // [카시야스 보스전] 2페이즈 대형 패턴3 차원 방어전 전용 모드 시스템
 // ==========================================
 // step203:
-// - step202의 F8 테스트 모드/복귀/그로기 결과 분기는 유지
 // - P2_M3_Wave_info + P2_M3_Wave_Spawn_info 분리 구조 반영
 // - 한 웨이브 안에서 여러 검기 타입/라인/간격을 순차 스폰할 수 있도록 확장
 // ==========================================
@@ -51,30 +50,6 @@ const P2M3DimensionDefenseSystem = {
         const battleBoss = gameState.bossBattle && gameState.bossBattle.boss;
         if (battleBoss && battleBoss.active) return battleBoss;
         return (gameState.monsters || []).find(m => m && m.active && m.isStageBoss && m.boss) || null;
-    },
-
-    canStartTest(gameState) {
-        const boss = this.getBoss(gameState);
-        const bossRt = boss && boss.boss ? boss.boss : null;
-        if (!boss || !bossRt) return { ok: false, reason: '카시야스 보스를 찾을 수 없습니다.' };
-        if (String(bossRt.phaseId || '').trim() !== '220002') return { ok: false, reason: '2페이즈에서만 차원 방어전 테스트에 진입할 수 있습니다.' };
-        if (gameState.phaseTransition && gameState.phaseTransition.active) return { ok: false, reason: '페이즈 전환 중에는 진입할 수 없습니다.' };
-        if (boss.state === 'DIE' || boss.state === 'Die' || boss.hp <= 0) return { ok: false, reason: '보스 사망 상태에서는 진입할 수 없습니다.' };
-        if (gameState.specialMode && gameState.specialMode !== this.MODE) return { ok: false, reason: '다른 특수 모드가 실행 중입니다.' };
-        return { ok: true, boss };
-    },
-
-    startTest(gameState) {
-        if (this.isActive(gameState)) {
-            this.forceEnd(gameState, 'CANCEL');
-            return true;
-        }
-        const check = this.canStartTest(gameState);
-        if (!check.ok) {
-            try { pushSystemNotice(check.reason, '#ffd27f', 1.35); } catch (e) {}
-            return false;
-        }
-        return this.start(gameState, { isTestMode: true, boss: check.boss });
     },
 
     buildSlashLookup(gameState) {
@@ -210,7 +185,6 @@ const P2M3DimensionDefenseSystem = {
             }
             if (!intro.noticeFired) {
                 intro.noticeFired = true;
-                try { pushSystemNotice('차원이 붕괴됩니다', '#caa7ff', 1.0); } catch (e) {}
             }
             if (gameState.screenShake) {
                 gameState.screenShake.timer = Math.max(gameState.screenShake.timer || 0, 0.08);
@@ -318,6 +292,9 @@ const P2M3DimensionDefenseSystem = {
                 guardFlashTimer: 0,
                 skillCooldown: 0,
                 skillFlashTimer: 0,
+                skillCastTimer: 0,
+                skillCastMax: 0,
+                skillCastPending: false,
                 hasTemperedWill: false,
                 damageFlashTimer: 0
             },
@@ -341,7 +318,6 @@ const P2M3DimensionDefenseSystem = {
         gameState.p2m3DefenseRuntime = rt;
         this.pauseExistingCombat(gameState);
         gameState.p2m3IntroRuntime = null;
-        try { pushSystemNotice(rt.isPatternLinked ? '카시야스의 차원 방어전 개시' : 'F8 · 차원 방어전 테스트 모드', '#caa7ff', 1.35); } catch (e) {}
         return true;
     },
 
@@ -412,6 +388,11 @@ const P2M3DimensionDefenseSystem = {
 
         p.attackCooldown = Math.max(0, p.attackCooldown - dt);
         p.skillCooldown = Math.max(0, p.skillCooldown - dt);
+        p.skillCastTimer = Math.max(0, (p.skillCastTimer || 0) - dt);
+        if (p.skillCastPending && p.skillCastTimer <= 0) {
+            p.skillCastPending = false;
+            this.playerSkill(gameState, rt);
+        }
         p.attackFlashTimer = Math.max(0, p.attackFlashTimer - dt);
         p.guardFlashTimer = Math.max(0, p.guardFlashTimer - dt);
         p.guardContactTimer = Math.max(0, p.guardContactTimer - dt);
@@ -446,15 +427,22 @@ const P2M3DimensionDefenseSystem = {
         }
 
         if (keys.KeyX && p.attackCooldown <= 0) {
-            this.playerAttack(gameState, rt);
+            this.executePlayerAttack(gameState, rt);
             p.attackCooldown = Math.max(0.03, this.num(playerData.ATK_Delay, 0.15));
             p.attackFlashTimer = 0.12;
         }
 
-        if (this.isKeyPressed(rt, 'KeyA', keys) && p.skillCooldown <= 0) {
-            this.playerSkill(gameState, rt);
+        if (this.isKeyPressed(rt, 'KeyA', keys) && p.skillCooldown <= 0 && !p.skillCastPending) {
+            const castTime = Math.max(0, this.num(playerData.Skill_Cast_Time, 0.1));
             p.skillCooldown = Math.max(0.1, this.num(playerData.Skill_Cooldown, 8));
-            p.skillFlashTimer = Math.max(0.16, this.num(playerData.Skill_Cast_Time, 0.1));
+            p.skillFlashTimer = Math.max(0.16, castTime);
+            p.skillCastMax = castTime;
+            if (castTime > 0) {
+                p.skillCastPending = true;
+                p.skillCastTimer = castTime;
+            } else {
+                this.playerSkill(gameState, rt);
+            }
         }
 
         rt.inputPrev = { ...keys };
@@ -501,14 +489,43 @@ const P2M3DimensionDefenseSystem = {
             const idx = rt.waveState ? Math.max(0, (rt.waveState.spawnDone || 0) % Math.max(1, seq.length)) : 0;
             return [seq[idx]];
         }
-        if (type === 'RANDOM_DOUBLE_ADJACENT') {
-            return Math.random() < 0.5 ? [0, 1] : [1, 2];
+
+        const isRandom = type === 'RANDOM_SINGLE' || type === 'RANDOM_DOUBLE_ADJACENT' || type === 'RANDOM_DOUBLE_ANY';
+        const ws = rt && rt.waveState ? rt.waveState : null;
+        const allowUsedLane = this.bool(wave && wave.Use_Same_Lane);
+        const used = new Set(ws && Array.isArray(ws.usedLanes) ? ws.usedLanes : []);
+        const allSingle = [0, 1, 2];
+        const resetUsed = () => {
+            if (ws) ws.usedLanes = [];
+            used.clear();
+        };
+        const record = (lanes) => {
+            if (isRandom && ws) {
+                const merged = new Set(Array.isArray(ws.usedLanes) ? ws.usedLanes : []);
+                (lanes || []).forEach(lane => merged.add(lane));
+                ws.usedLanes = [...merged];
+            }
+            return lanes;
+        };
+
+        if (type === 'RANDOM_DOUBLE_ADJACENT' || type === 'RANDOM_DOUBLE_ANY') {
+            const allCombos = type === 'RANDOM_DOUBLE_ADJACENT'
+                ? [[0, 1], [1, 2]]
+                : [[0, 1], [1, 2], [0, 2]];
+            let candidates = allowUsedLane ? allCombos : allCombos.filter(combo => combo.every(lane => !used.has(lane)));
+            if (!candidates.length) {
+                resetUsed();
+                candidates = allCombos;
+            }
+            return record((candidates[Math.floor(Math.random() * candidates.length)] || allCombos[0]).slice());
         }
-        if (type === 'RANDOM_DOUBLE_ANY') {
-            const combos = [[0,1],[1,2],[0,2]];
-            return combos[Math.floor(Math.random() * combos.length)] || [0,1];
+
+        let candidates = allowUsedLane ? allSingle : allSingle.filter(lane => !used.has(lane));
+        if (!candidates.length) {
+            resetUsed();
+            candidates = allSingle;
         }
-        return [Math.floor(Math.random() * 3)];
+        return record([candidates[Math.floor(Math.random() * candidates.length)] ?? 1]);
     },
 
     parseLaneValue(value) {
@@ -541,6 +558,7 @@ const P2M3DimensionDefenseSystem = {
                 timer: Math.max(0, this.num(wave.Wave_Start_Delay, this.num(wave.Start_Delay, 0.5))),
                 nextDelay: Math.max(0, this.num(wave.Next_Wave_Delay, 0.8)),
                 savedLanesBySpawn: {},
+                usedLanes: [],
                 phase: 'START_DELAY'
             };
         } else {
@@ -585,14 +603,7 @@ const P2M3DimensionDefenseSystem = {
                 if (ws.spawnIndex < ws.spawnList.length && ws.spawnTimer <= 0) {
                     const spawn = ws.spawnList[ws.spawnIndex];
                     const repeatCount = Math.max(1, Math.floor(this.num(spawn.Spawn_Count, 1)));
-                    const sameLane = this.bool(spawn.Use_Same_Lane);
-                    let lanes = null;
-                    if (sameLane && ws.savedLanesBySpawn && ws.savedLanesBySpawn[ws.spawnIndex]) {
-                        lanes = ws.savedLanesBySpawn[ws.spawnIndex].slice();
-                    } else {
-                        lanes = this.pickLanesForWave(rt, spawn);
-                        if (sameLane && ws.savedLanesBySpawn) ws.savedLanesBySpawn[ws.spawnIndex] = lanes.slice();
-                    }
+                    const lanes = this.pickLanesForWave(rt, spawn);
                     this.spawnSlashForWave(rt, { ...ws.wave, ...spawn, Wave_ID: ws.wave.Wave_ID, Wave_Order: ws.wave.Wave_Order, Wave_Name: ws.wave.Wave_Name }, lanes);
                     ws.spawnDone += 1;
                     ws.spawnRepeatDone += 1;
@@ -682,6 +693,7 @@ const P2M3DimensionDefenseSystem = {
             data,
             lanes: finalLanes,
             state: 'WARNING',
+            warningRenderType: String(data.Warning_Render_Type || '').trim().toUpperCase(),
             warningTimer: Math.max(0.05, this.num(wave.Warning_Time, 1)),
             warningMax: Math.max(0.05, this.num(wave.Warning_Time, 1)),
             y: this.VIRTUAL.spawnY,
@@ -726,7 +738,7 @@ const P2M3DimensionDefenseSystem = {
 
             this.tryGuardSlash(rt, slash);
 
-            if (slash.isFinal && p.hasTemperedWill && this.isSlashInPlayerRange(rt, slash, p.lane, 'guard') && p.isGuarding) {
+            if (slash.isFinal && this.matchesFinalResponseCondition(rt, rt.playerData.Normal_Groggy_Occurrence_Cond, 'GUARD') && this.isSlashInPlayerRange(rt, slash, p.lane, 'guard') && p.isGuarding) {
                 this.finish(gameState, 'GUARD_SUCCESS', '최종 낙하 공격 가드 성공');
                 return;
             }
@@ -900,12 +912,34 @@ const P2M3DimensionDefenseSystem = {
         return candidates[0] || null;
     },
 
+    matchesFinalResponseCondition(rt, conditionType, responseType) {
+        const cond = String(conditionType || '').trim().toUpperCase();
+        const response = String(responseType || '').trim().toUpperCase();
+        const hasEnergy = !!(rt && rt.player && rt.player.hasTemperedWill);
+        if (cond === 'FINAL_SLASH_ATK_WITH_SPECIAL_ENERGY') return response === 'ATTACK' && hasEnergy;
+        if (cond === 'FINAL_SLASH_GUARD_WITH_SPECIAL_ENERGY') return response === 'GUARD' && hasEnergy;
+        // 미지원 값은 기존 동작을 보존한다.
+        return hasEnergy;
+    },
+
+    executePlayerAttack(gameState, rt) {
+        const attackType = String(rt && rt.playerData && rt.playerData.ATK_Type || '').trim().toUpperCase();
+        switch (attackType) {
+            case 'P2M3_MELEE_ATK':
+            case '':
+                return this.playerAttack(gameState, rt);
+            default:
+                // 미지원 타입은 기존 근접 공격을 fallback으로 사용해 전용 모드 진행이 막히지 않도록 한다.
+                return this.playerAttack(gameState, rt);
+        }
+    },
+
     playerAttack(gameState, rt) {
         const target = this.findTargetSlash(rt, rt.player.lane, 'attack');
         if (!target) return false;
         this.pushP2M3Effect(rt, 'attackArc', rt.player.lane, rt.player.y || this.VIRTUAL.playerGroundY, { timer: 0.16, size: 1 });
         if (target.isFinal) {
-            if (rt.player.hasTemperedWill) {
+            if (this.matchesFinalResponseCondition(rt, rt.playerData.Perfect_Groggy_Occurrence_Type, 'ATTACK')) {
                 this.finish(gameState, 'PERFECT_SUCCESS', '최종 낙하 공격 받아치기 성공');
                 return true;
             }
@@ -1026,14 +1060,17 @@ const P2M3DimensionDefenseSystem = {
         });
         slash.active = false;
         slash.breakFlashTimer = 0.2;
-        if (slash.isGiant || String(slash.data.Slash_Destroy_Effect_Type || '').trim().toUpperCase() === 'PLAYER_GET_SPECIAL_ENERGY') {
+        const destroyEffectType = String(slash.data.Slash_Destroy_Effect_Type || '').trim().toUpperCase();
+        if (destroyEffectType === 'PLAYER_GET_SPECIAL_ENERGY') {
             rt.player.hasTemperedWill = true;
             // step216: 연단 상태는 플레이어 이펙트와 하단 HUD로 표시한다.
             rt.message = '';
             rt.messageTimer = 0;
-            // step216: 연단 획득 시스템 알림도 제거하고 하단 HUD/이펙트로만 표시한다.
+        } else if (destroyEffectType === 'PATTERN_END' && slash.isFinal) {
+            const result = String(source || '').toUpperCase() === 'GUARD' ? 'GUARD_SUCCESS' : 'PERFECT_SUCCESS';
+            this.finish(gameState, result, '최종 검기 파괴 결과');
         } else {
-            // step216: 검기 파괴 알림 텍스트 제거. 파괴 이펙트와 HP 게이지 변화만 표시한다.
+            // DEFAULT 및 미지원 값은 기존의 일반 파괴 처리만 수행한다.
         }
     },
 
@@ -1167,7 +1204,10 @@ const P2M3DimensionDefenseSystem = {
             linkedBoss.boss.noPatternWaitTimer = Math.max(linkedBoss.boss.noPatternWaitTimer || 0, 0.8);
         }
         if (result === 'PERFECT_SUCCESS' || result === 'GUARD_SUCCESS') {
-            this.applyBossGroggy(gameState, result === 'PERFECT_SUCCESS' ? this.num(rt.playerData.Perfect_Groggy_Time, 8) : this.num(rt.playerData.Normal_Groggy_Time, 5), result === 'PERFECT_SUCCESS');
+            const perfect = result === 'PERFECT_SUCCESS';
+            const groggyTime = perfect ? this.num(rt.playerData.Perfect_Groggy_Time, 8) : this.num(rt.playerData.Normal_Groggy_Time, 5);
+            const groggyDmgRate = perfect ? this.num(rt.playerData.Perfect_Groggy_DMG_Rate, 1.2) : this.num(rt.playerData.Normal_Groggy_DMG_Rate, 1.2);
+            this.applyBossGroggy(gameState, groggyTime, perfect, groggyDmgRate);
         } else if (result === 'FAIL') {
             this.applyPlayerFailDamage(gameState, rt);
             try { pushSystemNotice('차원 방어전 실패', '#ff8d8d', 1.2); } catch (e) {}
@@ -1210,7 +1250,7 @@ const P2M3DimensionDefenseSystem = {
         }
     },
 
-    applyBossGroggy(gameState, groggyTime, perfect) {
+    applyBossGroggy(gameState, groggyTime, perfect, groggyDmgRate = 1.2) {
         const boss = this.getBoss(gameState);
         if (!boss || !boss.boss) return false;
         const time = Math.max(0.2, this.num(groggyTime, perfect ? 8 : 5));
@@ -1225,7 +1265,7 @@ const P2M3DimensionDefenseSystem = {
         boss.boss.groggyTimer = time;
         boss.boss.groggyMaxTime = time;
         boss.boss.groggyPoseType = 'POSE_KASIYAS_P2_GROGGY';
-        boss.boss.groggyHitDmgRate = 1.2;
+        boss.boss.groggyHitDmgRate = Math.max(0, this.num(groggyDmgRate, 1.2));
         boss.boss.noPatternWaitTimer = Math.max(boss.boss.noPatternWaitTimer || 0, time);
         if (Array.isArray(gameState.floatingTexts)) {
             const bodyZ = ((boss.d && boss.d.bodyZ) || 170) * (boss.scale || 1);

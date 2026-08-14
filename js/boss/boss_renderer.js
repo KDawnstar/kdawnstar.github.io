@@ -46,6 +46,8 @@ GameRenderer.normalizeKasiyasPoseType = function(value) {
         POSE_KASIYAS_P2_DOUBLE_EDGED_SWORD_STANCE: 'POSE_P2_DOUBLE_EDGED_SWORD_STANCE',
         POSE_KASIYAS_P2_DOUBLE_EDGED_SWORD_DEFENCE_READY: 'POSE_P2_DOUBLE_EDGED_SWORD_DEFENCE_READY',
         POSE_KASIYAS_P2_DOUBLE_EDGED_SWORD_SPIN: 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN',
+        POSE_KASIYAS_P2_DOUBLE_EDGED_SWORD_SPIN_SLASH: 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN_SLASH',
+        POSE_KASIYAS_P2_DOUBLE_EDGED_SWORD_ARC_SLASH: 'POSE_P2_DOUBLE_EDGED_SWORD_ARC_SLASH',
         POSE_KASIYAS_P2_DOUBLE_EDGED_SWORD_TO_DEFAULT: 'POSE_P2_DOUBLE_EDGED_SWORD_TO_DEFAULT',
         POSE_KASIYAS_P2_JUMP_WITH_DOUBLE_EDGED_SWORD: 'POSE_P2_JUMP_WITH_DOUBLE_EDGED_SWORD',
         POSE_KASIYAS_P2_DOUBLE_EDGED_SWORD_JUMP_SLASH: 'POSE_P2_DOUBLE_EDGED_SWORD_JUMP_SLASH',
@@ -97,6 +99,8 @@ GameRenderer.normalizeKasiyasPoseType = function(value) {
         POSE_P2_ONI_STANCE: 'POSE_P2_ONI_STANCE',
         POSE_P2_DOUBLE_EDGED_SWORD_DEFENCE_READY: 'POSE_P2_DOUBLE_EDGED_SWORD_DEFENCE_READY',
         POSE_P2_DOUBLE_EDGED_SWORD_SPIN: 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN',
+        POSE_P2_DOUBLE_EDGED_SWORD_SPIN_SLASH: 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN_SLASH',
+        POSE_P2_DOUBLE_EDGED_SWORD_ARC_SLASH: 'POSE_P2_DOUBLE_EDGED_SWORD_ARC_SLASH',
         POSE_P2_DOUBLE_EDGED_SWORD_TO_DEFAULT: 'POSE_P2_DOUBLE_EDGED_SWORD_TO_DEFAULT',
         POSE_P2_ONI_SLASH: 'POSE_P2_ONI_SLASH',
         POSE_P2_GROGGY: 'POSE_P2_GROGGY',
@@ -118,6 +122,7 @@ GameRenderer.normalizeKasiyasPoseType = function(value) {
         POSE_KASIYAS_P3_CAST_EXTEND_HAND: 'POSE_KASIYAS_P3_CAST_EXTEND_HAND',
         POSE_KASIYAS_P3_DASH_SLASH: 'POSE_KASIYAS_P3_DASH_SLASH',
         POSE_KASIYAS_P3_SLAM_THE_SWORD_DOWN: 'POSE_KASIYAS_P3_SLAM_THE_SWORD_DOWN',
+        POSE_KASIYAS_P3_SWORD_TAKE_DOWN: 'POSE_KASIYAS_P3_SWORD_TAKE_DOWN',
         POSE_KASIYAS_P3_ATK_ROAR: 'POSE_KASIYAS_P3_ATK_ROAR',
         POSE_KASIYAS_P3_M1_FINAL_SLASH_CHARGE: 'POSE_KASIYAS_P3_M1_FINAL_SLASH_CHARGE',
         POSE_KASIYAS_P3_M1_FINAL_DIAGONAL_SLASH: 'POSE_KASIYAS_P3_M1_FINAL_DIAGONAL_SLASH',
@@ -128,6 +133,12 @@ GameRenderer.normalizeKasiyasPoseType = function(value) {
         POSE_KASIYAS_P3_M2_OVERHEAD_STRIKE: 'POSE_KASIYAS_P3_M2_OVERHEAD_STRIKE',
         POSE_KASIYAS_P3_M2_FINAL_SLASH_CHARGE: 'POSE_KASIYAS_P3_M2_FINAL_SLASH_CHARGE',
         POSE_KASIYAS_P3_M2_FINAL_SLASH: 'POSE_KASIYAS_P3_M2_FINAL_SLASH',
+        POSE_KASIYAS_P3_M3_FINAL_SLASH_READY: 'POSE_KASIYAS_P3_M1_FINAL_SLASH_CHARGE',
+        POSE_KASIYAS_P3_M3_FINAL_SLASH_NORMAL: 'POSE_KASIYAS_P3_M1_FINAL_DIAGONAL_SLASH',
+        POSE_KASIYAS_P3_M3_FINAL_SLASH_HIDDEN: 'POSE_KASIYAS_P3_M1_FINAL_DIAGONAL_SLASH',
+        POSE_KASIYAS_FULL_POWER_HORIZONTAL_SLASH: 'POSE_KASIYAS_P3_HORIZONTAL_SLASH',
+        POSE_KASIYAS_FULL_POWER_DIAGONAL_SLASH: 'POSE_KASIYAS_P3_DIAGONAL_SLASH',
+        POSE_KASIYAS_FULL_POWER_SLASH_DOWN: 'POSE_KASIYAS_P3_SLASH_DOWN',
         POSE_DEFAULT: 'POSE_DEFAULT'
     };
 
@@ -163,6 +174,8 @@ GameRenderer.resolveKasiyasPoseType = function(m) {
     if (vfx === 'EFT_KASIYAS_P2_ONI_STANCE_ENERGY_CHARGE' || vfx === 'EFT_KASIYAS_P2_ONI_STANCE_FULL_ENERGY') return 'POSE_P2_ONI_STANCE';
     if (vfx === 'EFT_KASIYAS_P2_ONI_SLASH') return 'POSE_P2_ONI_SLASH';
     if (vfx === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_SPIN') return 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN';
+    if (vfx === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_SPIN_SLASH') return 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN_SLASH';
+    if (vfx === 'EFT_KASIYAS_P2_DOUBLE_EDGED_SWORD_ARC_SLASH') return 'POSE_P2_DOUBLE_EDGED_SWORD_ARC_SLASH';
     if (vfx === 'EFT_KASIYAS_P3_AIM_SWORD_PLAYER') return 'POSE_KASIYAS_P3_AIM_SWORD_PLAYER';
     if (vfx === 'EFT_KASIYAS_P3_WALK_WITH_AURA') return 'POSE_KASIYAS_P3_WALK_WITH_AURA';
     if (vfx === 'EFT_KASIYAS_P3_AURA_CUT_OFF_SLASH') return 'POSE_KASIYAS_P3_AURA_CUT_OFF_SLASH';
@@ -172,7 +185,9 @@ GameRenderer.resolveKasiyasPoseType = function(m) {
     if (vfx === 'EFT_KASIYAS_P3_RUSH_SLASH_CHARGE') return 'POSE_KASIYAS_P3_RUSH_SLASH_CHARGE';
     if (vfx === 'EFT_KASIYAS_P3_HIGH_SPEED_RUSH_SLASH') return 'POSE_KASIYAS_P3_HIGH_SPEED_RUSH_SLASH';
     if (vfx === 'EFT_KASIYAS_P3_DASH_SLASH' || vfx === 'EFT_KASIYAS_P3_M1_DASH_SLASH') return 'POSE_KASIYAS_P3_DASH_SLASH';
+    if (vfx === 'EFT_KASIYAS_P3_M1_CIRCLE_SLASH') return 'POSE_KASIYAS_P3_DASH_SLASH';
     if (vfx === 'EFT_KASIYAS_P3_SLAM_THE_SWORD_DOWN' || vfx === 'EFT_KASIYAS_P3_M1_SLAM_THE_SWORD_DOWN') return 'POSE_KASIYAS_P3_SLAM_THE_SWORD_DOWN';
+    if (vfx === 'EFT_KASIYAS_P3_APOSTLE_ENERGY_ERUPTION') return 'POSE_KASIYAS_P3_SWORD_TAKE_DOWN';
     if (vfx === 'EFT_KASIYAS_P3_ATK_ROAR' || vfx === 'EFT_KASIYAS_P3_M1_ATK_ROAR') return 'POSE_KASIYAS_P3_ATK_ROAR';
     if (vfx === 'EFT_KASIYAS_P3_M1_CAST_EXTEND_HAND') return 'POSE_KASIYAS_P3_CAST_EXTEND_HAND';
     if (vfx === 'EFT_KASIYAS_P3_M1_HORIZONTAL_SLASH') return 'POSE_KASIYAS_P3_HORIZONTAL_SLASH';
@@ -183,12 +198,17 @@ GameRenderer.resolveKasiyasPoseType = function(m) {
     if (vfx === 'EFT_KASIYAS_P3_M2_OVERHEAD_STRIKE') return 'POSE_KASIYAS_P3_M2_OVERHEAD_STRIKE';
     if (vfx === 'EFT_KASIYAS_P3_M2_FINAL_SLASH_CHARGE') return 'POSE_KASIYAS_P3_M2_FINAL_SLASH_CHARGE';
     if (vfx === 'EFT_KASIYAS_P3_M2_FINAL_SLASH') return 'POSE_KASIYAS_P3_M2_FINAL_SLASH';
+    if (vfx === 'EFT_KASIYAS_P3_M3_FINAL_SLASH_READY') return 'POSE_KASIYAS_P3_M1_FINAL_SLASH_CHARGE';
+    if (vfx === 'EFT_KASIYAS_P3_M3_FINAL_SLASH_NORMAL' || vfx === 'EFT_KASIYAS_P3_M3_FINAL_SLASH_HIDDEN') return 'POSE_KASIYAS_P3_M1_FINAL_DIAGONAL_SLASH';
     if (vfx === 'EFT_KASIYAS_P3_M1_FINAL_DIAGONAL_SLASH') return 'POSE_KASIYAS_P3_M1_FINAL_DIAGONAL_SLASH';
     if (vfx === 'EFT_KASIYAS_P2_DOUBLE_SWORD_ANOTHER_ENERGY') return 'POSE_P2_DOUBLE_SWORD_UP_DOWN_SLASH';
     if (vfx === 'EFT_KASIYAS_P2_M1_LEFT_SWORD_SLASH_WITH_RED_ENERGY') return 'POSE_P2_M1_LEFT_INWARD_SLASH';
     if (vfx === 'EFT_KASIYAS_P2_M1_RIGHT_SWORD_SLASH_WITH_YELLOW_ENERGY') return 'POSE_P2_M1_RIGHT_INWARD_SLASH';
     if (vfx === 'EFT_KASIYAS_P2_M1_X_SLASH_CHARGE') return 'POSE_P2_M1_X_SLASH_READY';
     if (vfx === 'EFT_KASIYAS_P2_M1_X_SLASH') return 'POSE_P2_M1_X_SLASH';
+    if (vfx === 'EFT_KASIYAS_FULL_POWER_HORIZONTAL_SLASH') return 'POSE_KASIYAS_P3_HORIZONTAL_SLASH';
+    if (vfx === 'EFT_KASIYAS_FULL_POWER_DIAGONAL_SLASH') return 'POSE_KASIYAS_P3_DIAGONAL_SLASH';
+    if (vfx === 'EFT_KASIYAS_FULL_POWER_SLASH_DOWN') return 'POSE_KASIYAS_P3_SLASH_DOWN';
 
     return 'POSE_DEFAULT';
 };
@@ -314,10 +334,13 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
     const transitionUseP3Model = isP2ToP3TransitionCutscene && transitionTimer >= 1.28;
     const renderType = transitionUseP3Model ? 'RENDER_KASIYAS_P3' : (transitionUseP2Model ? 'RENDER_KASIYAS_P2' : baseRenderType);
     const isKasiyasPhase2 = renderType === 'RENDER_KASIYAS_P2';
-    const isKasiyasPhase3 = renderType === 'RENDER_KASIYAS_P3';
+    const isKasiyasFullPower = renderType === 'RENDER_KASIYAS_FULL_POWER';
+    // 전력 카시야스는 외형/자세의 기반을 3페이즈 카시야스로 둔다.
+    // 단, 오라만 별도 full-power 분기로 처리한다.
+    const isKasiyasPhase3 = renderType === 'RENDER_KASIYAS_P3' || isKasiyasFullPower;
     const poseType = this.normalizeKasiyasPoseType(String(params.poseType || 'POSE_DEFAULT').trim().toUpperCase());
     const p2BareHandPoseSet = new Set(['POSE_P2_GROUND_PUNCH', 'POSE_P2_GROUND_PUNCH_CHARGE', 'POSE_P2_GROUND_PUNCH_STRONG']);
-    const p2DoubleEdgedPoseSet = new Set(['POSE_P2_DOUBLE_EDGED_SWORD_STANCE', 'POSE_P2_DOUBLE_EDGED_SWORD_DEFENCE_READY', 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN', 'POSE_P2_JUMP_WITH_DOUBLE_EDGED_SWORD', 'POSE_P2_DOUBLE_EDGED_SWORD_JUMP_SLASH']);
+    const p2DoubleEdgedPoseSet = new Set(['POSE_P2_DOUBLE_EDGED_SWORD_STANCE', 'POSE_P2_DOUBLE_EDGED_SWORD_DEFENCE_READY', 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN', 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN_SLASH', 'POSE_P2_DOUBLE_EDGED_SWORD_ARC_SLASH', 'POSE_P2_JUMP_WITH_DOUBLE_EDGED_SWORD', 'POSE_P2_DOUBLE_EDGED_SWORD_JUMP_SLASH']);
     const isP2BareHandPose = isKasiyasPhase2 && p2BareHandPoseSet.has(poseType);
     const isP2DoubleEdgedPose = isKasiyasPhase2 && p2DoubleEdgedPoseSet.has(poseType);
     const suppressP2SwordsForP3Transition = isP2ToP3TransitionCutscene && transitionTimer < 1.28;
@@ -391,6 +414,7 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         poseType === 'POSE_P2_GROUND_PUNCH_STRONG' ? 0.32 :
         poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_STANCE' ? 0.06 :
         poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_DEFENCE_READY' ? 0.08 :
+        (poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN_SLASH' || poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_ARC_SLASH') ? (0.11 + attackPulse * 0.035) :
         poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN' ? (0.10 + attackPulse * 0.03) :
         poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_TO_DEFAULT' ? 0.06 * (1 - smooth) :
         poseType === 'POSE_P2_JUMP_WITH_DOUBLE_EDGED_SWORD' ? 0.20 :
@@ -414,6 +438,7 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         poseType === 'POSE_KASIYAS_P3_AURA_CUT_OFF_SLASH' ? 0.18 :
         poseType === 'POSE_KASIYAS_P3_CAST_EXTEND_HAND' ? (0.10 + attackPulse * 0.03) :
         poseType === 'POSE_KASIYAS_P3_DASH_SLASH' ? (0.24 + attackPulse * 0.06) :
+        poseType === 'POSE_KASIYAS_P3_SWORD_TAKE_DOWN' ? (0.16 + attackPulse * 0.12) :
         poseType === 'POSE_KASIYAS_P3_SLAM_THE_SWORD_DOWN' ? (0.12 + attackPulse * 0.08) :
         poseType === 'POSE_KASIYAS_P3_ATK_ROAR' ? (-0.14 - attackPulse * 0.03) :
         poseType === 'POSE_KASIYAS_P3_M1_FINAL_SLASH_CHARGE' ? -0.06 :
@@ -757,6 +782,104 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         ctx.restore();
     };
 
+    const drawKasiyasFullPowerGroundAuraBack = () => {
+        // 전력 카시야스: 3페이즈처럼 위로 폭발하는 오라가 아니라,
+        // 발밑과 전신 주변에 진하고 넓게 깔리는 귀기/살기 표현.
+        const now = Date.now();
+        const pulse = 0.5 + Math.sin(now / 150) * 0.5;
+        const slow = 0.5 + Math.sin(now / 460) * 0.5;
+        ctx.save();
+
+        // 지면을 넓게 잠식하는 암흑 장판. 이전보다 범위와 농도를 키운다.
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.translate(0, -h * 0.010);
+        const rx = w * (1.78 + pulse * 0.16);
+        const ry = h * (0.255 + pulse * 0.026);
+        const baseGrad = ctx.createRadialGradient(0, 0, w * 0.04, 0, 0, rx * 1.06);
+        baseGrad.addColorStop(0.00, `rgba(0,0,0,${0.70 + pulse * 0.08})`);
+        baseGrad.addColorStop(0.20, `rgba(40,0,26,${0.56 + pulse * 0.07})`);
+        baseGrad.addColorStop(0.46, `rgba(102,0,22,${0.34 + pulse * 0.06})`);
+        baseGrad.addColorStop(0.74, `rgba(26,0,40,${0.28 + pulse * 0.04})`);
+        baseGrad.addColorStop(1.00, 'rgba(0,0,0,0)');
+        ctx.fillStyle = baseGrad;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 몸 전체를 둘러싸는 낮은 밀도의 암보라/진홍 기운. 실루엣만 감싸며, 위로 뾰족하게 치솟지 않게 한다.
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.42 + slow * 0.15;
+        const bodyGrad = ctx.createRadialGradient(0, -h * 0.50, w * 0.10, 0, -h * 0.46, h * 0.78);
+        bodyGrad.addColorStop(0.00, `rgba(160,0,42,${0.12 + pulse * 0.03})`);
+        bodyGrad.addColorStop(0.35, `rgba(68,0,80,${0.17 + slow * 0.03})`);
+        bodyGrad.addColorStop(0.70, `rgba(0,0,0,${0.22 + pulse * 0.04})`);
+        bodyGrad.addColorStop(1.00, 'rgba(0,0,0,0)');
+        ctx.fillStyle = bodyGrad;
+        ctx.beginPath();
+        ctx.ellipse(0, -h * 0.44, w * (0.86 + pulse * 0.05), h * (0.72 + slow * 0.04), 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // 바닥에서 몸 주변으로 감겨 올라오는 스산한 기류. 첨부 이미지처럼 전신 주변을 넓게 감싸되 밝은 사이어인 오라처럼 보이지 않게 처리.
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        for (let i = 0; i < 14; i++) {
+            const side = i % 2 === 0 ? -1 : 1;
+            const t = (now / (620 + i * 47) + i * 0.137) % 1;
+            const rootX = side * w * (0.30 + (i % 4) * 0.055);
+            const rootY = -h * (0.02 + (i % 3) * 0.010);
+            const topX = side * w * (0.46 + Math.sin(t * Math.PI * 2 + i) * 0.06);
+            const topY = -h * (0.46 + t * 0.42);
+            const a = (1 - t) * (0.30 + pulse * 0.09);
+            ctx.save();
+            ctx.globalAlpha = a;
+            ctx.shadowBlur = 18;
+            ctx.shadowColor = i % 3 === 0 ? 'rgba(0,0,0,0.92)' : (i % 3 === 1 ? 'rgba(100,0,90,0.64)' : 'rgba(150,0,30,0.56)');
+            ctx.strokeStyle = i % 3 === 0 ? 'rgba(0,0,0,0.78)' : (i % 3 === 1 ? 'rgba(72,0,98,0.62)' : 'rgba(150,0,38,0.48)');
+            ctx.lineWidth = Math.max(2.0, w * (0.020 + (i % 3) * 0.004));
+            ctx.beginPath();
+            ctx.moveTo(rootX, rootY);
+            ctx.bezierCurveTo(
+                rootX + side * w * 0.18, -h * (0.14 + t * 0.08),
+                topX - side * w * 0.16, -h * (0.30 + t * 0.26),
+                topX, topY
+            );
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // 지면 링과 검은 입자. 기운이 바닥에만 고립되지 않고 넓게 퍼지는 느낌을 유지.
+        ctx.shadowBlur = 22;
+        ctx.shadowColor = 'rgba(92,0,80,0.70)';
+        for (let i = 0; i < 5; i++) {
+            const t = ((now / (520 + i * 80)) + i * 0.19) % 1;
+            const rr = 0.22 + t * 0.86;
+            ctx.globalAlpha = (1 - t) * (0.42 + pulse * 0.12);
+            ctx.strokeStyle = i % 2 === 0 ? 'rgba(0,0,0,0.96)' : 'rgba(134,0,62,0.74)';
+            ctx.lineWidth = i % 2 === 0 ? Math.max(6, w * 0.052) : Math.max(3, w * 0.028);
+            ctx.beginPath();
+            ctx.ellipse(0, 0, rx * rr, ry * (0.70 + t * 0.34), 0, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        ctx.globalAlpha = 0.54 + pulse * 0.20;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = 'rgba(0,0,0,0.95)';
+        for (let i = 0; i < 28; i++) {
+            const a = (i / 28) * Math.PI * 2 + now / 1420;
+            const px = Math.cos(a) * rx * (0.10 + (i % 7) * 0.095);
+            const py = Math.sin(a) * ry * (0.18 + (i % 5) * 0.105);
+            const lift = Math.sin(now / 120 + i * 0.7) * (3.2 + (i % 4));
+            ctx.fillStyle = i % 3 === 0 ? 'rgba(0,0,0,0.92)' : (i % 3 === 1 ? 'rgba(56,0,46,0.66)' : 'rgba(118,0,26,0.52)');
+            ctx.beginPath();
+            ctx.ellipse(px, py - lift, 3.2 + (i % 4), 1.8 + (i % 3), 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    };
+
     const drawKasiyasPhase3AuraBack = () => {
         // 3페이즈 기본 오라: step221 방향의 날카로운 스파이크형 오라를 복구한다.
         // 얇은 선 디테일 대신, 몸 밖으로 크게 치솟는 굵은 실루엣과 검붉은/주황 그라데이션을 사용한다.
@@ -972,7 +1095,7 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
     if (poseType === 'POSE_P2_GROGGY') ctx.translate(0, h * 0.14);
     if (poseType === 'POSE_P2_SWORD_STORM_SPAWN_READY' || poseType === 'POSE_P2_SWORD_STORM_SPAWN' || poseType === 'POSE_P2_SWORD_STORM_SPAWN_TO_DEFAULT') ctx.translate(0, h * 0.045 * (poseType === 'POSE_P2_SWORD_STORM_SPAWN_TO_DEFAULT' ? (1 - smooth) : 1));
     if (poseType === 'POSE_P2_ONI_STANCE') ctx.translate(0, h * 0.070);
-    if (poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_DEFENCE_READY' || poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN') ctx.translate(0, h * 0.035);
+    if (poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_DEFENCE_READY' || poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN' || poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN_SLASH' || poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_ARC_SLASH') ctx.translate(0, (poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN_SLASH' || poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_ARC_SLASH') ? h * 0.090 : h * 0.035);
     if (poseType === 'POSE_P2_ONI_SLASH') ctx.translate(0, h * 0.055);
     if (isRush) ctx.translate(w * 0.07 * attackPulse, 0);
     ctx.rotate(bodyLean * (0.45 + attackPulse * 0.55));
@@ -985,7 +1108,9 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
 
     drawKasiyasP3GroundAuraFieldLocal();
 
-    if (isKasiyasPhase2) {
+    if (isKasiyasFullPower) {
+        drawKasiyasFullPowerGroundAuraBack();
+    } else if (isKasiyasPhase2) {
         drawKasiyasPhase2AuraBack();
     } else if (isKasiyasPhase3) {
         drawKasiyasPhase3AuraBack();
@@ -1262,6 +1387,15 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
             offSwordAngle = 1.58;
             offSwordLen = h * 0.78;
             offCurve = 2;
+        } else if (poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN_SLASH' || poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_ARC_SLASH') {
+            // 보조 손도 같은 낮은 횡베기 축을 잡아 양손으로 가볍게 휘두르는 느낌을 만든다.
+            offElbowX = -w * (0.18 + 0.10 * smooth);
+            offElbowY = -h * (0.46 + 0.02 * attackPulse);
+            offHandX = w * (0.18 + 0.28 * smooth);
+            offHandY = -h * (0.40 + 0.02 * attackPulse);
+            offSwordAngle = -0.06 + smooth * 0.18;
+            offSwordLen = h * (0.84 + 0.03 * attackPulse);
+            offCurve = 1.1;
         } else if (poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN') {
             offElbowX = -w * (0.02 + 0.01 * attackPulse);
             offElbowY = -h * (0.62 + 0.012 * Math.sin(progress * Math.PI * 8));
@@ -1361,6 +1495,12 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
             offElbowY = -h * 0.58;
             offHandX = w * (0.00 + 0.24 * smooth);
             offHandY = -h * (0.55 - 0.03 * attackPulse);
+        } else if (poseType === 'POSE_KASIYAS_P3_SWORD_TAKE_DOWN') {
+            const slamT = Math.max(0, Math.min(1, smooth));
+            offElbowX = -w * 0.10;
+            offElbowY = -h * (0.82 - 0.26 * slamT);
+            offHandX = w * (0.12 + 0.03 * attackPulse);
+            offHandY = -h * (0.98 - 0.58 * slamT);
         } else if (poseType === 'POSE_KASIYAS_P3_SLAM_THE_SWORD_DOWN') {
             const slamT = Math.max(0, Math.min(1, smooth));
             offElbowX = -w * 0.08;
@@ -1835,6 +1975,13 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
                 swordAngle = -0.86 + slashT * 1.52;
                 swordLen = h * 1.18;
                 curve = 3.2;
+            } else if (poseType === 'POSE_KASIYAS_P3_SWORD_TAKE_DOWN') {
+                const slamT = Math.max(0, Math.min(1, smooth));
+                handX = w * (0.02 + 0.04 * Math.sin(slamT * Math.PI));
+                handY = -h * (1.08 - 0.76 * slamT);
+                swordAngle = Math.PI / 2 - 0.04 * Math.sin(slamT * Math.PI);
+                swordLen = h * 1.36;
+                curve = 0.6;
             } else if (poseType === 'POSE_KASIYAS_P3_SLAM_THE_SWORD_DOWN') {
                 // 귀면족의 저주 4차: 검을 세워 끌어올렸다가 바닥에 내리찍는 실루엣.
                 const slamT = Math.max(0, Math.min(1, smooth));
@@ -2111,6 +2258,13 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
                 swordAngle = -1.53;
                 swordLen = h * 0.96;
                 curve = 2;
+            } else if (poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN_SLASH' || poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_ARC_SLASH') {
+                // 양날검 원형 베기: 회전 전진의 연장이 아니라, 낮은 자세에서 가볍게 횡베기를 긋는 자세.
+                handX = w * (0.26 + 0.36 * smooth);
+                handY = -h * (0.38 + 0.03 * attackPulse);
+                swordAngle = -0.10 + smooth * 0.22;
+                swordLen = h * (1.00 + attackPulse * 0.04);
+                curve = 1.0;
             } else if (poseType === 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN') {
                 // 양날검 회전 전진: 몸 앞쪽에 세운 세로축 검을 전방으로 내밀어 돌리는 자세.
                 handX = w * (0.48 + 0.02 * attackPulse);
@@ -2957,7 +3111,7 @@ GameRenderer.drawBossOverheadShockwaveGauge = function(ctx, m, bodyY, bodyH) {
     if ((m.hp || 0) <= 0 || m.state === 'DEAD' || m.state === 'DIE') return;
 
     const pose = String(action.Action_Pose_Type || '').trim().toUpperCase();
-    const effect = String(action.Effect_Render_Type || action.VFX_Type || '').trim().toUpperCase();
+    const effect = String(action.VFX_Type || action.Effect_Render_Type || '').trim().toUpperCase();
     const name = String(action.Action_Name || '').trim();
 
     // 충격파 게이지는 발 내려찍기/지면 난타 액션에서 표시한다.
@@ -3192,6 +3346,7 @@ GameRenderer.drawKasiyasP3M2LandingWarning = function(ctx, m, groundY, bodyY, bo
 };
 
 GameRenderer.drawMonsterEntity = function(ctx, m) {
+    if (m && m.p3m3MainBossSuppressed) return;
     if (m && m.boss && (m.boss.kasiyasP1M3RushHidden || m.boss.kasiyasP2M2Hidden || m.boss.kasiyasP3M2Hidden)) return;
     const d = m.d;
     const w = d.bodyX * m.scale;
