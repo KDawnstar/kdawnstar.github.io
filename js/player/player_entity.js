@@ -57,8 +57,8 @@ const PlayerManager = {
         
         // 🎯 [복구] 대쉬 쿨타임 및 키 설정 원본 데이터 로드
         for(let a of gameState.actions) {
-            if(a.Action_Name === '점프') gameState.jumpKeyEngine = getEngineKeyCode(a.Input_Key);
-            if(a.Action_Name === '대쉬') { gameState.dashKeyEngine = getEngineKeyCode(a.Input_Key); gameState.player.maxDashCd = parseFloat(a.Cooltime) || 1.0; }
+            if(a.Dev_Name === 'Player_Act_Jump') gameState.jumpKeyEngine = getEngineKeyCode(a.Input_Key);
+            if(a.Dev_Name === 'Player_Act_Dash') { gameState.dashKeyEngine = getEngineKeyCode(a.Input_Key); gameState.player.maxDashCd = parseFloat(a.Cooltime) || 1.0; }
         }
     },
 
@@ -407,7 +407,8 @@ const PlayerManager = {
         const drainPct = Math.max(0, parseFloat(p.oniCurseDecreaseHpPerSec) || 0) / 100;
         while (curse.hpDrainTick >= 1.0) {
             curse.hpDrainTick -= 1.0;
-            const drain = Math.max(0, (parseFloat(p.maxHp) || 0) * drainPct);
+            const rawDrain = Math.max(0, (parseFloat(p.maxHp) || 0) * drainPct);
+            const drain = this.applyPresentationDamageRate(gameState, rawDrain);
             if (drain > 0 && !this.isPracticeModeHpInvincible(gameState)) {
                 p.hp = Math.max(1, (parseFloat(p.hp) || 1) - drain);
                 p.p3OniCurseHpFlashTimer = Math.max(parseFloat(p.p3OniCurseHpFlashTimer) || 0, 0.38);
@@ -525,9 +526,17 @@ const PlayerManager = {
     },
 
     isPracticeModeHpInvincible: function(gameState) {
-        // F9 연습 모드는 패턴 호출용이며, 실제 피격 피해를 확인할 수 있어야 한다.
-        // 무적은 F12 슈퍼 모드에서만 적용한다.
+        // F10 연습 모드는 패턴 호출용이며, 실제 피격 피해를 확인할 수 있어야 한다.
+        // 무적은 F9 무적 모드에서만 적용한다.
         return !!(gameState && gameState.superDamageMode);
+    },
+
+    applyPresentationDamageRate: function(gameState, damage) {
+        const value = Math.max(0, parseFloat(damage) || 0);
+        if (typeof GameModeSystem !== 'undefined' && GameModeSystem.scalePlayerDamage) {
+            return GameModeSystem.scalePlayerDamage(gameState, value);
+        }
+        return value;
     },
 
     getKasiyasApostleGuardReduceBonus: function(player, guardInfo) {
@@ -615,6 +624,7 @@ const PlayerManager = {
                 guardDamage = finalDamageRate <= 0
                     ? 0
                     : Math.max(1, ((finalDmg || 1) * finalDamageRate) - p.def);
+                guardDamage = this.applyPresentationDamageRate(gameState, guardDamage);
                 if (guardDamage > 0 && !this.isPracticeModeHpInvincible(gameState)) p.hp -= guardDamage;
             }
 
@@ -672,10 +682,11 @@ const PlayerManager = {
             };
         }
         
-        // 방어력 단순 뺄셈 공식 적용 (최소 피해량 1 보장)
+        // 방어력 단순 뺄셈 공식 적용 후, Guide 모드에서는 최종 피해만 10%로 보정한다.
         let actualDmg = Math.max(1, (finalDmg || 1) - p.def);
+        actualDmg = this.applyPresentationDamageRate(gameState, actualDmg);
         
-        // F12 슈퍼 모드에서는 패턴 판정은 유지하되 HP 감소만 막는다.
+        // F9 무적 모드에서는 패턴 판정은 유지하되 HP 감소만 막는다.
         if (!this.isPracticeModeHpInvincible(gameState)) {
             p.hp -= actualDmg; 
         }

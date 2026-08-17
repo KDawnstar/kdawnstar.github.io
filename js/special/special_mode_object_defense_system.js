@@ -5,8 +5,8 @@
 // - 한 웨이브 안에서 여러 검기 타입/라인/간격을 순차 스폰할 수 있도록 확장
 // ==========================================
 
-const P2M3DimensionDefenseSystem = {
-    MODE: 'P2_M3_DIMENSION_DEFENSE',
+const SpecialModeObjectDefenseSystem = {
+    MODE: 'SPECIAL_MODE_OBJECT_DEFENSE',
     LANES: ['LEFT', 'CENTER', 'RIGHT'],
     VIRTUAL: {
         fieldW: 480,
@@ -42,7 +42,7 @@ const P2M3DimensionDefenseSystem = {
     },
 
     isActive(gameState) {
-        return !!(gameState && gameState.specialMode === this.MODE && gameState.p2m3DefenseRuntime && gameState.p2m3DefenseRuntime.active);
+        return !!(gameState && gameState.specialMode === this.MODE && gameState.specialModeObjectDefenseRuntime && gameState.specialModeObjectDefenseRuntime.active);
     },
 
     getBoss(gameState) {
@@ -54,17 +54,19 @@ const P2M3DimensionDefenseSystem = {
 
     buildSlashLookup(gameState) {
         const lookup = {};
-        for (const row of (gameState.DB_P2_M3_SLASH || [])) {
+        for (const row of (gameState.DB_SPECIAL_MODE_OBJECT || [])) {
             const id = String(row && row.Slash_Type_ID || '').trim();
             if (id) lookup[id] = row;
         }
         return lookup;
     },
 
-    buildWaveSpawnLookup(gameState) {
+    buildWaveSpawnLookup(gameState, specialModeId = null) {
         const lookup = {};
-        for (const row of (gameState.DB_P2_M3_WAVE_SPAWN || [])) {
-            const waveId = String(row && row.Wave_ID || '').trim();
+        const targetModeId = specialModeId === null || specialModeId === undefined ? '' : String(specialModeId).trim();
+        for (const row of (gameState.DB_SPECIAL_MODE_OBJECT_ACTION || [])) {
+            if (targetModeId && String(row && row.Ref_Special_Mode || '').trim() !== targetModeId) continue;
+            const waveId = String(row && row.Action_Group !== undefined ? row.Action_Group : row && row.Wave_ID || '').trim();
             if (!waveId) continue;
             if (!lookup[waveId]) lookup[waveId] = [];
             lookup[waveId].push(row);
@@ -79,23 +81,24 @@ const P2M3DimensionDefenseSystem = {
         if (!gameState) return false;
         if (this.isActive(gameState)) return false;
         // 이전 실행 종료 과정에서 특수 모드 플래그만 남은 경우, 다음 232008 진입을 막지 않도록 정리한다.
-        if (gameState.specialMode === this.MODE && !(gameState.p2m3DefenseRuntime && gameState.p2m3DefenseRuntime.active)) {
+        if (gameState.specialMode === this.MODE && !(gameState.specialModeObjectDefenseRuntime && gameState.specialModeObjectDefenseRuntime.active)) {
             gameState.specialMode = null;
-            gameState.p2m3DefenseRuntime = null;
+            gameState.specialModeObjectDefenseRuntime = null;
         }
         if (gameState.specialMode && gameState.specialMode !== this.MODE) return false;
         const targetBoss = boss || this.getBoss(gameState);
         if (targetBoss && targetBoss.boss) {
-            // P2_M3_EXCLUSIVE_MODE_START는 실행될 때마다 다시 진입 가능해야 한다.
-            targetBoss.boss.p2m3ExclusiveModeStarted = false;
-            targetBoss.boss.p2m3Result = null;
+            // SPECIAL_MODE_START는 실행될 때마다 다시 진입 가능해야 한다.
+            targetBoss.boss.specialModeStarted = false;
+            targetBoss.boss.specialModeResult = null;
         }
         return this.start(gameState, {
             isTestMode: false,
             isPatternLinked: true,
             boss: targetBoss,
             sourcePatternId: options.patternId || options.sourcePatternId || '232008',
-            sourceActionId: options.sourceActionId || '242073'
+            sourceActionId: options.sourceActionId || '242073',
+            specialModeId: options.specialModeId || options.refSpecialMode || null
         });
     },
 
@@ -110,8 +113,8 @@ const P2M3DimensionDefenseSystem = {
         const ratio = Math.max(0, Math.min(1, (parseFloat(m.timer) || 0) / duration));
         const ease = ratio * ratio * (3 - 2 * ratio);
         const boss = m.boss || {};
-        gameState.p2m3IntroRuntime = gameState.p2m3IntroRuntime || {};
-        const intro = gameState.p2m3IntroRuntime;
+        gameState.specialModeObjectDefenseIntroRuntime = gameState.specialModeObjectDefenseIntroRuntime || {};
+        const intro = gameState.specialModeObjectDefenseIntroRuntime;
         if (intro.actionId !== actionId) {
             intro.actionId = actionId;
             intro.active = true;
@@ -179,7 +182,7 @@ const P2M3DimensionDefenseSystem = {
             p.state = 'Hit';
             const fallZ = -220 * ease;
             // 242072 중에는 아래로 추락해 사라지는 것처럼 보이되, 액션 종료 직전에는
-            // 다음 P2_M3_EXCLUSIVE_MODE_START가 정상 스냅샷을 잡을 수 있도록 Z를 복구한다.
+            // 다음 SPECIAL_MODE_START가 정상 스냅샷을 잡을 수 있도록 Z를 복구한다.
             if (ratio < 0.96) {
                 m.z = fallZ * 0.72;
                 p.z = fallZ;
@@ -209,9 +212,25 @@ const P2M3DimensionDefenseSystem = {
     start(gameState, options = {}) {
         if (!gameState) return false;
         // 새 전용 모드 진입 시 이전 실패 피해 시퀀스가 남아 있으면 정리한다.
-        gameState.p2m3FailDamageRuntime = null;
+        gameState.specialModeObjectDefenseFailDamageRuntime = null;
         const boss = options.boss || this.getBoss(gameState);
-        const playerData = (gameState.DB_P2_M3_PLAYER || [])[0] || {};
+        const sourcePatternId = String(options.sourcePatternId || options.patternId || '').trim();
+        let specialModeData = null;
+        const requestedModeId = options.specialModeId !== null && options.specialModeId !== undefined ? String(options.specialModeId).trim() : '';
+        if (requestedModeId) {
+            specialModeData = (gameState.DB_SPECIAL_MODE || []).find(row => String(row && row.Special_Mode_ID || '').trim() === requestedModeId) || null;
+        }
+        if (!specialModeData && sourcePatternId) {
+            specialModeData = (gameState.DB_SPECIAL_MODE || []).find(row => String(row && row.Ref_Use_Content || '').trim() === sourcePatternId) || null;
+        }
+        if (!specialModeData) {
+            try { pushSystemNotice('실행할 스페셜 모드 데이터를 찾을 수 없습니다.', '#ffb8b8', 1.4); } catch (e) {}
+            return false;
+        }
+        if (String(specialModeData.Special_Mode_Type || '').trim().toUpperCase() !== 'OBJECT_DEFENSE') return false;
+        const specialModeId = specialModeData.Special_Mode_ID;
+        const playerRef = String(specialModeData.Ref_Player || '').trim();
+        const playerData = (gameState.DB_SPECIAL_MODE_PLAYER || []).find(row => String(row && row.Character_ID || '').trim() === playerRef) || (gameState.DB_SPECIAL_MODE_PLAYER || [])[0] || {};
         const player = gameState.player || {};
         // step213: 패턴 연결형 DIRECT_ACT 낙하 연출에서 남은 음수 Z/피격 상태가 스냅샷에 저장되면
         // 종료 복귀나 재진입 때 배우가 화면 밖에 남을 수 있으므로 전용 모드 시작 직전에 기준 상태로 정리한다.
@@ -233,14 +252,27 @@ const P2M3DimensionDefenseSystem = {
                 if (boss.state === 'Hit' || boss.state === 'HIT') boss.state = 'IDLE';
             }
         }
-        const startLane = this.laneIndex(playerData.Player_Start_Lane, 1);
-        const waves = (gameState.DB_P2_M3_WAVE || [])
-            .filter(row => String(row && row.Pattern_ID || '').trim() === '232008' || !row.Pattern_ID)
-            .slice()
+        const startLane = this.laneIndex(playerData.Player_Start_Position_Value || playerData.Player_Start_Lane, 1);
+        const waveSpawnLookup = this.buildWaveSpawnLookup(gameState, specialModeId);
+        const waves = Object.keys(waveSpawnLookup)
+            .map(groupKey => {
+                const rows = (waveSpawnLookup[groupKey] || []).slice().sort((a, b) => this.num(a.Action_Order || a.Spawn_Order, 0) - this.num(b.Action_Order || b.Spawn_Order, 0));
+                const first = rows[0] || {};
+                const last = rows[rows.length - 1] || {};
+                const group = this.num(first.Action_Group !== undefined ? first.Action_Group : groupKey, 0);
+                return {
+                    Wave_ID: String(group),
+                    Wave_Order: group,
+                    Wave_Name: first.Action_Group_Name || `그룹 ${String(group).padStart(2, '0')}`,
+                    Wave_Start_Delay: this.num(first.Group_Start_Delay, 0.5),
+                    Next_Wave_Delay: this.num(last.Next_Group_Delay, 1),
+                    Group_End_Condition_Type: last.Group_End_Condition_Type || 'GROUP_OBJECT_CLEAR'
+                };
+            })
             .sort((a, b) => this.num(a.Wave_Order, 0) - this.num(b.Wave_Order, 0));
 
         if (!waves.length) {
-            try { pushSystemNotice('차원 방어전 웨이브 데이터를 찾을 수 없습니다.', '#ffb8b8', 1.4); } catch (e) {}
+            try { pushSystemNotice('스페셜 모드 오브젝트 액션 데이터를 찾을 수 없습니다.', '#ffb8b8', 1.4); } catch (e) {}
             return false;
         }
 
@@ -262,11 +294,13 @@ const P2M3DimensionDefenseSystem = {
             result: null,
             resultReason: '',
             boss: boss || null,
-            virtual: { ...this.VIRTUAL },
+            virtual: { ...this.VIRTUAL, playerGravity: Math.max(0, this.num(playerData.Player_Gravity, this.VIRTUAL.playerGravity)) },
+            specialModeData,
+            specialModeId,
             playerData,
             waves,
             slashLookup: this.buildSlashLookup(gameState),
-            waveSpawnLookup: this.buildWaveSpawnLookup(gameState),
+            waveSpawnLookup,
             waveIndex: -1,
             waveState: null,
             activeSlashes: [],
@@ -321,9 +355,9 @@ const P2M3DimensionDefenseSystem = {
         };
 
         gameState.specialMode = this.MODE;
-        gameState.p2m3DefenseRuntime = rt;
+        gameState.specialModeObjectDefenseRuntime = rt;
         this.pauseExistingCombat(gameState);
-        gameState.p2m3IntroRuntime = null;
+        gameState.specialModeObjectDefenseIntroRuntime = null;
         return true;
     },
 
@@ -341,7 +375,7 @@ const P2M3DimensionDefenseSystem = {
             // 패턴 액션(242073)에서 연결 실행된 P2_M3은 전용 모드 종료 후
             // 242074~242076 결과 액션으로 복귀해야 하므로 현재 패턴 진행 위치를 보존한다.
             // 비연결 테스트 실행만 기존처럼 보스 패턴 진행 상태를 초기화한다.
-            const rt = gameState.p2m3DefenseRuntime || null;
+            const rt = gameState.specialModeObjectDefenseRuntime || null;
             const preservePatternFlow = !!(rt && rt.isPatternLinked);
             if (!preservePatternFlow) {
                 boss.boss.activePattern = null;
@@ -659,6 +693,8 @@ const P2M3DimensionDefenseSystem = {
     },
 
     getSlashVisualHeight(data, lanes, isGiant, isFinal) {
+        const dataHeight = this.num(data && data.Object_Hitbox_Size_Y, 0);
+        if (dataHeight > 0) return dataHeight;
         if (isFinal) return 118;
         if (isGiant) return 150;
         if ((lanes || []).length >= 2) return 112;
@@ -680,19 +716,21 @@ const P2M3DimensionDefenseSystem = {
 
         const cond = String(data.Destroy_Condition_Type || '').trim().toUpperCase();
         const laneHp = {};
-        if (cond === 'PER_LANE_HIT_COUNT') {
+        if (cond === 'PER_LANE_HIT_COUNT' || cond === 'PER_PART_HIT_COUNT') {
             const perLane = Math.max(1, Math.floor(this.num(data.HP_Per_Lane, 1)));
             finalLanes.forEach(lane => { laneHp[lane] = perLane; });
         }
 
         const speedRate = 1 / Math.max(0.1, this.num(wave.Fall_Time_Rate, 1));
         const renderType = String(data.Slash_Render_Type || '').trim().toUpperCase();
-        const isFinal = cond === 'FINAL_COUNTER';
+        // Special Mode 공용 데이터에서는 최종 입력 대응 오브젝트를 INPUT_RESPONSE로 정의한다.
+        // 구버전 FINAL_COUNTER도 호환하여 기존 데이터/테스트 경로를 안전하게 유지한다.
+        const isFinal = cond === 'FINAL_COUNTER' || cond === 'INPUT_RESPONSE';
         const isGiant = renderType.indexOf('GIANT') >= 0 || String(wave.Wave_Type || '').toUpperCase().indexOf('GIANT') >= 0;
         const height = this.getSlashVisualHeight(data, finalLanes, isGiant, isFinal);
-        const initSpeed = Math.max(10, this.num(data.Initial_Fall_Speed, (this.VIRTUAL.floorY - this.VIRTUAL.spawnY) / Math.max(0.3, this.num(data.Fall_Time, 2)))) * speedRate;
-        const gravity = Math.max(0, this.num(data.Gravity, 0)) * speedRate;
-        const maxSpeed = Math.max(initSpeed, this.num(data.Max_Fall_Speed, initSpeed + gravity * 2)) * speedRate;
+        const initSpeed = Math.max(10, this.num(wave.Initial_Fall_Speed, this.num(data.Initial_Fall_Speed, (this.VIRTUAL.floorY - this.VIRTUAL.spawnY) / Math.max(0.3, this.num(data.Fall_Time, 2))))) * speedRate;
+        const gravity = Math.max(0, this.num(wave.Gravity, this.num(data.Gravity, 0))) * speedRate;
+        const maxSpeed = Math.max(initSpeed, this.num(wave.Max_Fall_Speed, this.num(data.Max_Fall_Speed, initSpeed + gravity * 2))) * speedRate;
 
         rt.activeSlashes.push({
             uid: rt.slashSeq++,
@@ -752,7 +790,7 @@ const P2M3DimensionDefenseSystem = {
             this.tryGuardSlash(rt, slash);
 
             if (slash.isFinal && this.matchesFinalResponseCondition(rt, 'GUARD') && this.isSlashInPlayerRange(rt, slash, p.lane, 'guard') && p.isGuarding) {
-                this.finish(gameState, 'GUARD_SUCCESS', '최종 낙하 공격 가드 성공');
+                this.finish(gameState, String(slash.data.Guard_Result_Type || 'MODE_GUARD_SUCCESS').trim().toUpperCase(), '최종 낙하 공격 가드 성공');
                 return;
             }
         }
@@ -873,7 +911,7 @@ const P2M3DimensionDefenseSystem = {
             this.finish(gameState, 'FAIL', rt.player.hasTemperedWill ? '최종 낙하 공격 대응 실패' : '연단된 칼날의 의지 없음');
             return;
         }
-        const rawDamage = Math.max(1, this.num(slash.data.Slash_Damage, 1));
+        const rawDamage = Math.max(1, this.num(slash.data.Object_Damage, this.num(slash.data.Slash_Damage, 1)));
         const damage = (typeof PlayerManager !== 'undefined' && PlayerManager.applyPresentationDamageRate)
             ? PlayerManager.applyPresentationDamageRate(gameState, rawDamage)
             : rawDamage;
@@ -940,6 +978,7 @@ const P2M3DimensionDefenseSystem = {
     executePlayerAttack(gameState, rt) {
         const attackType = String(rt && rt.playerData && rt.playerData.ATK_Type || '').trim().toUpperCase();
         switch (attackType) {
+            case 'MELEE':
             case 'P2M3_MELEE_ATK':
             case '':
                 return this.playerAttack(gameState, rt);
@@ -955,7 +994,7 @@ const P2M3DimensionDefenseSystem = {
         this.pushP2M3Effect(rt, 'attackArc', rt.player.lane, rt.player.y || this.VIRTUAL.playerGroundY, { timer: 0.16, size: 1 });
         if (target.isFinal) {
             if (this.matchesFinalResponseCondition(rt, 'ATTACK')) {
-                this.finish(gameState, 'PERFECT_SUCCESS', '최종 낙하 공격 받아치기 성공');
+                this.finish(gameState, String(target.data.ATK_Result_Type || 'MODE_ATK_SUCCESS').trim().toUpperCase(), '최종 낙하 공격 받아치기 성공');
                 return true;
             }
             return false;
@@ -1048,7 +1087,7 @@ const P2M3DimensionDefenseSystem = {
             timer: 0.24,
             isGiant: slash.isGiant
         });
-        if (cond === 'PER_LANE_HIT_COUNT') {
+        if (cond === 'PER_LANE_HIT_COUNT' || cond === 'PER_PART_HIT_COUNT') {
             const laneTargets = (source === 'SKILL') ? (slash.lanes || []) : [lane];
             for (const targetLane of laneTargets) {
                 if (slash.laneHp && slash.laneHp[targetLane] !== undefined) {
@@ -1075,14 +1114,14 @@ const P2M3DimensionDefenseSystem = {
         });
         slash.active = false;
         slash.breakFlashTimer = 0.2;
-        const destroyEffectType = String(slash.data.Slash_Destroy_Effect_Type || '').trim().toUpperCase();
-        if (destroyEffectType === 'PLAYER_GET_SPECIAL_ENERGY') {
+        const destroyEffectType = String(slash.data.Object_Destroy_Result_Type || slash.data.Slash_Destroy_Effect_Type || '').trim().toUpperCase();
+        if (destroyEffectType === 'PLAYER_BUFF' || destroyEffectType === 'PLAYER_GET_SPECIAL_ENERGY') {
             rt.player.hasTemperedWill = true;
             // step216: 연단 상태는 플레이어 이펙트와 하단 HUD로 표시한다.
             rt.message = '';
             rt.messageTimer = 0;
         } else if (destroyEffectType === 'PATTERN_END' && slash.isFinal) {
-            const result = String(source || '').toUpperCase() === 'GUARD' ? 'GUARD_SUCCESS' : 'PERFECT_SUCCESS';
+            const result = String(source || '').toUpperCase() === 'GUARD' ? 'MODE_GUARD_SUCCESS' : 'MODE_ATK_SUCCESS';
             this.finish(gameState, result, '최종 검기 파괴 결과');
         } else {
             // DEFAULT 및 미지원 값은 기존의 일반 파괴 처리만 수행한다.
@@ -1090,7 +1129,7 @@ const P2M3DimensionDefenseSystem = {
     },
 
     update(gameState, dt) {
-        const rt = gameState && gameState.p2m3DefenseRuntime;
+        const rt = gameState && gameState.specialModeObjectDefenseRuntime;
         if (!rt || !rt.active) return;
         // 전용 모드 안에서는 기존 플레이어 피격 전체 화면 플래시가 HUD와 화면을 덮지 않도록 차단한다.
         if (gameState) gameState.screenHitFlash = null;
@@ -1158,6 +1197,13 @@ const P2M3DimensionDefenseSystem = {
             if (rt.endingTimer <= 0) this.completeEnd(gameState);
             return;
         }
+        if (rt.phase === 'COMPLETE') {
+            // 마지막 Action Group이 끝났는데 입력 성공/실패 결과가 확정되지 않은 경우
+            // 전용 모드가 영구 정지하지 않도록 안전하게 실패 종료한다.
+            rt.endingTimer = Math.max(0, (parseFloat(rt.endingTimer) || 0) - dt);
+            if (rt.endingTimer <= 0) this.finish(gameState, 'FAIL', '스페셜 모드 결과 미확정');
+            return;
+        }
 
         this.handleInput(gameState, rt, dt);
         this.updateSkillWaves(gameState, rt, dt);
@@ -1168,13 +1214,13 @@ const P2M3DimensionDefenseSystem = {
     },
 
     finish(gameState, result, reason) {
-        const rt = gameState && gameState.p2m3DefenseRuntime;
+        const rt = gameState && gameState.specialModeObjectDefenseRuntime;
         if (!rt || !rt.active || rt.phase === 'ENDING') return;
         rt.phase = 'ENDING';
         rt.result = result;
         rt.resultReason = reason || '';
         // 결과 확정 직후 바로 복귀하지 않고, 차원 붕괴/복귀 연출 시간을 둔다.
-        rt.endingTimer = result === 'PERFECT_SUCCESS' ? 2.15 : (result === 'GUARD_SUCCESS' ? 1.75 : 1.45);
+        rt.endingTimer = result === 'MODE_ATK_SUCCESS' ? 2.15 : (result === 'MODE_GUARD_SUCCESS' ? 1.75 : 1.45);
         rt.outroMaxTime = rt.endingTimer;
         rt.outroFlashFired = false;
         rt.activeSlashes = [];
@@ -1185,48 +1231,48 @@ const P2M3DimensionDefenseSystem = {
     },
 
     forceEnd(gameState, reason = 'CANCEL') {
-        const rt = gameState && gameState.p2m3DefenseRuntime;
+        const rt = gameState && gameState.specialModeObjectDefenseRuntime;
         if (!rt) return false;
         rt.result = reason;
         rt.resultReason = '테스트 강제 종료';
         this.restoreSnapshots(gameState, rt);
         gameState.specialMode = null;
-        gameState.p2m3DefenseRuntime = null;
-        gameState.p2m3IntroRuntime = null;
-        gameState.p2m3FailDamageRuntime = null;
+        gameState.specialModeObjectDefenseRuntime = null;
+        gameState.specialModeObjectDefenseIntroRuntime = null;
+        gameState.specialModeObjectDefenseFailDamageRuntime = null;
         const linkedBoss = rt && rt.boss ? rt.boss : this.getBoss(gameState);
         if (linkedBoss && linkedBoss.boss) {
-            linkedBoss.boss.p2m3ExclusiveModeStarted = false;
-            linkedBoss.boss.p2m3Result = null;
+            linkedBoss.boss.specialModeStarted = false;
+            linkedBoss.boss.specialModeResult = null;
         }
         try { pushSystemNotice('차원 방어전 테스트 종료', '#bbbbbb', 1.0); } catch (e) {}
         return true;
     },
 
     completeEnd(gameState) {
-        const rt = gameState && gameState.p2m3DefenseRuntime;
+        const rt = gameState && gameState.specialModeObjectDefenseRuntime;
         if (!rt) return;
         const result = String(rt.result || '').toUpperCase();
         const linkedBoss = rt && rt.boss ? rt.boss : this.getBoss(gameState);
         const preservePatternFlow = !!(rt && rt.isPatternLinked && linkedBoss && linkedBoss.boss);
         this.restoreSnapshots(gameState, rt, { preservePatternFlow });
         gameState.specialMode = null;
-        gameState.p2m3DefenseRuntime = null;
-        gameState.p2m3IntroRuntime = null;
+        gameState.specialModeObjectDefenseRuntime = null;
+        gameState.specialModeObjectDefenseIntroRuntime = null;
 
         if (preservePatternFlow) {
             // 242073은 그대로 유지하고 결과만 전달한다.
             // 다음 일반 업데이트에서 boss_state_flow_system이 결과를 감지해 242074~242076으로 진행한다.
-            linkedBoss.boss.p2m3Result = result;
-            linkedBoss.boss.p2m3ExclusiveModeStarted = false;
+            linkedBoss.boss.specialModeResult = result;
+            linkedBoss.boss.specialModeStarted = false;
             return;
         }
 
         // 비연결 테스트 실행의 안전 fallback. 결과 데이터는 Player 시트가 아니라
-        // Monster_Pattern_Action_info의 P2_M3_RESULT 액션을 동일하게 사용한다.
+        // Monster_Pattern_Action_info의 SPECIAL_MODE_RESULT 액션을 사용한다.
         const resultAction = this.getResultBossAction(gameState, result);
-        if ((result === 'PERFECT_SUCCESS' || result === 'GUARD_SUCCESS') && resultAction) {
-            const perfect = result === 'PERFECT_SUCCESS';
+        if ((result === 'MODE_ATK_SUCCESS' || result === 'MODE_GUARD_SUCCESS') && resultAction) {
+            const perfect = result === 'MODE_ATK_SUCCESS';
             this.applyBossGroggy(
                 gameState,
                 resultAction.Groggy_Time,
@@ -1244,8 +1290,7 @@ const P2M3DimensionDefenseSystem = {
         const db = gameState && gameState.DB_BOSS_PATTERN_ACTION ? gameState.DB_BOSS_PATTERN_ACTION : {};
         for (const key of Object.keys(db || {})) {
             const action = db[key] || {};
-            if (String(action.Pattern_ID || '').trim() !== '232008') continue;
-            if (String(action.Action_Condition_Type || '').trim().toUpperCase() !== 'P2_M3_RESULT') continue;
+            if (String(action.Action_Condition_Type || '').trim().toUpperCase() !== 'SPECIAL_MODE_RESULT') continue;
             if (String(action.Action_Condition_Value || '').trim().toUpperCase() === expected) return action;
         }
         return null;
@@ -1279,7 +1324,7 @@ const P2M3DimensionDefenseSystem = {
             boss.timer = 0;
             boss.active = true;
             if (boss.boss) {
-                boss.boss.p2m3ExclusiveModeStarted = false;
+                boss.boss.specialModeStarted = false;
                 if (!preservePatternFlow) {
                     boss.boss.activePattern = null;
                     boss.boss.action = null;
@@ -1345,7 +1390,7 @@ const P2M3DimensionDefenseSystem = {
         const attackType = String(action.Action_Attack_Type || 'ATK_SPECIAL').trim() || 'ATK_SPECIAL';
         const sourceActionId = String(action.Action_ID || '242076').trim() || '242076';
 
-        gameState.p2m3FailDamageRuntime = {
+        gameState.specialModeObjectDefenseFailDamageRuntime = {
             active: true,
             elapsed: 0,
             nextHitTime: hitStart,
@@ -1375,11 +1420,11 @@ const P2M3DimensionDefenseSystem = {
     },
 
     updateFailDamageSequence(gameState, dt) {
-        const seq = gameState && gameState.p2m3FailDamageRuntime;
+        const seq = gameState && gameState.specialModeObjectDefenseFailDamageRuntime;
         if (!seq || !seq.active) return false;
         const p = gameState && gameState.player;
         if (!p || p.hp <= 0 || p.state === 'Die') {
-            gameState.p2m3FailDamageRuntime = null;
+            gameState.specialModeObjectDefenseFailDamageRuntime = null;
             return false;
         }
 
@@ -1445,10 +1490,10 @@ const P2M3DimensionDefenseSystem = {
 
         if (seq.hitIndex >= seq.hitCount || p.hp <= 0 || p.state === 'Die') {
             seq.active = false;
-            gameState.p2m3FailDamageRuntime = null;
+            gameState.specialModeObjectDefenseFailDamageRuntime = null;
         }
         return true;
     }
 };
 
-window.P2M3DimensionDefenseSystem = P2M3DimensionDefenseSystem;
+window.SpecialModeObjectDefenseSystem = SpecialModeObjectDefenseSystem;

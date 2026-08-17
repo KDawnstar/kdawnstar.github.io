@@ -2115,9 +2115,435 @@ button,
     }
 }
 
+
+
+/* === Game Mode / Guide UI (2026-08-17) === */
+#gameModeStartScreen {
+    position: fixed; inset: 0; z-index: 10000;
+    display: flex; align-items: center; justify-content: center;
+    padding: 28px; box-sizing: border-box;
+    background: #05080d;
+    color: #eef6ff;
+    font-family: 'Malgun Gothic', '맑은 고딕', 'Segoe UI', sans-serif;
+}
+#gameModeStartScreen.hidden { display: none; }
+.game-mode-start-card {
+    width: min(1050px, calc(100vw - 56px));
+    padding: 38px 42px 34px; box-sizing: border-box;
+    border: 1px solid rgba(255,255,255,0.11); border-radius: 18px;
+    background: linear-gradient(180deg, rgba(21,27,38,0.96), rgba(9,13,20,0.98));
+    box-shadow: 0 26px 80px rgba(0,0,0,0.46);
+}
+.game-mode-start-title { margin: 0 0 30px; font-size: clamp(26px, 3vw, 38px); line-height: 1.28; color: #fff; letter-spacing: -0.7px; }
+.game-mode-select-title { margin-bottom: 14px; font-size: 15px; color: #dce8f7; font-weight: 800; }
+.game-mode-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.game-mode-card {
+    position: relative; min-height: 180px; padding: 22px 20px; text-align: left; cursor: pointer;
+    color: #eaf3ff; border: 1px solid rgba(255,255,255,0.11); border-radius: 14px;
+    background: rgba(255,255,255,0.035); transition: transform .14s ease, border-color .14s ease, background .14s ease;
+}
+.game-mode-card:hover { transform: translateY(-3px); border-color: rgba(244,211,106,0.48); background: rgba(244,211,106,0.07); }
+.game-mode-card.recommended { border-color: rgba(95,188,255,0.34); background: rgba(64,151,220,0.07); }
+.game-mode-badge { display:inline-flex; padding: 3px 7px; margin-bottom: 14px; border-radius: 999px; background: rgba(88,180,255,0.16); border:1px solid rgba(88,180,255,0.24); color:#9bd7ff; font-size:10px; font-weight:900; }
+.game-mode-name { display:block; margin-bottom: 10px; font-size: 20px; font-weight: 900; color:#fff; }
+.game-mode-desc { display:block; font-size: 13px; line-height: 1.7; color: rgba(228,238,250,0.75); word-break: keep-all; }
+.game-mode-start-footer { margin-top: 18px; color: rgba(210,221,235,0.62); font-size: 12px; text-align:center; }
+
+#gameModeHelpOverlay {
+    position: fixed; inset: 0; z-index: 9500; display: none; align-items: center; justify-content: center;
+    padding: 24px; background: rgba(0,0,0,0.64); backdrop-filter: blur(5px);
+    font-family: 'Malgun Gothic', '맑은 고딕', 'Segoe UI', sans-serif;
+}
+#gameModeHelpOverlay.visible { display:flex; }
+.game-mode-help-card { width:min(1040px, calc(100vw - 48px)); max-height:calc(100vh - 48px); overflow:auto; padding:24px; border-radius:16px; box-sizing:border-box; color:#eef6ff; background:rgba(11,16,24,0.98); border:1px solid rgba(255,255,255,0.13); box-shadow:0 20px 70px rgba(0,0,0,.48); }
+.game-mode-help-header { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,.09); }
+.game-mode-help-header h2 { margin:0; font-size:20px; }
+.game-mode-help-close { color:#c9d9ea; font-size:12px; font-weight:800; }
+#gameModeHelpContent { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.game-mode-help-group { padding:14px; border-radius:12px; background:rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.07); }
+.game-mode-help-group h3 { margin:0 0 10px; font-size:13px; color:#f4d36a; }
+.game-mode-help-row { display:grid; grid-template-columns:105px 1fr; gap:10px; padding:8px 0; border-top:1px solid rgba(255,255,255,.055); }
+.game-mode-help-row:first-of-type { border-top:0; }
+.game-mode-help-key { align-self:start; display:inline-flex; min-height:25px; align-items:center; justify-content:center; padding:0 8px; border-radius:7px; background:rgba(0,0,0,.34); border:1px solid rgba(255,255,255,.12); color:#ffd96b; font-size:11px; font-weight:900; }
+.game-mode-help-row b { display:block; font-size:12px; color:#fff; }
+.game-mode-help-row p { margin:3px 0 0; font-size:11px; line-height:1.55; color:rgba(231,240,250,.72); }
+
+#normalModeHelpHint {
+    position:absolute; top:14px; left:14px; z-index:24; display:none;
+    padding:7px 10px; border-radius:8px; background:rgba(6,10,16,.76);
+    border:1px solid rgba(255,255,255,.12); color:rgba(235,243,252,.82);
+    font:800 12px 'Malgun Gothic','맑은 고딕',sans-serif; pointer-events:none;
+    box-shadow:0 5px 16px rgba(0,0,0,.26);
+}
+#normalModeHelpHint span { color:#ffe08a; margin-right:6px; }
+body.game-mode-normal #normalModeHelpHint { display:block; }
+
+#guideStrategyPanel { display:none; height:100%; min-height:0; flex-direction:column; }
+#guideStrategyContent { overflow:auto; min-height:0; flex:1 1 auto; padding:15px; }
+#guideStrategyPanel .external-panel-title { font-size:16px !important; }
+.guide-pattern-name { margin-bottom:14px; padding:12px 13px; border-radius:10px; color:#fff2b2; background:rgba(244,211,106,.075); border:1px solid rgba(244,211,106,.17); font-size:16px; font-weight:900; line-height:1.5; word-break:keep-all; }
+.guide-info-card { margin-bottom:12px; padding:13px 14px; border-radius:11px; background:rgba(255,255,255,.038); border:1px solid rgba(255,255,255,.075); }
+.guide-info-card.solve { border-color:rgba(113,210,151,.18); background:rgba(82,179,123,.055); }
+.guide-info-card h4 { margin:0 0 8px; font-size:15px; color:#8fd3ff; }
+.guide-info-card.solve h4 { color:#9ee6b8; }
+.guide-info-card p { margin:0; color:rgba(239,246,255,.88); font-size:15px; line-height:1.72; word-break:keep-all; }
+.guide-idle-note { margin-top:14px; padding:12px; text-align:center; color:rgba(210,223,239,.68); font-size:13px; line-height:1.6; border:1px dashed rgba(255,255,255,.12); border-radius:10px; }
+
+#sideGuideContent { padding:11px 10px !important; }
+#sideGuideContent .control-guide-card { padding:8px 9px !important; margin-bottom:7px !important; }
+#sideGuideContent .control-guide-title { margin-bottom:5px !important; font-size:12px !important; }
+#sideGuideContent .guide-compact-row {
+    grid-template-columns:96px minmax(0,1fr) !important; gap:10px !important;
+    min-height:34px; padding:5px 0 !important; align-items:center !important;
+}
+#sideGuideContent .guide-compact-row .keycap {
+    width:auto !important; min-width:74px !important; max-width:92px; min-height:27px;
+    padding:3px 7px !important; box-sizing:border-box; white-space:nowrap;
+    font-size:12px !important; line-height:1.2; text-align:center; overflow:hidden;
+}
+#sideGuideContent .guide-control-name {
+    min-width:0; color:#f2f7fd; font-size:13px; font-weight:800; line-height:1.3;
+    word-break:keep-all; overflow-wrap:anywhere;
+}
+#sideGuideContent .control-guide-card.special .control-row { grid-template-columns:96px minmax(0,1fr) !important; }
+#sideGuideContent .control-guide-card.special .keycap { min-width:74px !important; }
+
+body.game-mode-guide #bossBattleLayout { grid-template-columns: 330px minmax(0, 1fr) 420px !important; }
+body.game-mode-guide #leftSidePanel { display:flex !important; }
+body.game-mode-guide #leftSidePanel > .external-panel:first-child { display:flex !important; flex:1 1 100% !important; }
+body.game-mode-guide #leftSidePanel > .external-panel:nth-child(2) { display:none !important; }
+body.game-mode-guide #rightSidePanel { display:flex !important; }
+body.game-mode-guide #rightSidePanel > .right-boss-ai-panel,
+body.game-mode-guide #rightSidePanel > .right-debug-panel { display:none !important; }
+body.game-mode-guide #guideStrategyPanel { display:flex !important; }
+body.game-mode-guide #sideGuideContent { font-size:13px !important; }
+body.game-mode-guide #leftSidePanel .external-panel-header .external-panel-title { font-size:15px !important; }
+
+body.game-mode-normal #bossBattleLayout { grid-template-columns:minmax(0, 1fr) !important; }
+body.game-mode-normal #leftSidePanel,
+body.game-mode-normal #rightSidePanel { display:none !important; }
+body.game-mode-normal #gameCenterPanel { width:100%; }
+
+body.game-mode-developer #guideStrategyPanel { display:none !important; }
+
+body.boss-practice-active #topRightUI { display:flex !important; }
+
+.hud-skill-wrap, .hud-skill-body, #hudCenter, #hudSkills, .skill-slot { overflow:visible !important; }
+.hud-skill-wrap { position:relative; z-index:80; }
+#hudSkills { position:relative; z-index:90; }
+.skill-slot { z-index:91; }
+.skill-slot:hover { z-index:500; }
+.skill-tooltip {
+    position:absolute; left:50%; bottom:calc(100% + 20px); transform:translateX(-50%) translateY(5px);
+    width:300px; padding:14px 15px; box-sizing:border-box; border-radius:10px;
+    background:rgba(8,8,12,.98); border:1px solid rgba(255,204,111,.52);
+    box-shadow:0 12px 30px rgba(0,0,0,.52); color:rgba(255,246,222,.96); text-align:left;
+    font-family:'Malgun Gothic','맑은 고딕',sans-serif; opacity:0; visibility:hidden; pointer-events:none;
+    transition:opacity .12s ease, transform .12s ease; z-index:5000;
+}
+.skill-slot:hover .skill-tooltip { opacity:1; visibility:visible; transform:translateX(-50%) translateY(0); }
+.skill-slot:first-child .skill-tooltip { left:0; transform:translateX(0) translateY(5px); }
+.skill-slot:first-child:hover .skill-tooltip { transform:translateX(0) translateY(0); }
+.skill-slot:last-child .skill-tooltip { left:auto; right:0; transform:translateX(0) translateY(5px); }
+.skill-slot:last-child:hover .skill-tooltip { transform:translateX(0) translateY(0); }
+.skill-tooltip b { display:block; margin-bottom:7px; color:#ffd56f; font-size:15px; line-height:1.35; }
+.skill-tooltip span { display:block; font-size:13px; font-weight:700; line-height:1.55; color:rgba(255,246,222,.92); word-break:keep-all; }
+.skill-tooltip small { display:block; margin-top:9px; padding-top:8px; border-top:1px solid rgba(255,204,111,.18); color:rgba(210,220,235,.78); font-size:12px; font-weight:700; line-height:1.45; }
+
+@media (max-width: 1700px) {
+    body.game-mode-guide #bossBattleLayout { grid-template-columns: 300px minmax(0,1fr) 380px !important; }
+    .game-mode-grid { grid-template-columns:1fr; }
+    .game-mode-card { min-height:120px; }
+}
+@media (max-width: 980px) {
+    #gameModeHelpContent { grid-template-columns:1fr; }
+}
+
+
+/* v6.0 Guide panel / unified game scale / DNF-style HUD refinement */
+body.game-mode-guide #bossBattleLayout,
+body.game-mode-normal #bossBattleLayout,
+body.game-mode-developer #bossBattleLayout {
+    grid-template-columns: 250px minmax(0, 1fr) 330px !important;
+    gap: 8px !important;
+}
+
+/* Normal keeps the same center viewport width as Guide/Developer while hiding side panels. */
+body.game-mode-normal #leftSidePanel,
+body.game-mode-normal #rightSidePanel {
+    display: flex !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+body.game-mode-normal #gameCenterPanel { width: auto !important; }
+
+/* Guide control list: same readable font, denser vertical rhythm, no scrollbar. */
+body.game-mode-guide #sideGuideContent {
+    overflow: hidden !important;
+    padding: 7px 8px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 5px !important;
+}
+body.game-mode-guide #sideGuideContent .control-guide-card {
+    margin: 0 !important;
+    padding: 6px 7px !important;
+    border-radius: 10px !important;
+}
+body.game-mode-guide #sideGuideContent .control-guide-title {
+    margin-bottom: 3px !important;
+    font-size: 12px !important;
+    line-height: 1.15 !important;
+}
+body.game-mode-guide #sideGuideContent .guide-compact-row,
+body.game-mode-guide #sideGuideContent .control-guide-card.special .control-row {
+    grid-template-columns: 82px minmax(0, 1fr) !important;
+    gap: 7px !important;
+    min-height: 29px !important;
+    padding: 2px 0 !important;
+    margin: 0 !important;
+}
+body.game-mode-guide #sideGuideContent .guide-compact-row .keycap,
+body.game-mode-guide #sideGuideContent .control-guide-card.special .keycap {
+    min-width: 0 !important;
+    width: 78px !important;
+    max-width: 78px !important;
+    min-height: 25px !important;
+    height: 25px !important;
+    padding: 2px 5px !important;
+    font-size: 12px !important;
+    overflow: hidden !important;
+    text-overflow: clip !important;
+}
+body.game-mode-guide #sideGuideContent .guide-control-name {
+    font-size: 13px !important;
+    line-height: 1.18 !important;
+}
+
+/* Slightly narrower strategy rail, retaining the larger readable guide text. */
+body.game-mode-guide #guideStrategyContent { padding: 12px !important; }
+body.game-mode-guide .guide-pattern-name { margin-bottom: 10px !important; padding: 10px 11px !important; font-size: 16px !important; }
+body.game-mode-guide .guide-info-card { margin-bottom: 9px !important; padding: 11px 12px !important; }
+body.game-mode-guide .guide-info-card h4 { margin-bottom: 6px !important; font-size: 15px !important; }
+body.game-mode-guide .guide-info-card p { font-size: 15px !important; line-height: 1.62 !important; }
+
+/* HUD center: only the mode/progress headline and one large guard meter. */
+#hudCenter {
+    grid-template-columns: 292px minmax(220px, 1fr) !important;
+    column-gap: 22px !important;
+}
+.hud-center-main {
+    gap: 16px !important;
+}
+.hud-primary-status {
+    width: min(100%, 430px);
+    min-height: 58px;
+    padding: 8px 18px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.018));
+    border: 1px solid rgba(255,255,255,.09);
+    box-shadow: inset 0 0 12px rgba(255,255,255,.025);
+}
+.hud-primary-label {
+    color: rgba(224,234,246,.72);
+    font-size: 14px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+.hud-primary-value {
+    color: #fff;
+    font-size: 22px;
+    font-weight: 900;
+    line-height: 1;
+    text-shadow: 0 2px 5px rgba(0,0,0,.55);
+    white-space: nowrap;
+}
+.hud-primary-value.melee { color: #ffd4ca; }
+.hud-primary-value.range { color: #caebff; }
+.hud-primary-value.p2m3 { color: #ffe18a; font-size: 19px; }
+.hud-combat-status-wrap { max-width: 430px !important; }
+.hud-combat-status-row { grid-template-columns: minmax(0, 1fr) !important; gap: 0 !important; }
+.hud-mini-meter { height: 31px !important; }
+.hud-mini-meter-label { font-size: 14px !important; }
+
+/* Skill key below icon, cooldown number in icon center. */
+.hud-skill-body { padding: 10px 12px 28px !important; }
+#hudSkills { gap: 10px !important; }
+.skill-slot {
+    overflow: visible !important;
+    flex: 0 0 auto;
+}
+.skill-key {
+    bottom: -25px !important;
+    min-width: 28px !important;
+    padding: 3px 9px !important;
+    border-radius: 7px !important;
+    font-size: 13px !important;
+    line-height: 15px !important;
+    z-index: 12 !important;
+}
+.skill-cooldown-number {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 11;
+    min-width: 44px;
+    color: #fff;
+    font-size: 21px;
+    font-weight: 900;
+    line-height: 1;
+    text-align: center;
+    text-shadow: 0 2px 5px #000, 0 0 7px rgba(0,0,0,.95);
+    pointer-events: none;
+}
+
+@media (max-width: 1500px) {
+    body.game-mode-guide #bossBattleLayout,
+    body.game-mode-normal #bossBattleLayout,
+    body.game-mode-developer #bossBattleLayout {
+        grid-template-columns: 225px minmax(0, 1fr) 295px !important;
+        gap: 7px !important;
+    }
+    body.game-mode-guide #sideGuideContent .guide-compact-row,
+    body.game-mode-guide #sideGuideContent .control-guide-card.special .control-row {
+        grid-template-columns: 76px minmax(0, 1fr) !important;
+        gap: 5px !important;
+    }
+    body.game-mode-guide #sideGuideContent .guide-compact-row .keycap,
+    body.game-mode-guide #sideGuideContent .control-guide-card.special .keycap {
+        width: 72px !important;
+        max-width: 72px !important;
+        font-size: 11.5px !important;
+    }
+    body.game-mode-guide #sideGuideContent .guide-control-name { font-size: 12.5px !important; }
+}
+
+
+/* === Game Clear Screen / HUD Adventurer Info (2026-08-17) === */
+#gameClearScreen {
+    position: fixed;
+    inset: 0;
+    z-index: 10020;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 28px;
+    box-sizing: border-box;
+    background: #05080d;
+    color: #eef6ff;
+    font-family: 'Malgun Gothic', '맑은 고딕', 'Segoe UI', sans-serif;
+}
+#gameClearScreen.visible { display: flex; }
+.game-clear-card {
+    width: min(760px, calc(100vw - 56px));
+    padding: 58px 48px 50px;
+    box-sizing: border-box;
+    border: 1px solid rgba(255,255,255,0.11);
+    border-radius: 20px;
+    background: linear-gradient(180deg, rgba(21,27,38,0.98), rgba(9,13,20,0.99));
+    box-shadow: 0 28px 90px rgba(0,0,0,0.54);
+    text-align: center;
+}
+.game-clear-title {
+    margin: 0 0 20px;
+    color: #fff4bd;
+    font-size: clamp(42px, 6vw, 72px);
+    font-weight: 1000;
+    letter-spacing: 2px;
+    line-height: 1.05;
+    text-align: center;
+    text-shadow: 0 4px 16px rgba(0,0,0,.7), 0 0 28px rgba(244,211,106,.18);
+}
+.game-clear-message {
+    margin: 0 0 34px;
+    color: rgba(236,244,252,.88);
+    font-size: clamp(17px, 2vw, 22px);
+    font-weight: 800;
+    line-height: 1.6;
+    text-align: center;
+}
+.game-clear-return-btn {
+    min-width: 250px;
+    padding: 14px 24px;
+    border-radius: 12px;
+    border: 1px solid rgba(244,211,106,.42);
+    background: rgba(244,211,106,.08);
+    color: #fff3bc;
+    font-size: 15px;
+    font-weight: 900;
+    cursor: pointer;
+    transition: transform .14s ease, border-color .14s ease, background .14s ease;
+}
+.game-clear-return-btn:hover {
+    transform: translateY(-2px);
+    border-color: rgba(244,211,106,.72);
+    background: rgba(244,211,106,.15);
+}
+.hud-adventurer-line {
+    width: min(100%, 430px);
+    margin: -2px 0 -4px;
+    color: rgba(223,233,245,.72);
+    font-size: 13px;
+    font-weight: 900;
+    line-height: 1.2;
+    letter-spacing: .1px;
+    text-align: center;
+    text-shadow: 0 1px 3px rgba(0,0,0,.65);
+}
+
 </style>
 </head>
 <body>
+
+    <div id="gameModeStartScreen">
+        <div class="game-mode-start-card">
+            <h1 class="game-mode-start-title">창작 기획 보스 '정복자 카시야스' 구현 게임</h1>
+            <div class="game-mode-select-title">게임 모드 선택</div>
+            <div class="game-mode-grid">
+                <button type="button" class="game-mode-card recommended" data-game-mode="GUIDE">
+                    <span class="game-mode-badge">추천 모드</span>
+                    <span class="game-mode-name">가이드 모드</span>
+                    <span class="game-mode-desc">받는 피해량 감소 및 기본 조작과 대형 패턴 공략 안내 제공</span>
+                </button>
+                <button type="button" class="game-mode-card" data-game-mode="NORMAL">
+                    <span class="game-mode-name">일반 모드</span>
+                    <span class="game-mode-desc">별도 보정 없이 기획된 난도로 플레이합니다.</span>
+                </button>
+                <button type="button" class="game-mode-card" data-game-mode="DEVELOPER">
+                    <span class="game-mode-name">개발자 모드</span>
+                    <span class="game-mode-desc">디버그 정보 및 테스트 기능을 화면에 상시 표시</span>
+                </button>
+            </div>
+            <div class="game-mode-start-footer">모드를 선택하면 전투가 시작됩니다.</div>
+        </div>
+    </div>
+
+
+
+    <div id="gameClearScreen" aria-hidden="true">
+        <div class="game-clear-card">
+            <h1 class="game-clear-title">GAME CLEAR</h1>
+            <p class="game-clear-message">플레이해 주셔서 감사합니다.</p>
+            <button type="button" class="game-clear-return-btn" id="gameClearReturnBtn">타이틀 화면으로 돌아가기</button>
+        </div>
+    </div>
+
+    <div id="gameModeHelpOverlay" aria-hidden="true">
+        <div class="game-mode-help-card">
+            <div class="game-mode-help-header">
+                <h2>조작법 안내</h2>
+                <div class="game-mode-help-close">F1을 눌러 닫기</div>
+            </div>
+            <div id="gameModeHelpContent"></div>
+        </div>
+    </div>
+
 
 
     <div id="bossBattleLayout">
@@ -2145,8 +2571,7 @@ button,
                     </div>
                     <div class="control-guide-card">
                         <div class="control-guide-title">디버그</div>
-                        <div class="control-row"><span class="keycap debug">V</span><span>3D 히트박스 표시</span></div>
-                        <div class="control-row"><span class="keycap debug">R</span><span>사망 시 부활</span></div>
+                        <div class="control-row"><span class="keycap debug">F12</span><span>히트박스 표시</span></div>
                     </div>
                 </div>
             </section>
@@ -2166,6 +2591,7 @@ button,
     <div id="gameSection">
     <div id="gameViewport">
         <canvas id="gameCanvas" width="1400" height="800"></canvas>
+        <div id="normalModeHelpHint"><span>F1</span> 조작법 안내</div>
 
         <div id="topLeftUI">
             <div class="ui-header">
@@ -2178,7 +2604,7 @@ button,
                 <span class="key-hint">X</span> 평타 &nbsp; <span class="key-hint">F</span> 무기 스왑<br>
                 <span class="key-hint">A</span> 웨이브 (Lv.4) &nbsp; <span class="key-hint">S</span> 캐논볼 (Lv.5)<br>
                 <span class="key-hint">1~9</span> 몬스터 스포너 / 보스 강림<br>
-                <span class="key-hint" style="background:#e74c3c;">V</span> 3D 히트박스 디버그
+                <span class="key-hint" style="background:#e74c3c;">F12</span> 3D 히트박스 표시
             </div>
         </div>
 
@@ -2235,27 +2661,16 @@ button,
             </div>
 
             <div class="hud-center-main">
-                <div class="hud-name" id="hudPlayerName">Lv.1 모험가</div>
-                <div class="hud-center-divider"></div>
-
-                <div class="hud-mode-chip-row">
-                    <div class="hud-mode-chip melee">근접 모드</div>
-                    <div class="hud-mode-chip range">원거리 모드</div>
+                <div class="hud-adventurer-line" id="hudPlayerName">Lv.10 모험가</div>
+                <div class="hud-primary-status" id="hudPrimaryStatus">
+                    <span class="hud-primary-label" id="hudPrimaryLabel">공격 모드</span>
+                    <strong class="hud-primary-value melee" id="hudPrimaryValue">근거리</strong>
                 </div>
-
                 <div class="hud-combat-status-wrap">
                     <div class="hud-combat-status-row">
                         <div class="hud-mini-meter guard ready" id="combatMeterGuard">
                             <div class="hud-mini-meter-fill" id="combatMeterGuardFill"></div>
-                            <div class="hud-mini-meter-label" id="combatMeterGuardText">🛡 가드 준비</div>
-                        </div>
-                        <div class="hud-mini-meter swap ready" id="combatMeterSwap">
-                            <div class="hud-mini-meter-fill" id="combatMeterSwapFill"></div>
-                            <div class="hud-mini-meter-label" id="combatMeterSwapText">🔄 전환 준비</div>
-                        </div>
-                        <div class="hud-mini-meter combo ready" id="combatMeterCombo">
-                            <div class="hud-mini-meter-fill" id="combatMeterComboFill"></div>
-                            <div class="hud-mini-meter-label" id="combatMeterComboText">⚔ 연격 준비</div>
+                            <div class="hud-mini-meter-label" id="combatMeterGuardText">가드 준비</div>
                         </div>
                     </div>
                 </div>
@@ -2267,44 +2682,44 @@ button,
         </div>
     <div class="hud-skill-body">
         <div id="hudSkills">
-            <div class="skill-slot">
-                <svg class="skill-icon" viewBox="0 0 100 100">
-                    <path d="M20,80 L80,20" stroke="#bdc3c7" stroke-width="8" stroke-linecap="round"/>
-                    <path d="M15,85 L35,65" stroke="#f1c40f" stroke-width="12" stroke-linecap="round"/>
-                    <path d="M20,20 L80,80" stroke="#7f8c8d" stroke-width="12" stroke-linecap="round"/>
-                    <path d="M60,60 L90,90" stroke="#2c3e50" stroke-width="18" stroke-linecap="round"/>
-                </svg>
-                <div class="skill-cd-mask" id="maskSwap"></div><div class="skill-lock" id="lockSwap">🔒</div><div class="skill-key">F</div>
-            </div>
-            <div class="skill-slot">
-                <svg class="skill-icon" viewBox="0 0 100 100">
-                    <path d="M10,40 L40,40 M20,60 L50,60 M15,80 L45,80" stroke="#2ecc71" stroke-width="6" stroke-linecap="round"/>
-                    <path d="M50,20 L80,50 L50,80" fill="none" stroke="#2ecc71" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <div class="skill-cd-mask" id="maskDash"></div><div class="skill-lock" id="lockDash">🔒</div><div class="skill-key">Z</div>
-            </div>
-            <div class="skill-slot">
-                <svg class="skill-icon" viewBox="0 0 100 100">
-                    <path d="M50,10 L78,24 L72,58 Q66,80 50,90 Q34,80 28,58 L22,24 Z" fill="#34495e" stroke="#f1c40f" stroke-width="5" stroke-linejoin="round"/>
-                    <path d="M50,20 L63,28 L59,56 Q56,68 50,75 Q44,68 41,56 L37,28 Z" fill="rgba(255,255,255,0.20)" stroke="rgba(255,255,255,0.35)" stroke-width="2"/>
-                    <path d="M50,24 L50,72" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" opacity="0.85"/>
-                </svg>
-                <div class="skill-cd-mask" id="maskGuard"></div><div class="skill-lock" id="lockGuard">🔒</div><div class="skill-key">D</div>
-            </div>
-            <div class="skill-slot">
-                <svg class="skill-icon" viewBox="0 0 100 100">
-                    <path d="M70,10 A40,40 0 0,0 70,90 A50,50 0 0,1 70,10 Z" fill="#3498db" stroke="#2980b9" stroke-width="3"/>
-                </svg>
-                <div class="skill-cd-mask" id="maskWave"></div><div class="skill-lock" id="lockWave">🔒</div><div class="skill-key">A</div>
-            </div>
-            <div class="skill-slot">
-                <svg class="skill-icon" viewBox="0 0 100 100">
-                    <circle cx="45" cy="55" r="30" fill="#2c3e50" stroke="#1a252f" stroke-width="4"/>
-                    <path d="M65,35 Q75,20 90,10 Q80,30 75,40" fill="#e74c3c"/>
-                    <circle cx="70" cy="30" r="5" fill="#f1c40f"/>
-                </svg>
-                <div class="skill-cd-mask" id="maskCannon"></div><div class="skill-lock" id="lockCannon">🔒</div><div class="skill-key">S</div>
-            </div>
+<div class="skill-slot">
+<svg class="skill-icon" viewbox="0 0 100 100">
+<path d="M70,10 A40,40 0 0,0 70,90 A50,50 0 0,1 70,10 Z" fill="#3498db" stroke="#2980b9" stroke-width="3"></path>
+</svg>
+<div class="skill-cd-mask" id="maskWave"></div><div class="skill-lock" id="lockWave">🔒</div><div class="skill-key">A</div>
+</div>
+<div class="skill-slot">
+<svg class="skill-icon" viewbox="0 0 100 100">
+<circle cx="45" cy="55" fill="#2c3e50" r="30" stroke="#1a252f" stroke-width="4"></circle>
+<path d="M65,35 Q75,20 90,10 Q80,30 75,40" fill="#e74c3c"></path>
+<circle cx="70" cy="30" fill="#f1c40f" r="5"></circle>
+</svg>
+<div class="skill-cd-mask" id="maskCannon"></div><div class="skill-lock" id="lockCannon">🔒</div><div class="skill-key">S</div>
+</div>
+<div class="skill-slot">
+<svg class="skill-icon" viewbox="0 0 100 100">
+<path d="M50,10 L78,24 L72,58 Q66,80 50,90 Q34,80 28,58 L22,24 Z" fill="#34495e" stroke="#f1c40f" stroke-linejoin="round" stroke-width="5"></path>
+<path d="M50,20 L63,28 L59,56 Q56,68 50,75 Q44,68 41,56 L37,28 Z" fill="rgba(255,255,255,0.20)" stroke="rgba(255,255,255,0.35)" stroke-width="2"></path>
+<path d="M50,24 L50,72" opacity="0.85" stroke="#f1c40f" stroke-linecap="round" stroke-width="4"></path>
+</svg>
+<div class="skill-cd-mask" id="maskGuard"></div><div class="skill-lock" id="lockGuard">🔒</div><div class="skill-key">D</div>
+</div>
+<div class="skill-slot">
+<svg class="skill-icon" viewbox="0 0 100 100">
+<path d="M20,80 L80,20" stroke="#bdc3c7" stroke-linecap="round" stroke-width="8"></path>
+<path d="M15,85 L35,65" stroke="#f1c40f" stroke-linecap="round" stroke-width="12"></path>
+<path d="M20,20 L80,80" stroke="#7f8c8d" stroke-linecap="round" stroke-width="12"></path>
+<path d="M60,60 L90,90" stroke="#2c3e50" stroke-linecap="round" stroke-width="18"></path>
+</svg>
+<div class="skill-cd-mask" id="maskSwap"></div><div class="skill-lock" id="lockSwap">🔒</div><div class="skill-key">F</div>
+</div>
+<div class="skill-slot">
+<svg class="skill-icon" viewbox="0 0 100 100">
+<path d="M10,40 L40,40 M20,60 L50,60 M15,80 L45,80" stroke="#2ecc71" stroke-linecap="round" stroke-width="6"></path>
+<path d="M50,20 L80,50 L50,80" fill="none" stroke="#2ecc71" stroke-linecap="round" stroke-linejoin="round" stroke-width="10"></path>
+</svg>
+<div class="skill-cd-mask" id="maskDash"></div><div class="skill-lock" id="lockDash">🔒</div><div class="skill-key">Z</div>
+</div>
         </div>
     </div>
 </div>
@@ -2314,6 +2729,12 @@ button,
         </main>
 
         <aside id="rightSidePanel" class="side-panel-column">
+            <section id="guideStrategyPanel" class="external-panel">
+                <div class="external-panel-header">
+                    <div id="guideStrategyTitle" class="external-panel-title">카시야스 기본 공략</div>
+                </div>
+                <div id="guideStrategyContent" class="external-panel-body"></div>
+            </section>
             <section class="external-panel right-boss-ai-panel">
                 <div class="external-panel-header with-log-actions">
                     <div class="external-panel-title-stack">
@@ -2367,7 +2788,7 @@ button,
     <script src="js/render/ui_renderer.js"></script>
     <script src="js/render/debug_renderer.js"></script>
     <script src="js/special/p2_m3_dimension_defense_renderer.js"></script>
-    <script src="js/special/p2_m3_dimension_defense_system.js"></script>
+    <script src="js/special/special_mode_object_defense_system.js"></script>
     <script src="js/special/p3_m3_final_issen_renderer.js"></script>
     <script src="js/special/p3_m3_final_issen_system.js"></script>
 
@@ -2393,6 +2814,7 @@ button,
 
     <script src="js/core/game_data_loader.js"></script>
     <script src="js/core/game_data_normalizer.js"></script>
+    <script src="js/core/game_mode_system.js"></script>
     <script src="js/core/game_app.js"></script>
 
 </body>

@@ -17,8 +17,9 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
         }
 
         if (m.hp <= 0) {
-            const nextPhase = typeof this.getBossNextPhase === 'function' ? this.getBossNextPhase(boss.phase, gameState) : null;
-            if (nextPhase && String(boss.phase && boss.phase.Phase_Transition_Type || '').trim()) {
+            const bossConfig = boss.config || boss.phase || {};
+            const nextPhase = typeof this.getBossNextPhase === 'function' ? this.getBossNextPhase(bossConfig, gameState) : null;
+            if (nextPhase && String(bossConfig.Phase_Transition_Type || '').trim()) {
                 if (typeof this.startBossPhaseTransition === 'function') {
                     this.startBossPhaseTransition(m, gameState);
                     return true;
@@ -44,9 +45,10 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
         this.updateBossCooldowns(m, deltaTime);
 
         const hpRate = (parseFloat(m.hp) || 0) / Math.max(1, parseFloat(m.maxHp) || 1);
-        const lateThreshold = this.getBossLatePhaseThreshold(boss.phase);
+        const bossConfig = boss.config || boss.phase || {};
+        const lateThreshold = this.getBossLatePhaseThreshold(bossConfig);
         const wasLatePhase = !!boss.isLatePhase;
-        boss.isLatePhase = boss.p3m3ForceLatePhase ? true : (hpRate <= lateThreshold);
+        boss.isLatePhase = Number.isFinite(lateThreshold) ? (hpRate <= lateThreshold) : false;
 
         if (boss.isLatePhase && !boss.lateNoticeShown) {
             boss.lateNoticeShown = true;
@@ -55,7 +57,7 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
         // 후반부 개시 패턴은 후반부 진입 순간 예약해 두고,
         // 현재 진행 중인 패턴/행동이 끝난 뒤 일반 패턴 선택보다 먼저 강제 실행한다.
         // 이렇게 해야 후반부 진입 직후 다른 기본/대형 패턴이 먼저 뽑히는 상황을 막을 수 있다.
-        const lateOpeningIdForReserve = String(boss.phase && boss.phase.Late_Opening_Pattern_ID || '').trim();
+        const lateOpeningIdForReserve = String(boss.lateOpeningPatternId || '').trim();
         const hasValidLateOpeningId = lateOpeningIdForReserve && lateOpeningIdForReserve !== '0';
         if (boss.isLatePhase && hasValidLateOpeningId && !boss.lateOpeningPatternUsed && !boss.lateOpeningPatternStarted) {
             if (!wasLatePhase || !String(boss.pendingLateOpeningPatternId || '').trim()) {
@@ -83,7 +85,7 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
                 boss.groggyPoseType = null;
                 boss.groggyMaxTime = 0;
                 m.state = 'IDLE';
-                boss.noPatternWaitTimer = Math.max(boss.noPatternWaitTimer || 0, parseFloat(boss.phase && boss.phase.No_Pattern_Wait_Time) || 0.2);
+                boss.noPatternWaitTimer = Math.max(boss.noPatternWaitTimer || 0, parseFloat(bossConfig.No_Pattern_Wait_Time) || 0.2);
             }
             return true;
         }
@@ -223,7 +225,7 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
                 boss.p3m3ExclusiveModeStarted = false;
                 return true;
             }
-            if (actionType === 'P2_M3_EXCLUSIVE_MODE_START') {
+            if (actionType === 'SPECIAL_MODE_START') {
                 // step213: 지면 붕괴 DIRECT_ACT가 끝난 직후 배우들이 음수 Z/피격 상태로 남아 있으면
                 // 전용 모드 시작 실패 시 화면이 빈 기존 맵 상태로 멈춰 보일 수 있으므로, 시작 직전에 안전 복구한다.
                 const p = gameState && gameState.player;
@@ -242,33 +244,45 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
                 m.kbVy = 0;
                 if (gameState) {
                     // 이전 DIRECT_ACT용 오버레이는 여기서 종료하고, 이후에는 P2_M3 전용 INTRO가 담당한다.
-                    gameState.p2m3IntroRuntime = null;
-                    if (gameState.specialMode === 'P2_M3_DIMENSION_DEFENSE' && !(gameState.p2m3DefenseRuntime && gameState.p2m3DefenseRuntime.active)) {
+                    gameState.specialModeObjectDefenseIntroRuntime = null;
+                    if (gameState.specialMode === 'SPECIAL_MODE_OBJECT_DEFENSE' && !(gameState.specialModeObjectDefenseRuntime && gameState.specialModeObjectDefenseRuntime.active)) {
                         gameState.specialMode = null;
-                        gameState.p2m3DefenseRuntime = null;
+                        gameState.specialModeObjectDefenseRuntime = null;
                     }
                 }
                 // step214: 이전 프레임에서 시작 플래그만 true가 되었지만 실제 전용 모드 런타임이 활성화되지 않은 경우,
                 // 242073을 영구 대기시키지 말고 플래그를 풀어 다시 시작 시도한다.
-                const p2m3ActiveNow = !!(typeof P2M3DimensionDefenseSystem !== 'undefined' && P2M3DimensionDefenseSystem.isActive && P2M3DimensionDefenseSystem.isActive(gameState));
-                if (boss.p2m3ExclusiveModeStarted && !p2m3ActiveNow) {
-                    boss.p2m3ExclusiveModeStarted = false;
+                const p2m3ActiveNow = !!(typeof SpecialModeObjectDefenseSystem !== 'undefined' && SpecialModeObjectDefenseSystem.isActive && SpecialModeObjectDefenseSystem.isActive(gameState));
+
+                // 전용 모드가 정상 종료되어 결과가 확정된 경우에는 242073을 다시 시작하지 않고,
+                // 기존 Boss Action 흐름으로 복귀해 242074~242076 결과 액션을 판정한다.
+                if (!p2m3ActiveNow && String(boss.specialModeResult || '').trim()) {
+                    boss.specialModeStarted = false;
+                    if (typeof this.startNextBossPatternAction === 'function') {
+                        this.startNextBossPatternAction(m, gameState);
+                    }
+                    return true;
+                }
+
+                if (boss.specialModeStarted && !p2m3ActiveNow) {
+                    boss.specialModeStarted = false;
                     if (typeof this.pushBossDebugLog === 'function') {
                         this.pushBossDebugLog(gameState, 'P2_M3_START_RETRY', '242073 차원 방어전 시작 재시도', 'started flag existed but runtime was not active');
                     }
                 }
 
-                if (!boss.p2m3ExclusiveModeStarted && typeof P2M3DimensionDefenseSystem !== 'undefined' && P2M3DimensionDefenseSystem.startFromPattern) {
+                if (!boss.specialModeStarted && typeof SpecialModeObjectDefenseSystem !== 'undefined' && SpecialModeObjectDefenseSystem.startFromPattern) {
                     let startedP2M3 = false;
                     let activeAfterStart = false;
                     const patternIdForP2M3 = String(boss.action.Pattern_ID || boss.activePattern && boss.activePattern.Pattern_ID || '232008');
                     const sourceActionIdForP2M3 = String(boss.action.Action_ID || '');
                     try {
-                        startedP2M3 = P2M3DimensionDefenseSystem.startFromPattern(gameState, m, {
+                        startedP2M3 = SpecialModeObjectDefenseSystem.startFromPattern(gameState, m, {
                             patternId: patternIdForP2M3,
-                            sourceActionId: sourceActionIdForP2M3
+                            sourceActionId: sourceActionIdForP2M3,
+                            specialModeId: boss.action.Ref_Special_Mode
                         });
-                        activeAfterStart = !!(P2M3DimensionDefenseSystem.isActive && P2M3DimensionDefenseSystem.isActive(gameState));
+                        activeAfterStart = !!(SpecialModeObjectDefenseSystem.isActive && SpecialModeObjectDefenseSystem.isActive(gameState));
                     } catch (e) {
                         console.warn('[P2M3] startFromPattern failed', e);
                         startedP2M3 = false;
@@ -277,38 +291,39 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
                     // stale specialMode 때문에 1회 실패한 경우 강제 정리 후 한 번만 재시도한다.
                     if ((!startedP2M3 || !activeAfterStart) && gameState) {
                         gameState.specialMode = null;
-                        gameState.p2m3DefenseRuntime = null;
-                        gameState.p2m3IntroRuntime = null;
+                        gameState.specialModeObjectDefenseRuntime = null;
+                        gameState.specialModeObjectDefenseIntroRuntime = null;
                         try {
-                            startedP2M3 = P2M3DimensionDefenseSystem.startFromPattern(gameState, m, {
+                            startedP2M3 = SpecialModeObjectDefenseSystem.startFromPattern(gameState, m, {
                                 patternId: patternIdForP2M3,
-                                sourceActionId: sourceActionIdForP2M3
+                                sourceActionId: sourceActionIdForP2M3,
+                                specialModeId: boss.action.Ref_Special_Mode
                             });
-                            activeAfterStart = !!(P2M3DimensionDefenseSystem.isActive && P2M3DimensionDefenseSystem.isActive(gameState));
+                            activeAfterStart = !!(SpecialModeObjectDefenseSystem.isActive && SpecialModeObjectDefenseSystem.isActive(gameState));
                         } catch (e) {
                             console.warn('[P2M3] startFromPattern retry failed', e);
                             startedP2M3 = false;
                             activeAfterStart = false;
                         }
                     }
-                    boss.p2m3ExclusiveModeStarted = !!(startedP2M3 && activeAfterStart);
+                    boss.specialModeStarted = !!(startedP2M3 && activeAfterStart);
                     if (typeof this.pushBossDebugLog === 'function') {
-                        const rt = gameState && gameState.p2m3DefenseRuntime;
+                        const rt = gameState && gameState.specialModeObjectDefenseRuntime;
                         this.pushBossDebugLog(
                             gameState,
-                            boss.p2m3ExclusiveModeStarted ? 'P2_M3_START' : 'P2_M3_START_FAIL',
+                            boss.specialModeStarted ? 'P2_M3_START' : 'P2_M3_START_FAIL',
                             `${sourceActionIdForP2M3 || '242073'} 차원 방어전 시작`,
                             `started=${!!startedP2M3}, active=${!!activeAfterStart}, specialMode=${String(gameState && gameState.specialMode || '-')}, phase=${String(rt && rt.phase || '-')}`
                         );
                     }
-                    if (boss.p2m3ExclusiveModeStarted) return true;
+                    if (boss.specialModeStarted) return true;
                 }
                 // 그래도 시작하지 못하면 다음 프레임 재시도하되, 시작 완료 플래그를 남기지 않는다.
-                boss.p2m3ExclusiveModeStarted = false;
+                boss.specialModeStarted = false;
                 return true;
             }
-            if (actionType === 'DIRECT_ACT' && typeof P2M3DimensionDefenseSystem !== 'undefined' && P2M3DimensionDefenseSystem.updatePatternIntroAction) {
-                P2M3DimensionDefenseSystem.updatePatternIntroAction(m, boss.action, deltaTime, gameState);
+            if (actionType === 'DIRECT_ACT' && typeof SpecialModeObjectDefenseSystem !== 'undefined' && SpecialModeObjectDefenseSystem.updatePatternIntroAction) {
+                SpecialModeObjectDefenseSystem.updatePatternIntroAction(m, boss.action, deltaTime, gameState);
             }
             const hitWindow = this.getBossActionHitWindow(m, boss.action);
             const hitStart = hitWindow.start;
@@ -319,7 +334,7 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
                 this.updateBossInlineActionWarning(m, boss.action, gameState);
             }
 
-            if (!['WAIT','WARNING_PATH','WARNING','SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT','MOVE','REMOVE_ALL_OBJECT','CLEAR_PATTERN_TERRAIN_OBJECTS','DIRECT_ACT','P2_M3_EXCLUSIVE_MODE_START','P3_M3_EXCLUSIVE_MODE_START'].includes(actionType)) {
+            if (!['WAIT','WARNING_PATH','WARNING','SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT','MOVE','REMOVE_ALL_OBJECT','CLEAR_PATTERN_TERRAIN_OBJECTS','DIRECT_ACT','SPECIAL_MODE_START','P3_M3_EXCLUSIVE_MODE_START'].includes(actionType)) {
                 const rawHitEnd = parseFloat(boss.action.Hitbox_End_Time);
                 const moveWaitUntil = boss.actionMove && boss.actionMove.attackAfterMove
                     ? Math.max(0, parseFloat(boss.actionMove.duration) || parseFloat(boss.attackAfterMoveUntil) || 0)
@@ -399,7 +414,7 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
         }
 
         if (boss.isLatePhase && !boss.lateOpeningPatternStarted && !boss.lateOpeningPatternUsed) {
-            const lateOpeningId = String(boss.pendingLateOpeningPatternId || boss.phase && boss.phase.Late_Opening_Pattern_ID || '').trim();
+            const lateOpeningId = String(boss.pendingLateOpeningPatternId || boss.lateOpeningPatternId || '').trim();
             const lateOpeningPattern = lateOpeningId && lateOpeningId !== '0' && gameState.DB_BOSS_PATTERN ? gameState.DB_BOSS_PATTERN[lateOpeningId] : null;
             if (lateOpeningPattern && Array.isArray(lateOpeningPattern.Runtime_Actions) && lateOpeningPattern.Runtime_Actions.length > 0) {
                 boss.lateOpeningPatternStarted = true;

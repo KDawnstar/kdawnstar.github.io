@@ -158,9 +158,9 @@ const BossCombatSystem = {
         // 안전 fallback: 분신 교차 발도에 Groggy_Time이 비어 있어도 대형 패턴 3번의 의도값을 사용한다.
         return {
             ...sourceAction,
-            Groggy_Time: sourceAction.Groggy_Time || 8,
+            Groggy_Time: sourceAction.Groggy_Time || 10,
             Groggy_Pose_Type: sourceAction.Groggy_Pose_Type || 'POSE_KASIYAS_P1_GROGGY',
-            Groggy_Hit_DMG_Rate: sourceAction.Groggy_Hit_DMG_Rate || 1.2
+            Groggy_Hit_DMG_Rate: sourceAction.Groggy_Hit_DMG_Rate || 1.5
         };
     },
 
@@ -359,6 +359,60 @@ const BossCombatSystem = {
         return this.enterBossGroggyFromGuardSpecial(m, actionForGroggy, gameState, pending.result || {});
     },
 
+    tryEnterBossGroggyAtActionStart: function(m, action, gameState) {
+        const boss = m && m.boss ? m.boss : null;
+        if (!boss || !action || !gameState) return false;
+        const occurrence = String(action.Groggy_Occurrence_Cond || '').trim().toUpperCase();
+        if (occurrence !== 'ACTION_START') return false;
+
+        const groggyTimeData = parseFloat(action.Groggy_Time);
+        if (isNaN(groggyTimeData) || groggyTimeData <= 0) return false;
+        const baseGroggyTime = Math.max(0.2, groggyTimeData);
+        const groggyTime = (typeof GameModeSystem !== 'undefined' && GameModeSystem.adjustGroggyTime) ? GameModeSystem.adjustGroggyTime(gameState, baseGroggyTime) : baseGroggyTime;
+        const groggyPose = String(action.Groggy_Pose_Type || 'POSE_KASIYAS_P1_GROGGY').trim() || 'POSE_KASIYAS_P1_GROGGY';
+        const groggyHitRate = parseFloat(action.Groggy_Hit_DMG_Rate);
+
+        // ACTION_START 결과 액션은 패턴의 마지막 결과 처리이므로,
+        // 먼저 기존 finishBossPattern()을 거쳐 쿨타임/연결 패턴 처리를 정상 수행한 뒤 그로기에 진입한다.
+        if (boss.activePattern && typeof this.finishBossPattern === 'function') {
+            this.finishBossPattern(m, gameState);
+        } else {
+            boss.activePattern = null;
+            boss.currentActionIndex = -1;
+            boss.currentLoopIndex = 0;
+            boss.loopCount = 1;
+            boss.action = null;
+            boss.actionMove = null;
+        }
+
+        boss.groggyTimer = groggyTime;
+        boss.groggyMaxTime = groggyTime;
+        boss.groggyPoseType = groggyPose;
+        boss.groggyHitDmgRate = (!isNaN(groggyHitRate) && groggyHitRate >= 0) ? groggyHitRate : null;
+        boss.noPatternWaitTimer = Math.max(boss.noPatternWaitTimer || 0, groggyTime);
+        boss.actionHitFired = false;
+        boss.actionHitsDone = 0;
+        boss.actionCycleTimer = 0;
+        boss.parryWindowActive = false;
+        boss.parryCueTimer = 0;
+
+        m.state = 'GROGGY';
+        m.timer = 0;
+        m.hasFired = false;
+        m.kbVx = 0;
+        m.kbVy = 0;
+
+        if (typeof this.pushBossDebugLog === 'function') {
+            this.pushBossDebugLog(
+                gameState,
+                'GROGGY',
+                `${String(action.Action_ID || '').trim()} ${this.getBossDebugName ? this.getBossDebugName(action) : String(action.Action_Name || '')}`,
+                `ACTION_START / ${groggyTime.toFixed(1)}s / x${(!isNaN(groggyHitRate) ? groggyHitRate : 1).toFixed(2)}`
+            );
+        }
+        return true;
+    },
+
     enterBossGroggyFromGuardSpecial: function(m, action, gameState, result) {
         const boss = m && m.boss ? m.boss : null;
         if (!boss || !action || !gameState) return false;
@@ -366,13 +420,16 @@ const BossCombatSystem = {
         // 강인한 의지 가드 성공은 히든 보상 루트이므로 Groggy_Time(긴 그로기)을 우선 사용한다.
         const groggyTimeData = parseFloat(action.Groggy_Time);
         const parryResultValue = parseFloat(action.Parry_Result_Value);
-        const groggyTime = Math.max(0.2, (!isNaN(groggyTimeData) && groggyTimeData > 0) ? groggyTimeData : ((!isNaN(parryResultValue) && parryResultValue > 0) ? parryResultValue : 2));
+        const baseGroggyTime = Math.max(0.2, (!isNaN(groggyTimeData) && groggyTimeData > 0) ? groggyTimeData : ((!isNaN(parryResultValue) && parryResultValue > 0) ? parryResultValue : 2));
+        const groggyTime = (typeof GameModeSystem !== 'undefined' && GameModeSystem.adjustGroggyTime) ? GameModeSystem.adjustGroggyTime(gameState, baseGroggyTime) : baseGroggyTime;
         const groggyPose = String(action.Groggy_Pose_Type || 'POSE_KASIYAS_P1_GROGGY').trim() || 'POSE_KASIYAS_P1_GROGGY';
         const pattern = boss.activePattern;
 
         if (pattern) {
             const patternId = String(pattern.Pattern_ID || '').trim();
-            boss.patternCooldowns[patternId] = parseFloat(pattern.Pattern_Cooldown) || 1;
+            boss.patternCooldowns[patternId] = typeof this.getBossPatternCooldown === 'function'
+                ? this.getBossPatternCooldown(pattern, boss)
+                : (parseFloat(pattern.Pattern_Cooldown) || 1);
             this.pushBossDebugLog(
                 gameState,
                 'SPECIAL_GUARD',
@@ -717,9 +774,11 @@ const BossCombatSystem = {
         const boss = m && m.boss ? m.boss : null;
         if (!boss || !gameState || !action) return false;
         const perfect = String(mode || '').toUpperCase() !== 'PARTIAL';
-        const groggyTime = Math.max(0.2, parseFloat(action.Groggy_Time) || (perfect ? 8 : 5));
+        const baseGroggyTime = Math.max(0.2, parseFloat(action.Groggy_Time) || (perfect ? 15 : 10));
+        const groggyTime = (typeof GameModeSystem !== 'undefined' && GameModeSystem.adjustGroggyTime) ? GameModeSystem.adjustGroggyTime(gameState, baseGroggyTime) : baseGroggyTime;
         const groggyPose = String(action.Groggy_Pose_Type || 'POSE_KASIYAS_P2_GROGGY').trim() || 'POSE_KASIYAS_P2_GROGGY';
-        const groggyHitRate = parseFloat(action.Groggy_Hit_DMG_Rate);
+        const groggyHitRateData = parseFloat(action.Groggy_Hit_DMG_Rate);
+        const groggyHitRate = Number.isFinite(groggyHitRateData) && groggyHitRateData > 0 ? groggyHitRateData : 1.5;
         const center = typeof this.getBossFixedMapPosition === 'function' ? this.getBossFixedMapPosition(gameState, 'PLACE_MAP_CENTER') : null;
         if (center) {
             m.x = parseFloat(center.x) || m.x;
@@ -971,7 +1030,10 @@ const BossCombatSystem = {
             const owner = attacker && attacker.owner ? attacker.owner : attacker;
             const atk = owner && owner.d ? (parseFloat(owner.d.atk) || 50) : 50;
             const dmgRate = Math.max(1, parseFloat(mark.burstDamageRate) || 5);
-            const damage = Math.max(1, atk * dmgRate - (parseFloat(p.def) || 0));
+            const rawDamage = Math.max(1, atk * dmgRate - (parseFloat(p.def) || 0));
+            const damage = (typeof PlayerManager !== 'undefined' && PlayerManager.applyPresentationDamageRate)
+                ? PlayerManager.applyPresentationDamageRate(gameState, rawDamage)
+                : rawDamage;
             if (!(typeof PlayerManager !== 'undefined' && PlayerManager.isPracticeModeHpInvincible ? PlayerManager.isPracticeModeHpInvincible(gameState) : false)) {
                 p.hp = Math.max(0, (parseFloat(p.hp) || 0) - damage);
             }
@@ -1049,7 +1111,8 @@ const BossCombatSystem = {
         const parryResultType = String(action.Parry_Result_Type || '').trim().toUpperCase();
         const parryResultValue = parseFloat(action.Parry_Result_Value);
         const groggyTimeData = parseFloat(action.Groggy_Time);
-        const groggyTime = Math.max(0.2, (!isNaN(parryResultValue) && parryResultValue > 0) ? parryResultValue : ((!isNaN(groggyTimeData) && groggyTimeData > 0) ? groggyTimeData : 2));
+        const baseGroggyTime = Math.max(0.2, (!isNaN(parryResultValue) && parryResultValue > 0) ? parryResultValue : ((!isNaN(groggyTimeData) && groggyTimeData > 0) ? groggyTimeData : 2));
+        const groggyTime = (typeof GameModeSystem !== 'undefined' && GameModeSystem.adjustGroggyTime) ? GameModeSystem.adjustGroggyTime(gameState, baseGroggyTime) : baseGroggyTime;
         const groggyPose = String(action.Groggy_Pose_Type || 'POSE_KASIYAS_P1_GROGGY').trim() || 'POSE_KASIYAS_P1_GROGGY';
         const successEffect = String(action.Parry_Success_EFT_Type || 'EFT_SUCCESS_PARRY').trim() || 'EFT_SUCCESS_PARRY';
         const pattern = boss.activePattern;
@@ -1093,7 +1156,7 @@ const BossCombatSystem = {
                 boss.loopCount = 1;
                 boss.action = null;
                 boss.actionMove = null;
-                boss.noPatternWaitTimer = parseFloat(boss.phase && boss.phase.No_Pattern_Wait_Time) || 0.2;
+                boss.noPatternWaitTimer = parseFloat((boss.config || boss.phase || {}).No_Pattern_Wait_Time) || 0.2;
                 m.state = 'IDLE';
                 m.timer = 0;
                 m.hasFired = false;
@@ -1103,7 +1166,9 @@ const BossCombatSystem = {
 
         if (pattern) {
             const patternId = String(pattern.Pattern_ID || '').trim();
-            boss.patternCooldowns[patternId] = parseFloat(pattern.Pattern_Cooldown) || 1;
+            boss.patternCooldowns[patternId] = typeof this.getBossPatternCooldown === 'function'
+                ? this.getBossPatternCooldown(pattern, boss)
+                : (parseFloat(pattern.Pattern_Cooldown) || 1);
             this.pushBossDebugLog(
                 gameState,
                 'PARRY',
@@ -1240,6 +1305,77 @@ const BossCombatSystem = {
         return signedFrontX >= frontStart && signedFrontX <= frontEnd && dy <= sideTolerance;
     },
 
+    getBossHpTriggerProtectionTarget: function(m, gameState) {
+        const boss = m && m.boss ? m.boss : null;
+        if (!boss || !m || !gameState) return null;
+        if (gameState.bossPractice && gameState.bossPractice.enabled) return null;
+        if (!m.isStageBoss) return null;
+        if (m.p3m3MainBossSuppressed) return null;
+
+        const phase = boss.config || boss.phase || {};
+        const phaseOrder = parseInt(phase.Phase_Order, 10) || 0;
+        const maxHp = Math.max(1, parseFloat(m.maxHp) || parseFloat(m.d && m.d.hp) || 1);
+        const currentHp = Math.max(0, parseFloat(m.hp) || 0);
+
+        if ((phaseOrder === 1 || phaseOrder === 2) && !boss.lateOpeningPatternUsed && !boss.lateOpeningPatternStarted) {
+            const rawThreshold = parseFloat(phase.Late_Phase_HP_Rate);
+            if (Number.isFinite(rawThreshold)) {
+                const thresholdRate = Math.max(0, Math.min(1, rawThreshold > 1 ? rawThreshold / 100 : rawThreshold));
+                const patternId = String(boss.lateOpeningPatternId || '').trim();
+                if (thresholdRate > 0 && patternId && patternId !== '0') {
+                    return { thresholdRate, thresholdHp: maxHp * thresholdRate, patternId, phaseOrder, kind: 'LATE_OPENING' };
+                }
+            }
+        }
+
+        if (phaseOrder === 3) {
+            let patterns = gameState.DB_BOSS_PATTERN_BY_SET && gameState.DB_BOSS_PATTERN_BY_SET[boss.patternSetId]
+                ? gameState.DB_BOSS_PATTERN_BY_SET[boss.patternSetId]
+                : [];
+            patterns = patterns
+                .filter(pattern => String(pattern && pattern.Pattern_Cond_Type || '').trim().toUpperCase() === 'KASIYAS_P3_HP_UNDER')
+                .map(pattern => {
+                    const raw = parseFloat(pattern.Pattern_Cond_Value);
+                    const thresholdRate = Number.isFinite(raw) ? Math.max(0, Math.min(1, raw > 1 ? raw / 100 : raw)) : 0;
+                    return { pattern, thresholdRate };
+                })
+                .filter(item => item.thresholdRate > 0)
+                .sort((a, b) => b.thresholdRate - a.thresholdRate);
+
+            boss.usedPatternIds = boss.usedPatternIds || {};
+            for (const item of patterns) {
+                const patternId = String(item.pattern.Pattern_ID || '').trim();
+                if (!patternId || boss.usedPatternIds[patternId]) continue;
+                if (boss.activePattern && String(boss.activePattern.Pattern_ID || '').trim() === patternId) continue;
+                const thresholdHp = maxHp * item.thresholdRate;
+                if (currentHp > thresholdHp + 0.0001) {
+                    return { thresholdRate: item.thresholdRate, thresholdHp, patternId, phaseOrder, kind: 'P3_MAJOR' };
+                }
+                // 임계 HP에 이미 고정된 프레임에서 아직 패턴이 시작되지 않은 경우도 보호를 유지한다.
+                if (Math.abs(currentHp - thresholdHp) <= 0.0001) {
+                    return { thresholdRate: item.thresholdRate, thresholdHp, patternId, phaseOrder, kind: 'P3_MAJOR' };
+                }
+            }
+        }
+        return null;
+    },
+
+    showBossHpTriggerInvincibleFeedback: function(m, gameState, boss) {
+        if (!m || !gameState || !boss) return;
+        const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() / 1000 : Date.now() / 1000;
+        const guard = boss.hpTriggerProtection || {};
+        if (guard.lastNoticeAt && now - guard.lastNoticeAt < 0.55) return;
+        guard.lastNoticeAt = now;
+        boss.hpTriggerProtection = guard;
+        const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
+        if (Array.isArray(gameState.floatingTexts)) {
+            gameState.floatingTexts.push({
+                x: m.x, y: m.y, z: (m.z || 0) + bodyZ + 18,
+                text: '무적', color: '#ffcf9d', size: '22px', timer: 0.45
+            });
+        }
+    },
+
     takeDamage: function(m, baseDmg, gameState) {
         const boss = m && m.boss ? m.boss : null;
         const action = boss && boss.action ? boss.action : null;
@@ -1247,6 +1383,11 @@ const BossCombatSystem = {
         const defenceType = String(action && action.Action_Defence_Type || '').trim().toUpperCase();
 
         if (m && m.p3m3MainBossSuppressed) {
+            return;
+        }
+
+        if (boss && boss.hpTriggerProtection && boss.hpTriggerProtection.active && !(gameState.bossPractice && gameState.bossPractice.enabled)) {
+            this.showBossHpTriggerInvincibleFeedback(m, gameState, boss);
             return;
         }
 
@@ -1265,8 +1406,8 @@ const BossCombatSystem = {
             return;
         }
 
-        if (typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.onMonsterPlayerHit) {
-            P3M3FinalIssenSystem.onMonsterPlayerHit(m, baseDmg, gameState);
+        if (typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.onPlayerAttackBossObjectHit) {
+            P3M3FinalIssenSystem.onPlayerAttackBossObjectHit(m, baseDmg, gameState);
         }
 
         if (this.isBossFrontDamageImmuneAgainstPlayer && this.isBossFrontDamageImmuneAgainstPlayer(m, gameState)) {
@@ -1299,7 +1440,8 @@ const BossCombatSystem = {
             return;
         }
 
-        if (defenceType === 'INVINCIBLE' && explicitActionRate === null) {
+        const baseDefenceType = String(m && m.d && m.d.defType || '').trim().toUpperCase();
+        if (defenceType === 'INVINCIBLE' || baseDefenceType === 'INVINCIBLE') {
             const bodyZ = ((m.d && m.d.bodyZ) || 160) * (m.scale || 1);
             gameState.floatingTexts.push({
                 x: m.x,
@@ -1315,9 +1457,9 @@ const BossCombatSystem = {
 
         let scaledDmg = calcScaledDamage(gameState.player.level, m.d.level, baseDmg);
         let finalDmg = Math.max(1, scaledDmg - m.d.def);
-        // F12 디버그 슈퍼 모드: 후반부 진입 테스트를 쉽게 하기 위해 보스가 받는 플레이어 피해만 10배로 증폭한다.
+        // F9 무적 모드: 후반부 진입 테스트를 쉽게 하기 위해 보스가 받는 플레이어 피해만 10배로 증폭한다.
         // 차원 방어전 전용 검기 HP/스킬 판정에는 적용하지 않는다.
-        if (gameState && gameState.superDamageMode && !(gameState.specialMode === 'P2_M3_DIMENSION_DEFENSE')) {
+        if (gameState && gameState.superDamageMode && !(gameState.specialMode === 'SPECIAL_MODE_OBJECT_DEFENSE')) {
             finalDmg *= 10;
         }
         const receivedRate = this.getBossReceivedDamageRate(m);
@@ -1335,9 +1477,33 @@ const BossCombatSystem = {
             });
             return;
         }
-        m.hp -= finalDmg;
+        const hpBefore = Math.max(0, parseFloat(m.hp) || 0);
+        let appliedDmg = finalDmg;
+        const triggerTarget = this.getBossHpTriggerProtectionTarget(m, gameState);
+        if (triggerTarget && hpBefore - finalDmg <= triggerTarget.thresholdHp + 0.0001) {
+            const clampedHp = Math.max(0, Math.min(hpBefore, triggerTarget.thresholdHp));
+            appliedDmg = Math.max(0, hpBefore - clampedHp);
+            m.hp = clampedHp;
+            if (boss) {
+                boss.hpTriggerProtection = {
+                    active: true,
+                    patternId: triggerTarget.patternId,
+                    thresholdRate: triggerTarget.thresholdRate,
+                    thresholdHp: triggerTarget.thresholdHp,
+                    kind: triggerTarget.kind,
+                    lastNoticeAt: 0
+                };
+                if (typeof this.pushBossDebugLog === 'function') {
+                    this.pushBossDebugLog(gameState, 'HP_GUARD', `${Math.round(triggerTarget.thresholdRate * 100)}% 보호`, `패턴 ${triggerTarget.patternId} 시작 대기`);
+                }
+            }
+        } else {
+            m.hp = hpBefore - finalDmg;
+        }
         
-        gameState.floatingTexts.push({x: m.x, y: m.y, z: m.z + (m.d.bodyZ * m.scale) + 20, text: `${finalDmg.toFixed(0)}`, color: receivedRate < 1 ? "#d7ecff" : "#fff", size: "36px", timer: 1.0});
+        if (appliedDmg > 0) {
+            gameState.floatingTexts.push({x: m.x, y: m.y, z: m.z + (m.d.bodyZ * m.scale) + 20, text: `${appliedDmg.toFixed(0)}`, color: receivedRate < 1 ? "#d7ecff" : "#fff", size: "36px", timer: 1.0});
+        }
         gameState.effects.push({ type: 'hitSpark', renderType: 'EFT_HIT', x: m.x, y: m.y, z: m.z + m.d.bodyZ*m.scale/2, life: 0.15, maxLife: 0.15 });
 
         gameState.targetUI.monster = m; gameState.targetUI.timer = 3.0;

@@ -1,5 +1,5 @@
 // 3페이즈 대형 패턴3: 233008 세계를 가르는 일섬 전용 모드
-// 데이터 시트(P3_M3_*)의 맵/분신/루트 정보를 기존 보스 루프 위에 얇게 얹는다.
+// 공용 Stage/Boss/Portal/Action/Object 데이터 위에 P3_M3 전용 진행/대화 런타임만 얹는다.
 
 const P3M3FinalIssenSystem = {
     MODE: 'P3_M3_FINAL_ISSEN',
@@ -38,105 +38,78 @@ const P3M3FinalIssenSystem = {
 
     getDialogueRows(gameState, dialogueId) {
         const key = this.id(dialogueId);
-        return (gameState.DB_P3_M3_DIALOGUE || [])
-            .filter(row => this.id(row.Dialogue_ID) === key)
+        return (gameState.DB_DIALOGUE || [])
+            .filter(row => (
+                this.id(row.Dialogue_ID) === key &&
+                this.id(row.Dialogue_Render_Type).toUpperCase() === 'DIALOGUE_BOX'
+            ))
             .sort((a, b) => this.num(a.Line_Order, 0) - this.num(b.Line_Order, 0));
     },
 
     findDialogueFirstLine(gameState, triggerType, options = {}) {
         const trigger = this.id(triggerType).toUpperCase();
         if (!trigger) return null;
-        const areaId = this.id(options.areaId || '');
-        const routeId = this.id(options.routeId || '');
-        const monsterId = this.id(options.monsterId || '');
-        const rows = (gameState.DB_P3_M3_DIALOGUE || [])
-            .filter(row => this.id(row.Trigger_Type).toUpperCase() === trigger)
+        const triggerValue = this.id(options.triggerValue);
+        const rows = (gameState.DB_DIALOGUE || [])
+            .filter(row => (
+                this.id(row.Dialogue_Render_Type).toUpperCase() === 'DIALOGUE_BOX' &&
+                this.id(row.Trigger_Type).toUpperCase() === trigger
+            ))
             .sort((a, b) => this.num(a.Dialogue_ID, 0) - this.num(b.Dialogue_ID, 0));
 
         for (const row of rows) {
-            const rowArea = this.id(row.Area_ID || '');
-            const rowRoute = this.id(row.Route_ID || '');
-            const rowMonster = this.id(row.Trigger_Monster_ID || '');
-            if (areaId && rowArea && rowArea !== areaId) continue;
-            if (routeId && rowRoute && rowRoute !== routeId) continue;
-            if (monsterId && rowMonster && rowMonster !== monsterId) continue;
-            if (!this.checkDialogueCondition(gameState, row)) continue;
+            const rowValue = this.id(row.Trigger_Value);
+            if (triggerValue && rowValue !== triggerValue) continue;
             const lines = this.getDialogueRows(gameState, row.Dialogue_ID);
             if (lines.length > 0) return row;
         }
         return null;
     },
 
-    checkDialogueCondition(gameState, row) {
-        const cond = this.id(row && row.Trigger_Cond_Type).toUpperCase();
-        if (!cond) return true;
-        const values = this.splitIds(row.Trigger_Cond_Value);
-        if (cond === 'PLAYER_HAS_OBJECT') {
-            if (values.length <= 0) return true;
-            return values.every(value => this.playerHasTalkObject(gameState, value));
-        }
-        if (cond === 'PLAYER_HAS_ALL_OBJECTS') {
-            return values.every(value => this.playerHasTalkObject(gameState, value));
-        }
-        if (cond === 'BOTH_TALK') {
-            const rt = gameState && gameState.p3m3Runtime;
-            return !!(rt && rt.leftResult === 'TALK_CLEAR' && rt.rightResult === 'TALK_CLEAR');
-        }
-        if (cond === 'NOT_BOTH_TALK') {
-            const rt = gameState && gameState.p3m3Runtime;
-            return !(rt && rt.leftResult === 'TALK_CLEAR' && rt.rightResult === 'TALK_CLEAR');
-        }
-        return true;
+    findDialogueLineActions(gameState, dialogueId, lineOrder) {
+        const key = `${this.id(dialogueId)}:${this.id(lineOrder)}`;
+        if (!key || key === ':') return [];
+        return this.getP3PatternActions(gameState)
+            .filter(action => (
+                this.id(action.Action_Condition_Type).toUpperCase() === 'DIALOGUE_LINE_START' &&
+                this.id(action.Action_Condition_Value) === key
+            ))
+            .sort((a, b) => this.num(a.Action_ID, 0) - this.num(b.Action_ID, 0));
     },
 
-    applyDialogueLineEvent(gameState, line) {
+    getDialogueActionSourceMonster(gameState) {
         const rt = gameState && gameState.p3m3Runtime;
-        if (!rt || !line) return false;
-        const eventType = this.id(line.Line_Event_Type || line.Trigger_Cond_Type).toUpperCase();
-        const eventValue = this.id(line.Line_Event_Value || line.Trigger_Cond_Value);
-        if (!eventType || eventType === 'NONE') return false;
-
-        if (eventType === 'KASIYAS_RENDER_CHANGE') {
-            const modelName = eventValue || 'RENDER_KASIYAS_FULL_POWER';
-            const targetMonsterId = this.id(line.Trigger_Monster_ID || '');
-            const candidates = [];
-            if (rt.monstersByRole) {
-                if (rt.monstersByRole.TRUE_BOSS) candidates.push(rt.monstersByRole.TRUE_BOSS);
-                if (rt.monstersByRole.CENTER_BOSS) candidates.push(rt.monstersByRole.CENTER_BOSS);
-            }
-            (gameState.monsters || []).forEach(m => {
-                if (!m || !m.active || !m.isP3M3Monster) return;
-                if (targetMonsterId && this.id(m.p3m3Row && m.p3m3Row.P3_M3_Monster_ID) !== targetMonsterId) return;
-                candidates.push(m);
-            });
-            const seen = new Set();
-            candidates.forEach(m => {
-                if (!m || seen.has(m)) return;
-                seen.add(m);
-                if (m.d) {
-                    m.d.renderType = modelName;
-                    m.d.Model_Render_Type = modelName;
-                    m.d.p3m3ModelName = modelName;
-                }
-                m.p3m3CurrentModelName = modelName;
-                m.p3m3PendingModelName = '';
-                m.p3m3FullPowerAwakened = modelName === 'RENDER_KASIYAS_FULL_POWER';
-            });
-            rt.hiddenFullPowerModelApplied = true;
-            return true;
-        }
-        return false;
+        if (!rt || !rt.monstersByRole) return null;
+        return rt.monstersByRole.CENTER_BOSS || rt.monstersByRole.TRUE_BOSS || null;
     },
 
-    applyCurrentDialogueLineEvent(gameState) {
+    executeDialogueLineActions(gameState, dialogue, line) {
+        if (!dialogue || !line) return false;
+        const lineOrder = this.id(line.Line_Order);
+        const actions = this.findDialogueLineActions(gameState, dialogue.dialogueId, lineOrder);
+        if (!actions.length) return false;
+
+        let executed = false;
+        for (const action of actions) {
+            const source = this.getDialogueActionSourceMonster(gameState);
+            if (!source || !source.boss) continue;
+            if (typeof MonsterManager !== 'undefined' && MonsterManager.onBossPatternActionStart) {
+                MonsterManager.onBossPatternActionStart(source, action, gameState);
+                executed = true;
+            }
+        }
+        return executed;
+    },
+
+    applyCurrentDialogueLineActions(gameState) {
         const rt = gameState && gameState.p3m3Runtime;
         const dlg = rt && rt.dialogue;
         if (!dlg || !dlg.active) return false;
         const idx = Math.max(0, parseInt(dlg.index, 10) || 0);
-        if (dlg.lastLineEventIndex === idx) return false;
-        dlg.lastLineEventIndex = idx;
+        if (dlg.lastTriggeredLineIndex === idx) return false;
+        dlg.lastTriggeredLineIndex = idx;
         const line = dlg.lines && dlg.lines[idx];
-        return this.applyDialogueLineEvent(gameState, line);
+        return this.executeDialogueLineActions(gameState, dlg, line);
     },
 
     startDialogueByTrigger(gameState, triggerType, options = {}) {
@@ -144,9 +117,8 @@ const P3M3FinalIssenSystem = {
         if (!first) return false;
         return this.startDialogue(gameState, first.Dialogue_ID, {
             triggerType,
-            triggerMonsterId: options.monsterId || first.Trigger_Monster_ID,
-            routeId: options.routeId || first.Route_ID,
-            areaId: options.areaId || first.Area_ID
+            triggerValue: options.triggerValue !== undefined ? options.triggerValue : first.Trigger_Value,
+            contextRole: options.contextRole || ''
         });
     },
 
@@ -175,19 +147,18 @@ const P3M3FinalIssenSystem = {
             lines,
             index: 0,
             timer: Math.max(0.15, this.num(lines[0].Display_Time, 3)),
-            triggerType: this.id(options.triggerType || lines[0].Trigger_Type),
-            triggerMonsterId: this.id(options.triggerMonsterId || lines[0].Trigger_Monster_ID),
-            routeId: this.id(options.routeId || lines[0].Route_ID),
-            areaId: this.id(options.areaId || lines[0].Area_ID),
+            triggerType: this.id(options.triggerType || lines[0].Trigger_Type).toUpperCase(),
+            triggerValue: this.id(options.triggerValue !== undefined ? options.triggerValue : lines[0].Trigger_Value),
+            contextRole: this.id(options.contextRole),
             consumedKeys: { KeyX: false, Space: false },
-            lastLineEventIndex: -1
+            lastTriggeredLineIndex: -1
         };
         if (gameState.keys) {
             gameState.keys.KeyX = false;
             gameState.keys.Space = false;
         }
         this.applyDialogueControl(gameState, lines[0]);
-        this.applyCurrentDialogueLineEvent(gameState);
+        this.applyCurrentDialogueLineActions(gameState);
         return true;
     },
 
@@ -229,7 +200,7 @@ const P3M3FinalIssenSystem = {
             const line = dlg.lines[dlg.index] || {};
             dlg.timer = Math.max(0.15, this.num(line.Display_Time, 3));
             this.applyDialogueControl(gameState, line);
-            this.applyCurrentDialogueLineEvent(gameState);
+            this.applyCurrentDialogueLineActions(gameState);
             if (gameState.keys) {
                 gameState.keys.KeyX = false;
                 gameState.keys.Space = false;
@@ -243,89 +214,97 @@ const P3M3FinalIssenSystem = {
         const rt = gameState && gameState.p3m3Runtime;
         const dlg = rt && rt.dialogue;
         if (!dlg) return false;
-        const lastLine = Array.isArray(dlg.lines) && dlg.lines.length ? dlg.lines[dlg.lines.length - 1] : null;
+        const completed = {
+            dialogueId: this.id(dlg.dialogueId),
+            triggerType: this.id(dlg.triggerType).toUpperCase(),
+            triggerValue: this.id(dlg.triggerValue),
+            contextRole: this.id(dlg.contextRole)
+        };
         rt.dialogue = null;
         if (gameState.keys) {
             gameState.keys.KeyX = false;
             gameState.keys.Space = false;
         }
-        this.processDialogueEndEvent(gameState, lastLine, dlg);
+        this.handleDialogueCompleted(gameState, completed);
         return true;
     },
 
-    processDialogueEndEvent(gameState, line, dialogue) {
-        const eventType = this.id(line && line.End_Event_Type).toUpperCase();
-        const eventValue = this.id(line && line.End_Event_Value);
-        if (!eventType || eventType === 'NONE') return;
+    handleDialogueCompleted(gameState, dialogue) {
+        const rt = gameState && gameState.p3m3Runtime;
+        if (!rt || !dialogue) return false;
+        const triggerType = this.id(dialogue.triggerType).toUpperCase();
+        const triggerValue = this.id(dialogue.triggerValue);
 
-        if (eventType === 'USE_TRIGGER_MONSTER_TALK_RESULT') {
-            const monsterKey = eventValue || this.id(dialogue && dialogue.triggerMonsterId);
-            const row = this.getMonsterRow(gameState, monsterKey);
-            const role = row ? this.id(row.Monster_Role) : '';
-            if (role) this.markAreaClear(gameState, role, 'TALK_CLEAR');
-            return;
-        }
-
-        if (eventType === 'START_HIDDEN_TRUE_BOSS_BATTLE') {
-            this.startHiddenBattle(gameState, eventValue || 'DIALOGUE_END');
-            return;
-        }
-
-        if (eventType === 'START_ROUTE_FINAL_ATTACK') {
-            const rt = gameState && gameState.p3m3Runtime;
-            if (rt && rt.route && rt.routeType === 'ROUTE_HIDDEN') {
-                // 히든 루트 시작 대화 종료 시에는 즉시 최종 일섬으로 가지 않는다.
-                // 전력 카시야스 전투를 시작하고, 본체 HP 자연 감소가 1%에 도달했을 때만 일섬에 진입한다.
-                this.startHiddenBattle(gameState, 'DIALOGUE_END');
-            } else if (rt && rt.route && !rt.finalPending && !rt.finalStarted) {
-                this.armFinalAttack(gameState, 'DIALOGUE_END');
+        if (triggerType === 'STAGE_ENTER') {
+            let role = this.id(dialogue.contextRole).toUpperCase();
+            if (!role) {
+                if (triggerValue === this.getLeftStageId(gameState)) role = 'P1_CLONE';
+                if (triggerValue === this.getRightStageId(gameState)) role = 'P2_CLONE';
             }
-            return;
-        }
-
-        if (eventType === 'PATTERN_END' || eventType === 'DUNGEON_CLEAR') {
-            const rt = gameState && gameState.p3m3Runtime;
-            const successType = this.id(rt && rt.route && rt.route.Success_Result_Type)
-                || this.id(rt && rt.system && rt.system.Clear_Result_Type)
-                || eventType;
-            if (rt && rt.routeType === 'ROUTE_HIDDEN' && rt.hiddenWhiteBackdrop) {
-                this.startHiddenClearReturn(gameState, successType);
-            } else {
-                this.executeResultType(gameState, successType, { fallbackSuccess: true, reason: eventType });
+            if (role) {
+                this.markAreaClear(gameState, role, 'TALK_CLEAR');
+                return true;
             }
-            return;
         }
 
-        if (eventType === 'RETURN_NORMAL_MAP') {
-            this.executeResultType(gameState, eventType, { fallbackSuccess: false, reason: eventType });
+        if (triggerType === 'EVENT' && triggerValue === 'P3_M3_HIDDEN_START') {
+            this.startHiddenBattle(gameState, 'DIALOGUE_END');
+            return true;
         }
+
+        if (triggerType === 'EVENT' && triggerValue === 'P3_M3_HIDDEN_CLEAR') {
+            this.startHiddenClearReturn(gameState, 'PATTERN_SUCCESS');
+            return true;
+        }
+
+        return false;
     },
 
-    getSystem(gameState) {
-        return (gameState.DB_P3_M3_SYSTEM || [])[0] || {};
+    getStage(gameState, stageId) {
+        const key = this.id(stageId);
+        return (gameState.DB_STAGE || []).find(row => this.id(row.Stage_ID) === key) || null;
     },
 
-    getArea(gameState, areaId) {
-        const key = this.id(areaId);
-        return (gameState.DB_P3_M3_AREA || []).find(row => this.id(row.Area_ID) === key) || null;
+    getStageByType(gameState, stageType) {
+        const key = this.id(stageType).toUpperCase();
+        return (gameState.DB_STAGE || []).find(row => this.id(row.Stage_Type).toUpperCase() === key) || null;
     },
+
+    getP3StageId(gameState, role, fallback = '') {
+        const row = this.getStageByType(gameState, `P3_M3_${this.id(role).toUpperCase()}`);
+        return this.id(row && row.Stage_ID) || this.id(fallback);
+    },
+
+    getCenterStageId(gameState) { return this.getP3StageId(gameState, 'CENTER', 601002); },
+    getLeftStageId(gameState) { return this.getP3StageId(gameState, 'LEFT', 601003); },
+    getRightStageId(gameState) { return this.getP3StageId(gameState, 'RIGHT', 601004); },
 
     getMonsterRow(gameState, roleOrId) {
+        const roleMap = {
+            CENTER_BOSS: { id: '209001', stageType: 'P3_M3_CENTER' },
+            P1_CLONE: { id: '209002', stageType: 'P3_M3_LEFT' },
+            P2_CLONE: { id: '209003', stageType: 'P3_M3_RIGHT' },
+            TRUE_BOSS: { id: '209004', stageType: 'P3_M3_CENTER' }
+        };
         const key = this.id(roleOrId);
-        return (gameState.DB_P3_M3_MONSTER || []).find(row => (
-            this.id(row.P3_M3_Monster_ID) === key ||
-            this.id(row.Monster_Role).toUpperCase() === key.toUpperCase()
-        )) || null;
-    },
-
-    getRoute(gameState, type) {
-        const key = this.id(type).toUpperCase();
-        return (gameState.DB_P3_M3_ROUTE || []).find(row => this.id(row.Route_Type).toUpperCase() === key) || null;
-    },
-
-    getRouteById(gameState, routeId) {
-        const key = this.id(routeId);
-        return (gameState.DB_P3_M3_ROUTE || []).find(row => this.id(row.Route_ID) === key) || null;
+        const upper = key.toUpperCase();
+        let role = roleMap[upper] ? upper : '';
+        if (!role) {
+            role = Object.keys(roleMap).find(name => roleMap[name].id === key) || '';
+        }
+        if (!role) return null;
+        const info = roleMap[role];
+        const bossData = gameState && gameState.DB_MONSTER ? gameState.DB_MONSTER[info.id] || null : null;
+        if (!bossData) return null;
+        const stage = this.getStageByType(gameState, info.stageType);
+        return {
+            P3_M3_Monster_ID: info.id,
+            Monster_Role: role,
+            Stage_ID: this.id(stage && stage.Stage_ID),
+            AI_Type: bossData.aiType || '',
+            Model_Name: bossData.renderType || '',
+            Boss_Data: bossData
+        };
     },
 
     getPatternRow(gameState, patternId) {
@@ -346,72 +325,71 @@ const P3M3FinalIssenSystem = {
         return Math.max(0.001, Math.min(1, percent / 100));
     },
 
-    normalizeAreaResult(value) {
-        const raw = this.id(value).toUpperCase();
-        if (!raw) return '';
-        if (raw === 'ANY_CLEAR') return 'ANY_CLEAR';
-        if (raw.includes('TALK_CLEAR')) return 'TALK_CLEAR';
-        if (raw.includes('KILL_CLEAR')) return 'KILL_CLEAR';
-        return raw;
+    getP3PatternActions(gameState) {
+        const table = gameState && gameState.DB_BOSS_PATTERN_ACTION ? gameState.DB_BOSS_PATTERN_ACTION : {};
+        return Object.values(table).filter(action => this.id(action && action.Pattern_ID) === '233008');
     },
 
-    resultMatches(actual, actualData, required) {
-        const req = this.normalizeAreaResult(required);
-        if (!req) return true;
-        const cur = this.normalizeAreaResult(actual);
-        const raw = this.id(actualData).toUpperCase();
-        if (req === 'ANY_CLEAR') return !!cur;
-        return cur === req || raw === this.id(required).toUpperCase();
+    findP3Action(gameState, predicate, fallbackId = '') {
+        const rows = this.getP3PatternActions(gameState);
+        const found = rows.find(action => action && predicate(action));
+        return found || (fallbackId ? this.getAction(gameState, fallbackId) : null);
     },
 
-    routeMatches(gameState, route) {
-        const rt = gameState && gameState.p3m3Runtime;
-        if (!rt || !route) return false;
-        const requiredArea = this.id(route.Required_Area_ID);
-        const areaMatch = !requiredArea || requiredArea === this.id(rt.currentAreaId);
-        const leftMatch = this.resultMatches(rt.leftResult, rt.leftResultData, route.Required_Left_Result);
-        const rightMatch = this.resultMatches(rt.rightResult, rt.rightResultData, route.Required_Right_Result);
-        const cond = this.id(route.Result_Cond_Type).toUpperCase();
-        const bothTalk = this.normalizeAreaResult(rt.leftResult) === 'TALK_CLEAR' && this.normalizeAreaResult(rt.rightResult) === 'TALK_CLEAR';
-        if (cond === 'BOTH_TALK') return areaMatch && bothTalk && leftMatch && rightMatch;
-        if (cond === 'NOT_BOTH_TALK') return areaMatch && !!rt.leftResult && !!rt.rightResult && !bothTalk && leftMatch && rightMatch;
-        if (cond === 'MATCH_ANY') return areaMatch && (leftMatch || rightMatch);
-        return areaMatch && leftMatch && rightMatch;
+    getTimeLimitAction(gameState) {
+        return this.findP3Action(
+            gameState,
+            action => this.id(action.Action_Type).toUpperCase() === 'PATTERN_TIME_LIMIT',
+            243076
+        );
     },
 
-    findMatchingRoute(gameState) {
-        return (gameState.DB_P3_M3_ROUTE || []).find(route => this.routeMatches(gameState, route)) || null;
+    getResultAction(gameState, resultType) {
+        const result = this.id(resultType).toUpperCase();
+        return this.findP3Action(gameState, action => (
+            this.id(action.Action_Condition_Type).toUpperCase() === 'P3_M3_RESULT' &&
+            this.id(action.Action_Condition_Value).toUpperCase() === result
+        ), result === 'SUCCESS' ? 243077 : 243078);
     },
 
-    getGaugeType(rt) {
-        return this.id(rt && rt.route && rt.route.Gauge_Type).toUpperCase();
+    getPatternObjectData(gameState, objectId) {
+        const key = this.id(objectId);
+        return gameState && gameState.DB_BOSS_PATTERN_OBJECT
+            ? (gameState.DB_BOSS_PATTERN_OBJECT[key] || gameState.DB_BOSS_PATTERN_OBJECT[parseInt(key, 10)] || null)
+            : null;
+    },
+
+    resolveRouteTypeFromPlayer(gameState) {
+        const p = gameState && gameState.player;
+        return p && p.p3TrialWillBuff && p.p3TrialBodyBuff ? 'ROUTE_HIDDEN' : 'ROUTE_NORMAL';
+    },
+
+    buildRuntimeRoute(gameState, routeType) {
+        const type = this.id(routeType).toUpperCase() === 'ROUTE_HIDDEN' ? 'ROUTE_HIDDEN' : 'ROUTE_NORMAL';
+        const hidden = type === 'ROUTE_HIDDEN';
+        const charge = hidden
+            ? this.findP3Action(gameState, a => this.id(a.Action_Condition_Type).toUpperCase() === 'OBJECT_REMOVE' && this.id(a.Action_Condition_Value) === '253019', 243074)
+            : this.findP3Action(gameState, a => this.id(a.Action_Condition_Type).toUpperCase() === 'PORTAL_USED' && this.id(a.Action_Condition_Value) === '701004', 243072);
+        const chargeId = this.id(charge && charge.Action_ID);
+        const attack = hidden
+            ? this.findP3Action(gameState, a => this.id(a.Action_Condition_Type).toUpperCase() === 'ACTION_END' && this.id(a.Action_Condition_Value) === chargeId && this.bool(a.Parry_Enable), 243075)
+            : this.findP3Action(gameState, a => this.id(a.Action_Condition_Type).toUpperCase() === 'ACTION_END' && this.id(a.Action_Condition_Value) === chargeId && this.bool(a.ATK_Can_Guard), 243073);
+        return {
+            Route_ID: '',
+            Route_Name: hidden ? '히든 분기' : '일반 분기',
+            Route_Type: type,
+            Start_State: hidden ? 'BATTLE_START' : 'NORMAL_ISSEN_READY',
+            Target_Monster_ID: hidden ? 209004 : 209001,
+            Final_Attack_Caster_Monster_ID: hidden ? 209004 : 209001,
+            Final_Attack_Charge_Action_ID: this.id(charge && charge.Action_ID) || (hidden ? '243074' : '243072'),
+            Final_Attack_ATK_Action_ID: this.id(attack && attack.Action_ID) || (hidden ? '243075' : '243073'),
+            Final_Response_Type: hidden ? 'PARRY' : 'GUARD',
+            Final_Attack_Start_Delay: 0
+        };
     },
 
     getFinalResponseType(rt) {
         return this.id(rt && rt.route && rt.route.Final_Response_Type).toUpperCase();
-    },
-
-    checkFinalAttackStartCondition(gameState, route) {
-        const rt = gameState && gameState.p3m3Runtime;
-        if (!rt || !route) return false;
-        const cond = this.id(route.Final_Attack_Start_Cond_Type).toUpperCase();
-        const value = this.num(route.Final_Attack_Start_Cond_Value, 0);
-        if (cond === 'LEFT_AND_RIGHT_CLEAR_AND_CENTER_RETURN') {
-            const centerId = this.id((rt.system || this.getSystem(gameState)).Center_Area_ID || 902001);
-            return !!rt.leftResult && !!rt.rightResult && !!rt.centerAreaReturned && this.id(rt.currentAreaId) === centerId;
-        }
-        if (cond === 'MAIN_BOSS_HP_UNDER' || cond === 'BOSS_HP_UNDER') {
-            const main = rt.linkedBoss;
-            return !!main && (main.hp / Math.max(1, main.maxHp || 1)) <= Math.max(0, value);
-        }
-        if (cond === 'GAUGE_FULL') return (rt.gauge || 0) >= (rt.gaugeMax || 100);
-        if (!cond || cond === 'NONE') return true;
-        // 미지원 조건은 기존 루트별 판정을 fallback으로 유지한다.
-        if (rt.routeType === 'ROUTE_HIDDEN') {
-            const main = rt.linkedBoss;
-            return !!main && (main.hp / Math.max(1, main.maxHp || 1)) <= Math.max(0.001, value || 0.01);
-        }
-        return !!rt.leftResult && !!rt.rightResult;
     },
 
     executeResultType(gameState, resultType, options = {}) {
@@ -447,15 +425,14 @@ const P3M3FinalIssenSystem = {
     executeRouteFinalResult(gameState, success, reason = '') {
         const rt = gameState && gameState.p3m3Runtime;
         if (!rt) return false;
-        const system = rt.system || this.getSystem(gameState);
-        const type = success
-            ? this.id(rt.route && rt.route.Success_Result_Type) || this.id(system.Clear_Result_Type) || 'DUNGEON_CLEAR'
-            : this.id(rt.route && rt.route.Fail_Result_Type) || 'RETURN_NORMAL_MAP';
-        return this.executeResultType(gameState, type, {
-            fallbackSuccess: !!success,
-            reason: reason || type,
-            damageAlreadyApplied: !success && !!(rt.finalStarted || rt.finalResolving),
-            preservePlayerDeath: !success && !!(gameState.player && gameState.player.hp <= 0)
+        const resultAction = this.getResultAction(gameState, success ? 'SUCCESS' : 'FAIL');
+        rt.resultActionId = this.id(resultAction && resultAction.Action_ID);
+        if (success) {
+            return this.finish(gameState, true, reason || 'P3_M3_RESULT_SUCCESS', { resultAction });
+        }
+        return this.finish(gameState, false, reason || 'P3_M3_RESULT_FAIL', {
+            resultAction,
+            preservePlayerDeath: !!(gameState.player && gameState.player.hp <= 0)
         });
     },
 
@@ -474,7 +451,7 @@ const P3M3FinalIssenSystem = {
 
             const combatMonster = options.combatMonster || (gameState.monsters || []).find(m => (
                 m && m.active && m.isP3M3Monster && !m.p3m3TalkStandby &&
-                this.id(m.p3m3Row && m.p3m3Row.Area_ID) === this.id(rt.currentAreaId)
+                this.id(m.p3m3Row && m.p3m3Row.Stage_ID) === this.id(rt.currentAreaId)
             ));
             if (combatMonster) this.cleanupP3M3MonsterObjects(gameState, combatMonster.p3m3Role, combatMonster);
             gameState.hitboxes = [];
@@ -487,8 +464,7 @@ const P3M3FinalIssenSystem = {
         if (!rt) return null;
         if (options.route) return options.route;
         if (rt.route) return rt.route;
-        const system = rt.system || this.getSystem(gameState);
-        return this.getRouteById(gameState, system.Time_Limit_Fail_Route_ID) || this.getRoute(gameState, 'ROUTE_NORMAL');
+        return this.buildRuntimeRoute(gameState, rt.routeType || this.resolveRouteTypeFromPlayer(gameState));
     },
 
     getFailureAttackDamage(gameState, route, attackAction) {
@@ -497,10 +473,9 @@ const P3M3FinalIssenSystem = {
         if (!rt || !p || !route || !attackAction) return 0;
         const casterId = this.id(route.Final_Attack_Caster_Monster_ID);
         const caster = (gameState.monsters || []).find(m => m && m.active && m.isP3M3Monster && this.id(m.p3m3Row && m.p3m3Row.P3_M3_Monster_ID) === casterId);
-        const row = this.getMonsterRow(gameState, casterId) || {};
-        const baseData = (gameState.DB_MONSTER || {})[this.id(row.Boss_Info_Ref_ID)] || {};
+        const baseData = (gameState.DB_MONSTER || {})[casterId] || {};
         const baseAtk = Math.max(1, this.num(caster && caster.d && caster.d.atk, this.num(baseData.atk || baseData.ATK, 1)));
-        const mainBoss = (gameState.monsters || []).find(m => m && m.boss) || null;
+        const mainBoss = this.getMainBoss(gameState);
         const baseRate = this.num(attackAction.ATK_Damage_Rate, 1);
         const lateRateRaw = this.num(attackAction.Late_Phase_ATK_Damage_Rate, NaN);
         const rate = Math.max(0, mainBoss && mainBoss.boss && mainBoss.boss.isLatePhase && Number.isFinite(lateRateRaw) && lateRateRaw > 0 ? lateRateRaw : baseRate);
@@ -545,10 +520,10 @@ const P3M3FinalIssenSystem = {
             this.finish(gameState, false, reason || 'FINAL_ATTACK_FAIL_NO_ACTION');
             return true;
         }
-        const system = rt.system || this.getSystem(gameState);
-        const centerId = this.id(system.Center_Area_ID || 902001);
+        const centerId = this.getCenterStageId(gameState);
         const remote = this.id(rt.currentAreaId) !== centerId;
-        const chargeDuration = remote ? 0 : Math.max(0, this.num(charge && charge.Action_Anim_Duration, 0));
+        const skipCharge = remote || this.id(reason).toUpperCase() === 'TIME_LIMIT';
+        const chargeDuration = skipCharge ? 0 : Math.max(0, this.num(charge && charge.Action_Anim_Duration, 0));
         const attackDuration = Math.max(0.2, this.num(atk.Action_Anim_Duration, 2));
         const hitStart = Math.max(0.05, this.num(atk.Hitbox_Start_Time, attackDuration * 0.62));
         const hitEnd = Math.max(hitStart + 0.05, this.num(atk.Hitbox_End_Time, attackDuration));
@@ -617,7 +592,7 @@ const P3M3FinalIssenSystem = {
                 caster.p3m3Static = false;
                 caster.p3m3TalkStandby = false;
                 caster.boss.noPatternWaitTimer = 0;
-                const forcedCharge = charge ? { ...charge, Action_Order: 1, Action_Condition_Type: 'NONE' } : null;
+                const forcedCharge = (charge && !skipCharge) ? { ...charge, Action_Order: 1, Action_Condition_Type: 'NONE' } : null;
                 const forcedAttack = {
                     ...atk,
                     Action_Order: forcedCharge ? 2 : 1,
@@ -711,20 +686,22 @@ const P3M3FinalIssenSystem = {
             null;
     },
 
-    getAreaWorldSize(gameState, areaId, fallbackW = 1400, fallbackD = 400) {
-        const area = this.getArea(gameState, areaId) || {};
-        const system = this.getSystem(gameState) || {};
+    getStageWorldSize(gameState, stageId, fallbackW = 1400, fallbackD = 400) {
+        const stage = this.getStage(gameState, stageId) || {};
         return {
-            w: Math.max(1, this.num(area.World_Width, this.num(system.Map_Size_X, fallbackW)) || fallbackW),
-            d: Math.max(1, this.num(area.World_Depth, this.num(system.Map_Size_Y, fallbackD)) || fallbackD)
+            w: Math.max(1, this.num(stage.Stage_Width, this.num(stage.Map_Size_X, fallbackW)) || fallbackW),
+            d: Math.max(1, this.num(stage.Stage_Height, this.num(stage.Map_Size_Y, fallbackD)) || fallbackD)
         };
     },
 
-    applyAreaWorldSize(gameState, areaId) {
+    applyStageWorldSize(gameState, stageId) {
         if (!gameState) return { w: 1400, d: 400 };
-        const size = this.getAreaWorldSize(gameState, areaId, gameState.WORLD_WIDTH || 1400, gameState.WORLD_DEPTH || 400);
+        const size = this.getStageWorldSize(gameState, stageId, gameState.WORLD_WIDTH || 1400, gameState.WORLD_DEPTH || 400);
         gameState.WORLD_WIDTH = size.w;
         gameState.WORLD_DEPTH = size.d;
+        const rt = gameState.p3m3Runtime;
+        const stage = this.getStage(gameState, stageId);
+        if (rt && stage) rt.worldMode = this.id(stage.Background_Render_Type || stage.Stage_Background_Type || rt.worldMode || 'INVERTED_BLACK_WHITE').toUpperCase();
         return size;
     },
 
@@ -766,9 +743,12 @@ const P3M3FinalIssenSystem = {
     startFromPattern(gameState, bossMonster, options = {}) {
         if (!gameState || !bossMonster || this.isActive(gameState)) return false;
 
-        const system = this.getSystem(gameState);
-        const centerAreaId = this.id(system.Center_Area_ID || 902001);
-        const centerSize = this.getAreaWorldSize(gameState, centerAreaId, 1400, 400);
+        const timeLimitAction = this.getTimeLimitAction(gameState) || {};
+        const timeLimitSeconds = Math.max(1, this.num(timeLimitAction.Action_Anim_Duration, 120));
+        const routeType = this.resolveRouteTypeFromPlayer(gameState);
+        const runtimeRoute = this.buildRuntimeRoute(gameState, routeType);
+        const centerAreaId = this.getCenterStageId(gameState);
+        const centerSize = this.getStageWorldSize(gameState, centerAreaId, 1400, 400);
         const worldW = centerSize.w;
         const worldD = centerSize.d;
         const player = gameState.player || null;
@@ -787,18 +767,17 @@ const P3M3FinalIssenSystem = {
         gameState.specialMode = this.MODE;
         gameState.p3m3Runtime = {
             active: true,
-            patternId: this.id(options.patternId || system.Pattern_ID || 233008),
+            patternId: this.id(options.patternId || 233008),
             sourceActionId: this.id(options.sourceActionId || ''),
             introTotalDuration: Math.max(0.6, this.num(options.introDuration, 4.03)),
-            system,
             snapshot,
             linkedBoss: bossMonster,
             currentAreaId: centerAreaId,
             centerAreaReturned: false,
             leftResult: null,
             rightResult: null,
-            route: null,
-            routeType: null,
+            route: runtimeRoute,
+            routeType,
             routeStarted: false,
             routeDelayTimer: 0,
             finalPending: false,
@@ -822,6 +801,7 @@ const P3M3FinalIssenSystem = {
             finalShatterDamageStarted: false,
             finalCollapse: null,
             finalEffectSuppressed: false,
+            finalResponseSuccessPending: false,
             finalIssenDeathPending: false,
             failureSequence: null,
             playerDeathPending: false,
@@ -830,17 +810,22 @@ const P3M3FinalIssenSystem = {
             playerDeathReviveAreaId: null,
             finalSuccess: false,
             finalFailed: false,
-            gauge: 0,
-            gaugeMax: 100,
-            timeLimitTotal: Math.max(1, this.num(system.Time_Limit, 120)),
-            timer: Math.max(1, this.num(system.Time_Limit, 120)),
+            timeLimitActionId: this.id(timeLimitAction.Action_ID || 243076),
+            timeLimitTotal: timeLimitSeconds,
+            timeLimitDisabled: false,
+            timer: timeLimitSeconds,
+            normalDefenceObject: null,
+            normalDefenceCleared: false,
+            normalDefenceBreakFx: null,
+            hiddenDebuffObject: null,
             monstersByRole: {},
             debugFrame: 0,
             debugSnapshot: [],
             debugLastByKey: {},
-            suppressMainBoss: system.Boss_Invincible === undefined ? true : this.bool(system.Boss_Invincible),
-            worldMode: this.id(system.World_Mode || 'INVERTED_BLACK_WHITE').toUpperCase(),
+            suppressMainBoss: true,
+            worldMode: this.id((this.getStage(gameState, centerAreaId) || {}).Background_Render_Type || 'INVERTED_BLACK_WHITE').toUpperCase(),
             clearStates: {},
+            clearedStageIds: {},
             portalCooldown: 0.35,
             noticeTimer: 0,
             dialogue: null,
@@ -848,6 +833,7 @@ const P3M3FinalIssenSystem = {
             hiddenBattleStarted: false,
             hiddenWhiteBackdrop: false,
             hiddenClearReturn: null,
+            normalClearReturn: null,
             hiddenClearFinalFaceDir: null,
             hiddenFinalPhase: 'NONE',
             hiddenFinalReason: '',
@@ -870,7 +856,7 @@ const P3M3FinalIssenSystem = {
         bossMonster.hp = Math.max(1, (bossMonster.maxHp || bossMonster.hp || 1) * entryHpRate);
         gameState.WORLD_WIDTH = worldW;
         gameState.WORLD_DEPTH = worldD;
-        gameState.p2m3IntroRuntime = null;
+        gameState.specialModeObjectDefenseIntroRuntime = null;
         gameState.p2m2GiantSwordAim = null;
         gameState.p2m2GiantSwordInputConsumed = null;
         gameState.p2m2GiantSwordInputBlockTimer = 0;
@@ -1168,7 +1154,7 @@ const P3M3FinalIssenSystem = {
         rt.currentAreaId = this.id(areaId);
         rt.portalCooldown = 0.35;
         rt.routeDelayTimer = 0;
-        this.applyAreaWorldSize(gameState, areaId);
+        this.applyStageWorldSize(gameState, areaId);
         this.cleanupP3M3AreaTerrain(gameState, areaId);
         (gameState.monsters || []).forEach(m => {
             if (m && m.isP3M3Monster) m.active = false;
@@ -1181,9 +1167,9 @@ const P3M3FinalIssenSystem = {
 
         if (options.spawnCenter) {
             this.spawnMonsterByRole(gameState, 'CENTER_BOSS');
-        } else if (this.id(areaId) === this.id(this.getSystem(gameState).Left_Area_ID || 902002)) {
+        } else if (this.id(areaId) === this.getLeftStageId(gameState)) {
             this.tryResolveTalkClearOrSpawn(gameState, 'P1_CLONE', 'leftResult');
-        } else if (this.id(areaId) === this.id(this.getSystem(gameState).Right_Area_ID || 902003)) {
+        } else if (this.id(areaId) === this.getRightStageId(gameState)) {
             this.tryResolveTalkClearOrSpawn(gameState, 'P2_CLONE', 'rightResult');
         } else {
             this.spawnMonsterByRole(gameState, 'CENTER_BOSS');
@@ -1191,25 +1177,16 @@ const P3M3FinalIssenSystem = {
         }
     },
 
-    playerHasTalkObject(gameState, value) {
-        const p = gameState.player || {};
-        const key = this.id(value);
-        if (key === '253013') return !!p.p3TrialWillBuff;
-        if (key === '253017') return !!p.p3TrialBodyBuff;
-        return false;
-    },
-
     tryResolveTalkClearOrSpawn(gameState, role, resultKey) {
         const row = this.getMonsterRow(gameState, role);
         const rt = gameState.p3m3Runtime;
         if (!row || !rt || rt[resultKey]) return;
-        const hasTalkClearObject = this.id(row.Talk_Cond_Type).toUpperCase() === 'PLAYER_HAS_OBJECT'
-            && this.playerHasTalkObject(gameState, row.Talk_Cond_Value);
+        const useDialogue = this.id(rt.routeType).toUpperCase() === 'ROUTE_HIDDEN';
 
-        // 대화로 넘기는 경우에도 먼저 분신을 실제로 소환한다.
-        // 대화 중에는 handleMonsterUpdate에서 AI/이동이 정지되고, 대화 종료 후 markAreaClear가 분신을 제거한다.
+        // NORMAL/HIDDEN은 패턴 시작 시 한 번 결정한다.
+        // 같은 Monster_info 분신을 NORMAL에서는 전투용, HIDDEN에서는 대화용으로 사용한다.
         const clone = this.spawnMonsterByRole(gameState, role);
-        if (hasTalkClearObject) {
+        if (useDialogue) {
             if (clone && clone.boss) {
                 clone.boss.noPatternWaitTimer = 999999;
                 clone.boss.action = null;
@@ -1217,46 +1194,18 @@ const P3M3FinalIssenSystem = {
                 clone.boss.runtimeActions = null;
             }
             if (clone) clone.p3m3TalkStandby = true;
-            const triggerType = role === 'P1_CLONE' ? 'LEFT_AREA_ENTER' : 'RIGHT_AREA_ENTER';
-            const started = this.startDialogueByTrigger(gameState, triggerType, {
-                areaId: row.Area_ID,
-                monsterId: row.P3_M3_Monster_ID
+            const started = this.startDialogueByTrigger(gameState, 'STAGE_ENTER', {
+                triggerValue: row.Stage_ID,
+                contextRole: role
             });
             if (!started) this.markAreaClear(gameState, role, 'TALK_CLEAR');
         }
     },
 
     buildP3MonsterData(gameState, row) {
-        const base = gameState.DB_MONSTER[this.id(row.Boss_Info_Ref_ID)] || null;
-        if (!base) return null;
-        const d = { ...base };
-        const modelName = this.id(row.Model_Name || row.Model_Render_Type || '');
-        if (modelName) {
-            d.renderType = modelName;
-            d.Model_Render_Type = modelName;
-            d.p3m3ModelName = modelName;
-        }
-        d.patternSetId = this.id(row.Pattern_Set_Ref_ID || base.patternSetId);
-        d.aiType = 'BOSS_PATTERN';
-        d.aggressive = this.id(row.AI_Type).toUpperCase() !== 'NONE';
-        d.defaultHitDmgRate = this.bool(row.Invincible) ? 0 : this.num(row.Hit_DMG_Rate, base.defaultHitDmgRate);
-        d.atkDmgRate = this.num(row.ATK_DMG_Rate, base.atkDmgRate || 1);
-        d.hitDur = 0;
-
-        const mainBoss = this.getMainBoss(gameState);
-        const hpType = this.id(row.Max_HP_Type).toUpperCase();
-        const hpValue = this.num(row.Max_HP_Value, base.maxHp || base.hp || 1);
-        if (hpType === 'RATE_OF_MAIN_BOSS' && mainBoss) {
-            d.hp = Math.max(1, Math.max(1, mainBoss.maxHp || mainBoss.hp || 1) * hpValue);
-            d.maxHp = d.hp;
-        } else if (hpType === 'RATE_OF_REF' || hpType === 'RATE_OF_REF_BOSS') {
-            d.hp = Math.max(1, Math.max(1, base.maxHp || base.hp || 1) * hpValue);
-            d.maxHp = d.hp;
-        } else if (hpValue > 0) {
-            d.hp = hpValue;
-            d.maxHp = hpValue;
-        }
-        return d;
+        if (!row) return null;
+        const base = (gameState.DB_MONSTER || {})[this.id(row.P3_M3_Monster_ID)] || row.Boss_Data || null;
+        return base ? { ...base } : null;
     },
 
     deactivateMonsterRole(gameState, role) {
@@ -1273,7 +1222,7 @@ const P3M3FinalIssenSystem = {
         const rt = gameState && gameState.p3m3Runtime;
         if (!rt || !Array.isArray(gameState.bossAttackObjects)) return;
         const nextId = this.id(nextAreaId || rt.currentAreaId);
-        const rightId = this.id(this.getSystem(gameState).Right_Area_ID || 902003);
+        const rightId = this.getRightStageId(gameState);
         gameState.bossAttackObjects.forEach(obj => {
             if (!obj || !obj.p3m3Terrain) return;
             if (nextId !== rightId || this.id(obj.p3m3TerrainAreaId) !== nextId) obj.active = false;
@@ -1284,9 +1233,11 @@ const P3M3FinalIssenSystem = {
     restartPattern(gameState, reason = '') {
         const rt = gameState && gameState.p3m3Runtime;
         if (!rt || !rt.active) return false;
-        const system = rt.system || this.getSystem(gameState);
-        const centerAreaId = this.id(system.Center_Area_ID || 902001);
-        const centerSize = this.getAreaWorldSize(gameState, centerAreaId, 1400, 400);
+        const timeLimitAction = this.getTimeLimitAction(gameState) || {};
+        const timeLimitSeconds = Math.max(1, this.num(timeLimitAction.Action_Anim_Duration, 120));
+        const routeType = this.resolveRouteTypeFromPlayer(gameState);
+        const centerAreaId = this.getCenterStageId(gameState);
+        const centerSize = this.getStageWorldSize(gameState, centerAreaId, 1400, 400);
         const worldW = centerSize.w;
         const worldD = centerSize.d;
         const main = rt.linkedBoss;
@@ -1338,8 +1289,9 @@ const P3M3FinalIssenSystem = {
         rt.leftResultData = null;
         rt.rightResultData = null;
         rt.clearStates = {};
-        rt.route = null;
-        rt.routeType = null;
+        rt.clearedStageIds = {};
+        rt.routeType = routeType;
+        rt.route = this.buildRuntimeRoute(gameState, routeType);
         rt.routeStarted = false;
         rt.routeDelayTimer = 0;
         rt.finalPending = false;
@@ -1371,10 +1323,13 @@ const P3M3FinalIssenSystem = {
         rt.playerDeathReviveAreaId = null;
         rt.finalSuccess = false;
         rt.finalFailed = false;
-        rt.gauge = 0;
-        rt.gaugeMax = 100;
-        rt.timeLimitTotal = Math.max(1, this.num(system.Time_Limit, 120));
-        rt.timer = Math.max(1, this.num(system.Time_Limit, 120));
+        rt.timeLimitActionId = this.id(timeLimitAction.Action_ID || 243076);
+        rt.timeLimitTotal = timeLimitSeconds;
+        rt.timer = timeLimitSeconds;
+        rt.normalDefenceObject = null;
+        rt.normalDefenceCleared = false;
+        rt.normalDefenceBreakFx = null;
+        rt.hiddenDebuffObject = null;
         rt.monstersByRole = {};
         rt.debugSnapshot = [];
         rt.debugLastByKey = {};
@@ -1405,7 +1360,14 @@ const P3M3FinalIssenSystem = {
         const d = this.buildP3MonsterData(gameState, row);
         if (!d) return null;
 
-        const p3Id = this.id(row.P3_M3_Monster_ID || row.Monster_Role);
+        const p3Id = this.id(row.P3_M3_Monster_ID);
+        const roleKey = this.id(row.Monster_Role).toUpperCase();
+        const stage = this.getStage(gameState, row.Stage_ID);
+        const spawnX = this.num(stage && (stage.Boss_Spawn_X ?? stage.Boss_Spawn_Center_X), (gameState.WORLD_WIDTH || 1400) / 2);
+        const spawnY = this.num(stage && (stage.Boss_Spawn_Y ?? stage.Boss_Spawn_Center_Y), (gameState.WORLD_DEPTH || 300) / 2);
+        const aiType = this.id(d.aiType).toUpperCase();
+        const forceRuntime = aiType === 'NONE';
+        const bossRuntime = MonsterManager.createBossRuntimeForMonster(d, gameState, { forceRuntime });
         const entity = {
             id: p3Id,
             d,
@@ -1413,8 +1375,8 @@ const P3M3FinalIssenSystem = {
             spawner: null,
             isChampion: false,
             scale: d.scale || 1,
-            x: this.num(row.Spawn_X, (gameState.WORLD_WIDTH || 1400) / 2),
-            y: this.num(row.Spawn_Y, (gameState.WORLD_DEPTH || 300) / 2),
+            x: spawnX,
+            y: spawnY,
             z: 0,
             vz: 0,
             isGrounded: true,
@@ -1442,116 +1404,109 @@ const P3M3FinalIssenSystem = {
             isDeadProcessed: false,
             skillCooldowns: {},
             patternCount: 0,
-            isProvoked: this.id(row.AI_Type).toUpperCase() !== 'NONE',
-            boss: MonsterManager.createBossRuntimeForMonster(d, gameState),
+            isProvoked: aiType !== 'NONE',
+            boss: bossRuntime,
             isP3M3Monster: true,
-            p3m3Role: this.id(row.Monster_Role),
+            p3m3Role: roleKey,
             p3m3Row: row,
-            p3m3Static: this.id(row.AI_Type).toUpperCase() === 'NONE'
+            p3m3Static: aiType === 'NONE',
+            p3m3ManualBossRuntime: forceRuntime
         };
 
-        const roleKey = this.id(row.Monster_Role).toUpperCase();
-        const rowModelName = this.id(row.Model_Name || (entity.d && entity.d.p3m3ModelName) || '');
-        entity.p3m3TargetModelName = rowModelName;
-        if (roleKey === 'TRUE_BOSS' && rowModelName && !rt.hiddenBattleStarted) {
-            // 중앙 히든 대화 중 Line_Event_Type=KASIYAS_RENDER_CHANGE가 나오기 전까지는
-            // 일반 3페이즈 카시야스 형태로 서 있다가, 해당 대사 시점에 전력 모델로 전환한다.
-            entity.d.renderType = 'RENDER_KASIYAS_P3';
-            entity.d.Model_Render_Type = 'RENDER_KASIYAS_P3';
-            entity.p3m3PendingModelName = rowModelName;
-            entity.p3m3CurrentModelName = 'RENDER_KASIYAS_P3';
-        }
         const player = gameState.player || null;
-        const gazeType = this.id(row.Monster_Gaze).toUpperCase();
-        if (gazeType === 'LOOKING_LEFT') {
-            entity.faceDir = -1;
-            entity.pacingDir = -1;
-        } else if (gazeType === 'LOOKING_RIGHT') {
-            entity.faceDir = 1;
-            entity.pacingDir = 1;
-        } else if (gazeType === 'LOOKING_PLAYER' && player) {
+        if (player) {
             entity.faceDir = player.x < entity.x ? -1 : 1;
             entity.pacingDir = entity.faceDir;
-        } else if (roleKey === 'P2_CLONE') {
-            entity.faceDir = -1;
-            entity.pacingDir = -1;
-        } else if (roleKey === 'P1_CLONE') {
-            entity.faceDir = 1;
-            entity.pacingDir = 1;
         }
 
         if (entity.boss) {
-            const phaseRefId = this.id(row.Phase_Ref_ID || row.Phase_Ref_ID || row.Phase_Info_Ref_ID);
-            const phaseRef = phaseRefId && gameState.DB_BOSS_PHASE ? gameState.DB_BOSS_PHASE[phaseRefId] : null;
-            if (phaseRef) {
-                entity.boss.phase = {
-                    ...phaseRef,
-                    Next_Phase_ID: 0,
-                    Phase_Transition_Type: null,
-                    Late_Opening_Pattern_ID: 0
-                };
-                entity.boss.phaseId = phaseRefId;
-            } else if (entity.boss.phase) {
-                entity.boss.phase = {
-                    ...entity.boss.phase,
-                    Next_Phase_ID: 0,
-                    Phase_Transition_Type: null,
-                    Late_Opening_Pattern_ID: 0
-                };
+            // 단계 전환은 본편 Boss에서만 사용한다. P3_M3에 소환된 독립 Boss는 다음 Boss가 없다.
+            if (entity.boss.config) {
+                entity.boss.config.Next_Boss_ID = '';
+                entity.boss.config.Phase_Transition_Type = '';
             }
-
-            const useType = this.id(row.Use_Pattern_Type).toUpperCase();
-            if (useType === 'USE_PATTERN_ONLY') {
-                entity.boss.p3m3AllowedPatternIds = [this.id(row.Use_Pattern_Value)];
-            } else if (useType === 'USE_PATTERN_SET_BASIC') {
-                const setId = this.id(row.Pattern_Set_Ref_ID || d.patternSetId);
-                const patterns = gameState.DB_BOSS_PATTERN_BY_SET && gameState.DB_BOSS_PATTERN_BY_SET[setId] ? gameState.DB_BOSS_PATTERN_BY_SET[setId] : [];
-                entity.boss.p3m3AllowedPatternIds = patterns
-                    .filter(pattern => this.id(pattern.Pattern_Category).toUpperCase() === 'BASIC')
-                    .map(pattern => this.id(pattern.Pattern_ID));
-            } else if (useType === 'USE_ACTION_ONLY') {
-                entity.boss.p3m3AllowedPatternIds = [];
+            if (entity.boss.phase) {
+                entity.boss.phase.Next_Boss_ID = '';
+                entity.boss.phase.Phase_Transition_Type = '';
             }
-
-            const isSideClone = roleKey === 'P1_CLONE' || roleKey === 'P2_CLONE';
-            if (isSideClone) {
-                // P3_M3 좌/우 분신 전투는 항상 후반부 강화 기술 기준으로 사용한다.
-                // Late_Phase_Action_Order / Late_Phase_Action_Time_Rate / Late_Phase_Action_Move_Speed_Rate가 모두 적용된다.
-                entity.boss.isLatePhase = true;
-                entity.boss.p3m3ForceLatePhase = true;
-                entity.boss.lateNoticeShown = true;
-                entity.boss.lateOpeningPatternUsed = true;
-                entity.boss.lateOpeningPatternStarted = true;
-                entity.boss.pendingLateOpeningPatternId = null;
-            }
-
-            if (Array.isArray(entity.boss.p3m3AllowedPatternIds)) {
-                entity.boss.p3m3AllowedPatternIds.forEach(patternId => {
-                    if (!patternId) return;
-                    const pattern = gameState.DB_BOSS_PATTERN && gameState.DB_BOSS_PATTERN[patternId]
-                        ? gameState.DB_BOSS_PATTERN[patternId]
-                        : null;
-                    const normalInitial = this.num(pattern && pattern.Pattern_Initial_Cooltime, 0);
-                    const lateInitialRaw = this.num(pattern && pattern.Late_Phase_Pattern_Initial_Cooltime, NaN);
-                    const useLateInitial = entity.boss.isLatePhase && Number.isFinite(lateInitialRaw) && lateInitialRaw > 0;
-                    // 기존 보스와 동일하게 패턴 선 쿨타임을 적용한다. 단, 후반부 전용 값이 양수일 때만 대체한다.
-                    entity.boss.patternCooldowns[patternId] = useLateInitial ? lateInitialRaw : normalInitial;
-                });
-            }
-            entity.boss.noPatternWaitTimer = entity.p3m3Static ? 999999 : 0.2;
+            entity.boss.noPatternWaitTimer = entity.p3m3Static
+                ? 999999
+                : Math.max(0, this.num(entity.boss.config && entity.boss.config.No_Pattern_Wait_Time, 0.2));
+            // P3 분신의 Late_Phase_HP_Rate=1.0 및 BOSS_PATTERN_BASIC은 공용 Boss Runtime에서 이미 해석된다.
             entity.boss.lateNoticeShown = true;
-            entity.boss.lateOpeningPatternUsed = true;
-            entity.boss.lateOpeningPatternStarted = true;
-            entity.boss.pendingLateOpeningPatternId = null;
         }
 
         gameState.monsters.push(entity);
         rt.monstersByRole[entity.p3m3Role] = entity;
-        if (this.bool(row.Show_Local_HP_Bar)) {
+        const showLocalHp = this.id(rt.routeType).toUpperCase() === 'ROUTE_NORMAL'
+            && (roleKey === 'P1_CLONE' || roleKey === 'P2_CLONE');
+        if (showLocalHp) {
             gameState.targetUI.monster = entity;
             gameState.targetUI.timer = 999999;
         }
         return entity;
+    },
+
+    handleBossChangeAction(sourceMonster, action, gameState) {
+        const rt = gameState && gameState.p3m3Runtime;
+        if (!rt || !rt.active || !sourceMonster || !action) return false;
+
+        const targetBossId = this.id(action.Change_Boss_ID);
+        if (!targetBossId) return false;
+        const targetRow = this.getMonsterRow(gameState, targetBossId);
+        if (!targetRow) return false;
+
+        const currentId = this.id(sourceMonster.p3m3Row && sourceMonster.p3m3Row.P3_M3_Monster_ID);
+        if (currentId === targetBossId) return true;
+
+        const sourceRole = this.id(sourceMonster.p3m3Role).toUpperCase();
+        const targetRole = this.id(targetRow.Monster_Role).toUpperCase();
+        const snapshot = {
+            x: this.num(sourceMonster.x, (gameState.WORLD_WIDTH || 1400) / 2),
+            y: this.num(sourceMonster.y, (gameState.WORLD_DEPTH || 400) / 2),
+            z: this.num(sourceMonster.z, 0),
+            faceDir: sourceMonster.faceDir === -1 ? -1 : 1,
+            pacingDir: sourceMonster.pacingDir === -1 ? -1 : 1
+        };
+
+        if (sourceRole) this.deactivateMonsterRole(gameState, sourceRole);
+        const changedBoss = this.spawnMonsterByRole(gameState, targetRole || targetBossId);
+        if (!changedBoss) return false;
+
+        changedBoss.x = snapshot.x;
+        changedBoss.y = snapshot.y;
+        changedBoss.z = snapshot.z;
+        changedBoss.faceDir = snapshot.faceDir;
+        changedBoss.pacingDir = snapshot.pacingDir;
+        changedBoss.kbVx = 0;
+        changedBoss.kbVy = 0;
+        changedBoss.vz = 0;
+        changedBoss.state = 'IDLE';
+        changedBoss.p3m3Static = true;
+        changedBoss.p3m3TalkStandby = this.isDialogueActive(gameState);
+
+        if (changedBoss.boss) {
+            changedBoss.boss.activePattern = null;
+            changedBoss.boss.action = null;
+            changedBoss.boss.runtimeActions = null;
+            changedBoss.boss.currentActionIndex = -1;
+            changedBoss.boss.actionMove = null;
+            changedBoss.boss.actionMoveCompleted = false;
+            changedBoss.boss.noPatternWaitTimer = 999999;
+        }
+
+        rt.hiddenBossChanged = true;
+        this.updateTargetUI(gameState);
+        return true;
+    },
+
+    normalizeAreaResult(value) {
+        const raw = this.id(value).toUpperCase();
+        if (!raw) return '';
+        if (raw === 'ANY_CLEAR') return 'ANY_CLEAR';
+        if (raw.includes('TALK_CLEAR')) return 'TALK_CLEAR';
+        if (raw.includes('KILL_CLEAR')) return 'KILL_CLEAR';
+        return raw;
     },
 
     markAreaClear(gameState, role, resultType) {
@@ -1560,37 +1515,36 @@ const P3M3FinalIssenSystem = {
         if (!rt || !row) return;
         const side = role === 'P1_CLONE' ? 'leftResult' : (role === 'P2_CLONE' ? 'rightResult' : null);
         if (!side || rt[side]) return;
-        const requested = this.normalizeAreaResult(resultType);
-        const resultData = requested === 'TALK_CLEAR'
-            ? (this.id(row.Talk_Result_Type) || resultType)
-            : (requested === 'KILL_CLEAR' ? (this.id(row.Kill_Result_Type) || resultType) : resultType);
-        const canonical = this.normalizeAreaResult(resultData) || requested;
-        rt[side] = canonical;
-        rt[`${side}Data`] = this.id(resultData);
-        const clearState = this.id(row.Clear_State).toUpperCase();
-        if (clearState) rt.clearStates[clearState] = true;
 
-        const rewardType = this.id(row.Talk_Reward_Type).toUpperCase();
-        const reward = canonical === 'TALK_CLEAR' ? this.num(row.Talk_Reward_Value || row.Reward_Value, 0) : 0;
-        if (reward > 0 && (!rewardType || rewardType === 'GET_FIGHTING_SPIRIT') && typeof PlayerManager !== 'undefined' && PlayerManager.addFightingSpirit) {
-            PlayerManager.addFightingSpirit(gameState, reward, { rewardKey: `P3M3_${role}_${canonical}`, lockTime: 0.45 });
+        const canonical = this.normalizeAreaResult(resultType) || this.id(resultType).toUpperCase();
+        rt[side] = canonical;
+        rt[`${side}Data`] = canonical;
+
+        const stage = this.getStage(gameState, row.Stage_ID);
+        const clearType = this.id(stage && stage.Stage_Clear_Cond_Type).toUpperCase();
+        const clearValue = this.id(stage && stage.Stage_Clear_Cond_Value);
+        const bossResolved = clearType === 'MONSTER_CLEAR' && (!clearValue || clearValue === this.id(row.P3_M3_Monster_ID));
+        if (bossResolved) {
+            if (!rt.clearedStageIds) rt.clearedStageIds = {};
+            rt.clearedStageIds[this.id(row.Stage_ID)] = true;
         }
+
         const monster = rt.monstersByRole[role];
         this.cleanupP3M3MonsterObjects(gameState, role, monster);
         if (monster) monster.active = false;
     },
 
-    checkPortalCondition(gameState, conditionType) {
+    checkPortalCondition(gameState, conditionType, conditionValue) {
         const rt = gameState && gameState.p3m3Runtime;
         if (!rt) return false;
         const cond = this.id(conditionType).toUpperCase();
+        const value = this.id(conditionValue);
         if (!cond || cond === 'NONE') return true;
-        if (cond === 'P3_M3_START') return !rt.leftResult;
-        if (cond === 'P3_M3_LEFT_AREA_CLEAR') return !!rt.leftResult || !!rt.clearStates.LEFT_AREA_CLEAR;
-        if (cond === 'P3_M3_RIGHT_AREA_CLEAR') return !!rt.rightResult || !!rt.clearStates.RIGHT_AREA_CLEAR;
-        if (cond === 'P3_M3_CENTER_AREA_RETURN') {
-            const centerId = this.id((rt.system || this.getSystem(gameState)).Center_Area_ID || 902001);
-            return !!rt.leftResult && !!rt.rightResult && this.id(rt.currentAreaId) === centerId;
+        if (cond === 'PATTERN_START') {
+            return !value || this.id(rt.patternId) === value;
+        }
+        if (cond === 'STAGE_CLEAR') {
+            return !!(value && rt.clearedStageIds && rt.clearedStageIds[value]);
         }
         return false;
     },
@@ -1598,11 +1552,13 @@ const P3M3FinalIssenSystem = {
     getActivePortals(gameState) {
         const rt = gameState.p3m3Runtime;
         if (!rt) return [];
-        return (gameState.DB_P3_M3_PORTAL || []).filter(portal => {
-            if (this.id(portal.From_Area_ID) !== rt.currentAreaId) return false;
-            const active = this.checkPortalCondition(gameState, portal.Active_Cond_Type);
+        return (gameState.DB_PORTAL || []).filter(portal => {
+            if (this.id(portal.From_Stage_ID) !== rt.currentAreaId) return false;
+            const active = this.checkPortalCondition(gameState, portal.Active_Cond_Type, portal.Active_Cond_Value);
             const deactiveType = this.id(portal.DeActive_Cond_Type);
-            const deactive = deactiveType ? this.checkPortalCondition(gameState, deactiveType) : false;
+            const deactive = deactiveType && deactiveType.toUpperCase() !== 'NONE'
+                ? this.checkPortalCondition(gameState, deactiveType, portal.DeActive_Cond_Value)
+                : false;
             return active && !deactive;
         });
     },
@@ -1618,68 +1574,74 @@ const P3M3FinalIssenSystem = {
             const px = this.num(portal.Position_X, 0);
             const py = this.num(portal.Position_Y, 0);
             if (Math.abs(p.x - px) <= 74 && Math.abs(p.y - py) <= 82) {
-                const toArea = this.id(portal.To_Area_ID);
-                const state = this.id(portal.After_Use_State);
-                if (state.indexOf('RETURN_CENTER_AREA') >= 0) rt.centerAreaReturned = true;
-                this.enterArea(gameState, toArea, {
+                const transitionType = this.id(portal.Transition_Type).toUpperCase();
+                if (transitionType !== 'MOVE_STAGE') continue;
+                const fromStage = this.id(portal.From_Stage_ID || rt.currentAreaId);
+                const toStage = this.id(portal.To_Stage_ID);
+                const centerStageId = this.getCenterStageId(gameState);
+                if (toStage === centerStageId && fromStage !== centerStageId) rt.centerAreaReturned = true;
+                this.enterArea(gameState, toStage, {
                     arriveX: this.num(portal.Player_Arrive_X, p.x),
                     arriveY: this.num(portal.Player_Arrive_Y, p.y),
-                    spawnCenter: toArea === this.id(this.getSystem(gameState).Center_Area_ID || 902001)
+                    spawnCenter: toStage === centerStageId
                 });
+                if (this.id(portal.Portal_ID) === '701004' && rt.routeType === 'ROUTE_NORMAL' && rt.leftResult && rt.rightResult) {
+                    this.startNormalFinalSequence(gameState, 'PORTAL_USED_701004');
+                }
                 return;
             }
         }
     },
 
     tryStartRoute(gameState) {
-        const rt = gameState.p3m3Runtime;
+        const rt = gameState && gameState.p3m3Runtime;
         if (!rt || rt.routeStarted || !rt.leftResult || !rt.rightResult) return;
-        const route = this.findMatchingRoute(gameState);
-        if (!route) return;
-        rt.route = route;
-        rt.routeType = this.id(route.Route_Type).toUpperCase();
-        rt.routeStarted = true;
-        rt.gaugeMax = Math.max(1, this.num(route.Gauge_Max, 100));
-        rt.gaugeType = this.getGaugeType(rt);
-        rt.gauge = rt.gaugeType === 'ISSEN_GAUGE'
-            ? 0
-            : Math.min(rt.gaugeMax, gameState.player ? (gameState.player.fightingSpirit || 0) : 0);
-        rt.routeDelayTimer = 0;
-        rt.finalPending = false;
-        rt.finalStartDelayTimer = 0;
-        rt.finalStartDelayTotal = 0;
+        if (this.id(rt.currentAreaId) !== this.getCenterStageId(gameState)) return;
+        rt.route = rt.route || this.buildRuntimeRoute(gameState, rt.routeType || this.resolveRouteTypeFromPlayer(gameState));
+        rt.routeType = this.id(rt.route && rt.route.Route_Type).toUpperCase() || this.resolveRouteTypeFromPlayer(gameState);
 
-        const startState = this.id(route.Start_State).toUpperCase();
-        if (startState === 'BATTLE_START' || (!startState && rt.routeType === 'ROUTE_HIDDEN')) {
-            this.deactivateMonsterRole(gameState, 'CENTER_BOSS');
-            const trueBoss = this.spawnMonsterByRole(gameState, 'TRUE_BOSS');
-            const startedDialogue = this.startDialogueByTrigger(gameState, 'ROUTE_HIDDEN_START', {
-                areaId: this.getSystem(gameState).Center_Area_ID || 902001,
-                routeId: route.Route_ID,
-                monsterId: trueBoss && trueBoss.p3m3Row ? trueBoss.p3m3Row.P3_M3_Monster_ID : route.Target_Monster_ID
+        if (rt.routeType === 'ROUTE_HIDDEN') {
+            rt.routeStarted = true;
+            const centerBoss = rt.monstersByRole && rt.monstersByRole.CENTER_BOSS;
+            if (centerBoss) {
+                centerBoss.p3m3Static = true;
+                centerBoss.p3m3TalkStandby = true;
+                if (centerBoss.boss) {
+                    centerBoss.boss.noPatternWaitTimer = 999999;
+                    centerBoss.boss.action = null;
+                    centerBoss.boss.activePattern = null;
+                    centerBoss.boss.runtimeActions = null;
+                    centerBoss.boss.currentActionIndex = -1;
+                }
+            }
+            const startedDialogue = this.startDialogueByTrigger(gameState, 'EVENT', {
+                triggerValue: 'P3_M3_HIDDEN_START'
             });
             if (!startedDialogue) this.startHiddenBattle(gameState, 'NO_DIALOGUE');
-        } else if (startState === 'NORMAL_ISSEN_READY' || !startState) {
-            if (this.checkFinalAttackStartCondition(gameState, route)) this.armFinalAttack(gameState, 'NORMAL_COUNTDOWN');
-        } else if (this.checkFinalAttackStartCondition(gameState, route)) {
-            this.armFinalAttack(gameState, startState);
+            return;
         }
+
+        this.startNormalFinalSequence(gameState, 'CENTER_RETURN_FALLBACK');
     },
 
     startHiddenBattle(gameState, reason = '') {
         const rt = gameState && gameState.p3m3Runtime;
         if (!rt || rt.routeType !== 'ROUTE_HIDDEN') return false;
-        const trueBoss = rt.monstersByRole && rt.monstersByRole.TRUE_BOSS;
+        let trueBoss = rt.monstersByRole && rt.monstersByRole.TRUE_BOSS;
+        if (!trueBoss) {
+            const changeAction = this.findP3Action(
+                gameState,
+                action => (
+                    this.id(action.Action_Type).toUpperCase() === 'MONSTER_CHANGE' &&
+                    this.id(action.Change_Boss_ID) === '209004'
+                ),
+                243079
+            );
+            const source = rt.monstersByRole && rt.monstersByRole.CENTER_BOSS;
+            if (source && changeAction) this.handleBossChangeAction(source, changeAction, gameState);
+            trueBoss = rt.monstersByRole && rt.monstersByRole.TRUE_BOSS;
+        }
         if (trueBoss) {
-            const targetModel = this.id(trueBoss.p3m3TargetModelName || trueBoss.p3m3PendingModelName || (trueBoss.p3m3Row && trueBoss.p3m3Row.Model_Name));
-            if (targetModel && trueBoss.d) {
-                trueBoss.d.renderType = targetModel;
-                trueBoss.d.Model_Render_Type = targetModel;
-                trueBoss.d.p3m3ModelName = targetModel;
-                trueBoss.p3m3CurrentModelName = targetModel;
-                trueBoss.p3m3PendingModelName = '';
-                trueBoss.p3m3FullPowerAwakened = targetModel === 'RENDER_KASIYAS_FULL_POWER';
-            }
             trueBoss.p3m3Static = false;
             trueBoss.p3m3TalkStandby = false;
             trueBoss.active = true;
@@ -1693,7 +1655,11 @@ const P3M3FinalIssenSystem = {
             }
         }
         rt.hiddenBattleStarted = true;
+        // 히든 전력전부터는 20초 생명력 침식 오브젝트가 진행 기준이 된다.
+        // 기존 120초 '카시야스 정신 집중' 제한시간은 여기서 종료한다.
+        rt.timeLimitDisabled = true;
         rt.trueBossDrainTimer = 0;
+        this.createHiddenDebuffObject(gameState);
         rt.hiddenFinalPhase = 'NONE';
         rt.hiddenFinalReason = '';
         rt.hiddenFinalCenterMove = null;
@@ -1704,8 +1670,9 @@ const P3M3FinalIssenSystem = {
     },
 
     updateRoute(gameState, deltaTime) {
-        const rt = gameState.p3m3Runtime;
+        const rt = gameState && gameState.p3m3Runtime;
         if (!rt) return;
+        this.updateP3M3ObjectVisualTimers(rt, deltaTime);
         if (!rt.routeStarted) {
             this.tryStartRoute(gameState);
             return;
@@ -1720,22 +1687,17 @@ const P3M3FinalIssenSystem = {
             if (rt.finalStartDelayTimer <= 0) this.startFinalAttack(gameState);
             return;
         }
-        const route = rt.route || {};
-        const startState = this.id(route.Start_State).toUpperCase();
-        if (startState === 'BATTLE_START' || rt.routeType === 'ROUTE_HIDDEN') {
+        if (rt.routeType === 'ROUTE_HIDDEN') {
             if (!rt.hiddenBattleStarted) {
-                this.startHiddenBattle(gameState, 'ROUTE_HIDDEN_START');
+                this.startHiddenBattle(gameState, 'HIDDEN_ROUTE_READY');
                 return;
             }
             if (rt.hiddenFinalPhase && rt.hiddenFinalPhase !== 'NONE') {
                 this.updateHiddenFinalPreparation(gameState, deltaTime);
                 return;
             }
-            this.updateTrueBossDrain(gameState, deltaTime);
-            if (this.checkFinalAttackStartCondition(gameState, route)) this.queueHiddenFinalSequence(gameState, 'DATA_CONDITION');
-            return;
+            this.updateHiddenDebuffObject(gameState, deltaTime);
         }
-        if (this.checkFinalAttackStartCondition(gameState, route)) this.armFinalAttack(gameState, 'DATA_CONDITION');
     },
 
     queueHiddenFinalSequence(gameState, reason = '') {
@@ -1744,14 +1706,13 @@ const P3M3FinalIssenSystem = {
         if (rt.hiddenFinalPhase && rt.hiddenFinalPhase !== 'NONE') return false;
         const trueBoss = rt.monstersByRole && rt.monstersByRole.TRUE_BOSS;
         const main = rt.linkedBoss;
-        const route = rt.route || {};
-        const threshold = Math.max(0.001, this.num(route.Final_Attack_Start_Cond_Value, 0.01));
+        const threshold = 0.01;
         if (main) {
             const maxHp = Math.max(1, main.maxHp || main.hp || 1);
             main.hp = Math.max(1, Math.min(main.hp || maxHp, maxHp * threshold));
         }
         rt.hiddenFinalPhase = 'WAIT_ACTION_END';
-        rt.hiddenFinalReason = reason || 'HP_THRESHOLD';
+        rt.hiddenFinalReason = reason || 'OBJECT_REMOVE_253019';
         rt.hiddenFinalCenterMove = null;
         rt.hiddenFinalQueuedActionId = this.id(trueBoss && trueBoss.boss && trueBoss.boss.action && trueBoss.boss.action.Action_ID);
         rt.hiddenFinalQueuedPatternId = this.id(trueBoss && trueBoss.boss && trueBoss.boss.activePattern && trueBoss.boss.activePattern.Pattern_ID);
@@ -1792,8 +1753,8 @@ const P3M3FinalIssenSystem = {
         const trueBoss = rt.monstersByRole && rt.monstersByRole.TRUE_BOSS;
         if (!trueBoss) return false;
         this.clearBossActionForHiddenFinal(trueBoss);
-        const centerAreaId = this.getSystem(gameState).Center_Area_ID || rt.currentAreaId || 902001;
-        const size = this.getAreaWorldSize(gameState, centerAreaId, gameState.WORLD_WIDTH || 1400, gameState.WORLD_DEPTH || 400);
+        const centerAreaId = this.getCenterStageId(gameState) || rt.currentAreaId;
+        const size = this.getStageWorldSize(gameState, centerAreaId, gameState.WORLD_WIDTH || 1400, gameState.WORLD_DEPTH || 400);
         const endX = Math.max(80, Math.min(size.w - 80, size.w / 2));
         const endY = Math.max(0, Math.min(size.d, size.d / 2));
         rt.hiddenFinalPhase = 'MOVE_CENTER';
@@ -1912,27 +1873,107 @@ const P3M3FinalIssenSystem = {
         return true;
     },
 
-    updateTrueBossDrain(gameState, deltaTime) {
-        const rt = gameState.p3m3Runtime;
-        const row = this.getMonsterRow(gameState, 'TRUE_BOSS');
+    createNormalDefenceObject(gameState) {
+        const rt = gameState && gameState.p3m3Runtime;
+        if (!rt || rt.normalDefenceObject || rt.normalDefenceCleared) return rt && rt.normalDefenceObject;
+        const data = this.getPatternObjectData(gameState, 253018) || {};
+        rt.normalDefenceObject = {
+            objectId: '253018',
+            data,
+            active: true,
+            hitCount: 0,
+            maxHits: Math.max(1, this.num(data.Object_Remove_Value, 10)),
+            hitFlashTimer: 0,
+            age: 0
+        };
+        return rt.normalDefenceObject;
+    },
+
+    startNormalFinalSequence(gameState, reason = '') {
+        const rt = gameState && gameState.p3m3Runtime;
+        if (!rt || rt.routeType !== 'ROUTE_NORMAL' || rt.finalStarted || rt.finalPending) return false;
+        if (!rt.leftResult || !rt.rightResult || this.id(rt.currentAreaId) !== this.getCenterStageId(gameState)) return false;
+        rt.route = rt.route || this.buildRuntimeRoute(gameState, 'ROUTE_NORMAL');
+        rt.routeStarted = true;
+        this.createNormalDefenceObject(gameState);
+        // 243072 자체가 10초 대기 Action이므로 별도 하드코딩 타이머를 두지 않는다.
+        return this.startFinalAttack(gameState, reason || 'PORTAL_USED_701004');
+    },
+
+    createHiddenDebuffObject(gameState) {
+        const rt = gameState && gameState.p3m3Runtime;
+        if (!rt || rt.hiddenDebuffObject) return rt && rt.hiddenDebuffObject;
+        const data = this.getPatternObjectData(gameState, 253019) || {};
+        rt.hiddenDebuffObject = {
+            objectId: '253019',
+            data,
+            active: true,
+            elapsed: 0,
+            duration: Math.max(0.1, this.num(data.Object_Internal_Duration, 20)),
+            ratePerSecond: Math.max(0, this.num(data.Object_Interact_Value, 0.0045)),
+            naturalExpired: false,
+            age: 0
+        };
+        return rt.hiddenDebuffObject;
+    },
+
+    updateP3M3ObjectVisualTimers(rt, deltaTime) {
+        if (!rt) return;
+        const dt = Math.max(0, this.num(deltaTime, 0));
+        if (rt.normalDefenceObject) {
+            rt.normalDefenceObject.age = (rt.normalDefenceObject.age || 0) + dt;
+            rt.normalDefenceObject.hitFlashTimer = Math.max(0, (rt.normalDefenceObject.hitFlashTimer || 0) - dt);
+        }
+        if (rt.hiddenDebuffObject) rt.hiddenDebuffObject.age = (rt.hiddenDebuffObject.age || 0) + dt;
+        if (rt.normalDefenceBreakFx) {
+            rt.normalDefenceBreakFx.timer = Math.max(0, (rt.normalDefenceBreakFx.timer || 0) - dt);
+            if (rt.normalDefenceBreakFx.timer <= 0) rt.normalDefenceBreakFx = null;
+        }
+    },
+
+    updateHiddenDebuffObject(gameState, deltaTime) {
+        const rt = gameState && gameState.p3m3Runtime;
+        const obj = rt && rt.hiddenDebuffObject;
         const main = rt && rt.linkedBoss;
-        if (!rt || !row || !main || rt.routeType !== 'ROUTE_HIDDEN' || !rt.hiddenBattleStarted) return;
-        if (rt.finalPending || rt.finalStarted || rt.finalResolving) return;
-        if (this.id(row.Main_Boss_HP_Link_Type).toUpperCase() !== 'DRAIN') return;
-
-        const route = rt.route || {};
-        const thresholdRate = Math.max(0.001, this.num(route.Final_Attack_Start_Cond_Value, 0.01));
+        if (!rt || !obj || !obj.active || !main || rt.routeType !== 'ROUTE_HIDDEN') return false;
+        if (rt.finalPending || rt.finalStarted || rt.finalResolving) return false;
+        const dt = Math.max(0, this.num(deltaTime, 0));
         const maxHp = Math.max(1, main.maxHp || main.hp || 1);
-        const cycle = Math.max(0.1, this.num(row.Main_Boss_HP_Link_Cycle, 2));
-        const valuePerCycle = Math.max(0, this.num(row.Main_Boss_HP_Link_Value, 0.01));
-        const drainPerSecond = maxHp * valuePerCycle / cycle;
-        if (drainPerSecond <= 0) return;
+        const minHp = Math.max(1, maxHp * 0.01);
+        if (this.id(obj.data && obj.data.Object_Interact_Type).toUpperCase() === 'BOSS_MAX_HP_RATE_PER_SEC_DECREASE') {
+            main.hp = Math.max(minHp, (parseFloat(main.hp) || maxHp) - maxHp * obj.ratePerSecond * dt);
+        }
+        obj.elapsed = Math.min(obj.duration, (obj.elapsed || 0) + dt);
+        if (obj.elapsed >= obj.duration) {
+            obj.active = false;
+            obj.naturalExpired = true;
+            main.hp = Math.max(1, Math.min(parseFloat(main.hp) || minHp, minHp));
+            this.queueHiddenFinalSequence(gameState, 'OBJECT_REMOVE_253019');
+            return true;
+        }
+        return false;
+    },
 
-        const minHp = Math.max(1, maxHp * Math.min(thresholdRate, 0.01));
-        const before = parseFloat(main.hp) || maxHp;
-        main.hp = Math.max(minHp, before - drainPerSecond * Math.max(0, parseFloat(deltaTime) || 0));
-        rt.trueBossDrainTimer = (rt.trueBossDrainTimer || 0) + Math.max(0, parseFloat(deltaTime) || 0);
-        rt.trueBossDrainDebug = { before, after: main.hp, perSecond: drainPerSecond, thresholdRate };
+    onPlayerAttackBossObjectHit(m, baseDmg, gameState) {
+        if (!this.isActive(gameState) || !m || !m.isP3M3Monster) return false;
+        const rt = gameState.p3m3Runtime;
+        const obj = rt && rt.normalDefenceObject;
+        if (!rt || rt.routeType !== 'ROUTE_NORMAL' || !obj || !obj.active) return false;
+        if (this.id(m.p3m3Role).toUpperCase() !== 'CENTER_BOSS') return false;
+        obj.hitCount = Math.min(obj.maxHits, (obj.hitCount || 0) + 1);
+        obj.hitFlashTimer = 0.16;
+        if (obj.hitCount >= obj.maxHits) {
+            obj.active = false;
+            rt.normalDefenceCleared = true;
+            rt.normalDefenceBreakFx = { timer: 0.46, maxTimer: 0.46 };
+            try {
+                if (gameState.camera) {
+                    gameState.camera.shakeTime = Math.max(gameState.camera.shakeTime || 0, 0.28);
+                    gameState.camera.shakeIntensity = Math.max(gameState.camera.shakeIntensity || 0, 7);
+                }
+            } catch (e) {}
+        }
+        return true;
     },
 
     startFinalAttack(gameState) {
@@ -1950,6 +1991,7 @@ const P3M3FinalIssenSystem = {
 
         caster.p3m3Static = false;
         caster.p3m3TalkStandby = false;
+        caster.p3m3HoldFinalPose = false;
         if (caster.boss) {
             caster.boss.p3m3FinalQueued = false;
             caster.boss.actionMove = null;
@@ -2018,33 +2060,19 @@ const P3M3FinalIssenSystem = {
     monitorFinalAction(gameState) {
         const rt = gameState.p3m3Runtime;
         if (!rt || rt.finalSuccess || rt.finalFailed || rt.finalResolving) return;
+        if (rt.finalResponseSuccessPending) {
+            const total = Math.max(0.1, (parseFloat(rt.finalChargeDuration) || 0) + (parseFloat(rt.finalAttackDuration) || 0));
+            if ((parseFloat(rt.finalTimelineElapsed) || 0) >= total - 0.001) {
+                rt.finalResponseSuccessPending = false;
+                this.resolveFinal(gameState, true, rt.finalResolveReason || 'GUARD_SUCCESS');
+            }
+            return;
+        }
         const active = (gameState.monsters || []).find(m => m && m.active && m.isP3M3Monster && m.boss && (
             this.id(m.boss.action && m.boss.action.Action_ID) === rt.finalAttackActionId ||
             this.id(m.boss.activePattern && m.boss.activePattern.Pattern_ID).indexOf('P3_M3_FINAL_') === 0
         ));
         if (!active) this.resolveFinal(gameState, false, 'MISS_FINAL_RESPONSE');
-    },
-
-    onMonsterPlayerHit(m, baseDmg, gameState) {
-        if (!this.isActive(gameState) || !m || !m.isP3M3Monster) return;
-        const rt = gameState.p3m3Runtime;
-        const role = this.id(m.p3m3Role);
-        if (!rt.routeStarted && (role === 'P1_CLONE' || role === 'P2_CLONE')) return;
-        if (rt.routeType === 'ROUTE_HIDDEN' && (rt.finalPending || rt.finalStarted)) return;
-        const route = rt.route || {};
-        const targetId = this.id(route.Target_Monster_ID);
-        const selfId = this.id(m.p3m3Row && m.p3m3Row.P3_M3_Monster_ID);
-        if (targetId && targetId !== selfId) return;
-        const gain = Math.max(0, this.num(route.Gauge_Gain_On_Hit, 0));
-        if (gain <= 0) return;
-        const gaugeType = this.getGaugeType(rt);
-        if (gaugeType === 'FIGHTING_SPIRIT' && typeof PlayerManager !== 'undefined' && PlayerManager.addFightingSpirit) {
-            PlayerManager.addFightingSpirit(gameState, gain, { rewardKey: `P3M3_FIGHTING_SPIRIT_HIT_${Date.now()}`, lockTime: 0.05 });
-            rt.gauge = Math.min(rt.gaugeMax || 100, gameState.player ? (gameState.player.fightingSpirit || 0) : ((rt.gauge || 0) + gain));
-        } else {
-            rt.gauge = Math.min(rt.gaugeMax || 100, (rt.gauge || 0) + gain);
-        }
-        this.updateTargetUI(gameState);
     },
 
     onPlayerGuardResult(m, action, result, gameState) {
@@ -2055,17 +2083,17 @@ const P3M3FinalIssenSystem = {
         if (actionId !== rt.finalAttackActionId) return;
         const responseType = this.getFinalResponseType(rt);
         if (responseType !== 'GUARD' && responseType) return;
-        const gaugeType = this.getGaugeType(rt);
-        const gaugeReady = gaugeType !== 'ISSEN_GAUGE' || (rt.gauge || 0) >= (rt.gaugeMax || 100);
-        if (result && result.guarded && gaugeReady) {
-            rt.finalEffectSuppressed = true;
-            this.resolveFinal(gameState, true, 'GUARD_SUCCESS');
+        const responseReady = rt.routeType !== 'ROUTE_NORMAL' || !!rt.normalDefenceCleared;
+        if (result && result.guarded && responseReady) {
+            // 파훼 성공 여부만 먼저 기록한다. 일섬 Action/VFX는 끝까지 재생한 뒤 성공 복귀 연출로 넘어간다.
+            rt.finalResponseSuccessPending = true;
+            rt.finalResolveReason = 'GUARD_SUCCESS';
         } else {
-            // 가드 자체는 성공했지만 대응 게이지가 부족한 경우에도 패턴 실패 피해는 실제로 적용한다.
-            if (result && result.guarded && !gaugeReady) {
+            // 방어 버프를 파훼하지 못했다면 가드 입력 자체가 성공해도 최종 일섬 피해를 적용한다.
+            if (result && result.guarded && !responseReady) {
                 this.applyFailureFinalAttackDamage(gameState, rt.route, action);
             }
-            this.resolveFinal(gameState, false, result && result.guarded ? 'ISSEN_GAUGE_SHORTAGE' : 'GUARD_FAIL');
+            this.resolveFinal(gameState, false, result && result.guarded ? 'DEFENCE_BUFF_REMAIN' : 'GUARD_FAIL');
         }
     },
 
@@ -2089,8 +2117,29 @@ const P3M3FinalIssenSystem = {
             const seq = rt.failureSequence;
             const casterId = this.id(seq.route && seq.route.Final_Attack_Caster_Monster_ID);
             const selfId = this.id(m.p3m3Row && m.p3m3Row.P3_M3_Monster_ID);
-            // 중앙 맵 실패 연출에서는 지정된 시전자의 실제 보스 액션만 기존 업데이트 루프를 통과시킨다.
-            if (seq.playCasterAction && casterId && selfId === casterId) return false;
+            // 중앙 맵 실패 연출에서는 시전 동작이 진행되는 동안만 기존 보스 액션 업데이트를 통과시킨다.
+            // 일섬 동작이 끝난 뒤 복귀 연출까지의 시간에는 마지막 베기 자세를 고정한다.
+            if (seq.playCasterAction && casterId && selfId === casterId) {
+                const localElapsed = Math.max(0, (parseFloat(seq.elapsed) || 0) - Math.max(0, parseFloat(seq.leadDuration) || 0));
+                const actionTotal = Math.max(0.05, (parseFloat(rt.finalChargeDuration) || 0) + (parseFloat(rt.finalAttackDuration) || 0));
+                if (localElapsed < actionTotal) return false;
+                const holdAction = this.getAction(gameState, this.id(seq.route && seq.route.Final_Attack_ATK_Action_ID) || rt.finalAttackActionId);
+                if (m.boss && holdAction) {
+                    m.boss.action = { ...holdAction };
+                    m.boss.activePattern = null;
+                    m.boss.runtimeActions = null;
+                    m.boss.currentActionIndex = -1;
+                    m.boss.noPatternWaitTimer = 999999;
+                    m.timer = Math.max(0.001, this.num(holdAction.Action_Anim_Duration, rt.finalAttackDuration || 2));
+                    m.state = 'ATK';
+                    m.p3m3HoldFinalPose = true;
+                }
+                m.kbVx = 0;
+                m.kbVy = 0;
+                m.vz = 0;
+                m.z = 0;
+                return true;
+            }
             m.kbVx = 0;
             m.kbVy = 0;
             m.vz = 0;
@@ -2125,6 +2174,69 @@ const P3M3FinalIssenSystem = {
             m.vz = 0;
             m.z = Math.max(0, parseFloat(m.z) || 0);
             if (m.state === 'Walk' || m.state === 'Run' || m.state === 'CHASE' || m.state === 'BOUNDARY') m.state = 'IDLE';
+            return true;
+        }
+        if (rt && rt.finalResponseSuccessPending && rt.finalStarted && m.isP3M3Monster) {
+            const casterId = this.id(rt.route && rt.route.Final_Attack_Caster_Monster_ID);
+            const selfId = this.id(m.p3m3Row && m.p3m3Row.P3_M3_Monster_ID);
+            if (casterId && selfId === casterId) {
+                const currentId = this.id(m.boss && m.boss.action && m.boss.action.Action_ID);
+                if (currentId === this.id(rt.finalAttackActionId)) return false;
+                const holdAction = this.getAction(gameState, rt.finalAttackActionId);
+                if (m.boss && holdAction) {
+                    m.boss.noPatternWaitTimer = 999999;
+                    m.boss.activePattern = null;
+                    m.boss.runtimeActions = null;
+                    m.boss.currentActionIndex = -1;
+                    m.boss.action = { ...holdAction };
+                    m.timer = Math.max(0.001, this.num(holdAction.Action_Anim_Duration, rt.finalAttackDuration || 2));
+                    m.state = 'ATK';
+                    m.p3m3HoldFinalPose = true;
+                }
+                m.kbVx = 0;
+                m.kbVy = 0;
+                m.vz = 0;
+                m.z = 0;
+                return true;
+            }
+        }
+        if (rt && rt.normalClearReturn && rt.normalClearReturn.active && m === rt.linkedBoss) {
+            m.kbVx = 0;
+            m.kbVy = 0;
+            m.vz = 0;
+            m.z = 0;
+            if (rt.normalClearStageRestored) {
+                m.p3m3MainBossSuppressed = false;
+                m.state = 'GROGGY';
+                m.p3m3SuccessGroggyHold = true;
+                if (m.boss) {
+                    m.boss.noPatternWaitTimer = 999999;
+                    m.boss.action = {
+                        Action_ID: 'P3_M3_SUCCESS_GROGGY_HOLD',
+                        Action_Name: '3단계 그로기 자세 유지',
+                        Action_Type: 'WAIT',
+                        Action_Pose_Type: 'POSE_KASIYAS_P3_GROGGY',
+                        Action_Anim_Duration: 999999
+                    };
+                    m.timer = 0;
+                }
+            }
+            return true;
+        }
+        if (rt && rt.finalResolving && (m.isP3M3Monster || m.p3m3MainBossSuppressed)) {
+            // 최종 일섬의 화면 파괴/피해/복귀 연출이 끝날 때까지 AI 재개를 막는다.
+            m.kbVx = 0;
+            m.kbVy = 0;
+            m.vz = 0;
+            m.z = Math.max(0, parseFloat(m.z) || 0);
+            if (m.p3m3HoldFinalPose && m.boss && m.boss.action) {
+                const holdDur = Math.max(0.001, this.num(m.boss.action.Action_Anim_Duration, rt.finalAttackDuration || 2));
+                m.timer = holdDur;
+                m.state = 'ATK';
+                m.boss.noPatternWaitTimer = 999999;
+            } else if (m.state === 'Walk' || m.state === 'Run' || m.state === 'CHASE' || m.state === 'BOUNDARY') {
+                m.state = 'IDLE';
+            }
             return true;
         }
         if (m.isP3M3Monster && m.hp <= 0) {
@@ -2201,18 +2313,140 @@ const P3M3FinalIssenSystem = {
         return false;
     },
 
-    startHiddenClearReturn(gameState, reason = 'PATTERN_END') {
+    getNormalStageForReturn(gameState, rt) {
+        const snapshotId = this.id(rt && rt.snapshot && rt.snapshot.stageId);
+        return this.getStage(gameState, snapshotId) || this.getStageByType(gameState, 'NORMAL') || this.getStage(gameState, 601001) || (rt && rt.snapshot && rt.snapshot.stage) || null;
+    },
+
+    restoreNormalStageForSuccess(gameState) {
         const rt = gameState && gameState.p3m3Runtime;
-        if (!rt) return false;
-        rt.hiddenWhiteBackdrop = true;
-        rt.hiddenClearReturn = {
+        if (!rt || !rt.active) return false;
+        const stage = this.getNormalStageForReturn(gameState, rt) || {};
+        const stageId = this.id(stage.Stage_ID || (rt.snapshot && rt.snapshot.stageId) || 601001);
+        const worldW = Math.max(1, this.num(stage.Stage_Width, this.num(stage.Map_Size_X, rt.snapshot && rt.snapshot.worldW || 1400)) || 1400);
+        const worldD = Math.max(1, this.num(stage.Stage_Height, this.num(stage.Map_Size_Y, rt.snapshot && rt.snapshot.worldD || 400)) || 400);
+        const playerX = this.num(stage.Player_Spawn_X, this.num(stage.Player_Start_Center_X, 300));
+        const playerY = this.num(stage.Player_Spawn_Y, this.num(stage.Player_Start_Center_Y, worldD / 2));
+        const bossX = this.num(stage.Boss_Spawn_X, this.num(stage.Boss_Spawn_Center_X, 1000));
+        const bossY = this.num(stage.Boss_Spawn_Y, this.num(stage.Boss_Spawn_Center_Y, worldD / 2));
+
+        this.cleanupP3Monsters(gameState);
+        // 히든 종료 대화에서 사용하던 백색 배경은 성공 복귀 화면이 완전히 가린 상태에서 해제한다.
+        // 이후 백색 암전이 걷힐 때 원래 Stage가 자연스럽게 드러난다.
+        rt.hiddenWhiteBackdrop = false;
+        gameState.WORLD_WIDTH = worldW;
+        gameState.WORLD_DEPTH = worldD;
+        gameState.currentStageId = stageId || (rt.snapshot && rt.snapshot.stageId);
+        gameState.currentStage = stage || (rt.snapshot && rt.snapshot.stage) || gameState.currentStage;
+        try {
+            if (typeof GameRenderer !== 'undefined' && typeof GameRenderer.rebuildStageBackground === 'function') {
+                GameRenderer.rebuildStageBackground(gameState.currentStage, worldW, worldD);
+            }
+        } catch (e) {}
+
+        const p = gameState.player;
+        if (p) {
+            this.placePlayer(gameState, playerX, playerY, { forceIdle: true, clearKeys: true });
+            p.faceDir = 1;
+        }
+
+        const main = rt.linkedBoss;
+        if (main) {
+            main.p3m3MainBossSuppressed = false;
+            main.x = bossX;
+            main.y = bossY;
+            main.z = 0;
+            main.vz = 0;
+            main.kbVx = 0;
+            main.kbVy = 0;
+            main.faceDir = -1;
+            main.pacingDir = -1;
+            main.state = 'GROGGY';
+            main.p3m3SuccessGroggyHold = true;
+            if (main.boss) {
+                main.boss.noPatternWaitTimer = 999999;
+                main.boss.activePattern = null;
+                main.boss.runtimeActions = null;
+                main.boss.currentActionIndex = -1;
+                main.boss.actionMove = null;
+                main.boss.actionMoveCompleted = false;
+                main.boss.action = {
+                    Action_ID: 'P3_M3_SUCCESS_GROGGY_HOLD',
+                    Action_Name: '3단계 그로기 자세 유지',
+                    Action_Type: 'WAIT',
+                    Action_Pose_Type: 'POSE_KASIYAS_P3_GROGGY',
+                    Action_Anim_Duration: 999999
+                };
+                main.timer = 0;
+            }
+        }
+        rt.currentAreaId = stageId;
+        rt.normalClearStageRestored = true;
+        gameState.hitboxes = [];
+        gameState.bossAttackObjects = (gameState.bossAttackObjects || []).filter(obj => !(obj && (obj.p3m3 || obj.p3m3Terrain)));
+        if (gameState.targetUI && main) {
+            gameState.targetUI.monster = main;
+            gameState.targetUI.timer = 999999;
+        }
+        return true;
+    },
+
+    startNormalClearReturn(gameState, reason = 'GUARD_SUCCESS') {
+        const rt = gameState && gameState.p3m3Runtime;
+        if (!rt || !rt.active || (rt.normalClearReturn && rt.normalClearReturn.active)) return false;
+        rt.finalEffectSuppressed = true;
+        rt.finalResolving = false;
+        rt.normalClearStageRestored = false;
+        // 성공 복귀는 화면을 완전히 백색으로 덮은 뒤, 가려진 동안 원래 Stage를 복구하고
+        // 백색이 걷히면서 3단계 그로기 자세를 보여준 후 마지막 HP 감소를 적용한다.
+        rt.normalClearReturn = {
             active: true,
             timer: 0,
-            duration: 0.9,
-            reason: reason || 'PATTERN_END'
+            swapAt: 0.70,
+            damageAt: 2.00,
+            duration: 2.20,
+            reason: reason || 'GUARD_SUCCESS',
+            damageApplied: false
         };
-        if (gameState.screenHitFlash && gameState.screenHitFlash.mode === 'fullwhite') gameState.screenHitFlash = null;
+        gameState.screenHitFlash = {
+            life: 2.20,
+            maxLife: 2.20,
+            strength: 1.0,
+            mode: 'fullwhite',
+            rampTime: 0.26,
+            peakFlashTime: 0.10,
+            fadeOutTime: 0.62,
+            maxAlpha: 1.0,
+            pureWhite: true
+        };
         return true;
+    },
+
+    updateNormalClearReturn(gameState, deltaTime) {
+        const rt = gameState && gameState.p3m3Runtime;
+        const ret = rt && rt.normalClearReturn;
+        if (!ret || !ret.active) return false;
+        const dt = Math.max(0, parseFloat(deltaTime) || 0);
+        ret.timer = Math.max(0, (parseFloat(ret.timer) || 0) + dt);
+        if (!rt.normalClearStageRestored && ret.timer >= Math.max(0.05, parseFloat(ret.swapAt) || 0.34)) {
+            this.restoreNormalStageForSuccess(gameState);
+        }
+        if (!ret.damageApplied && ret.timer >= Math.max(0.1, parseFloat(ret.damageAt) || 0.88)) {
+            ret.damageApplied = true;
+            const resultAction = this.getResultAction(gameState, 'SUCCESS');
+            rt.resultActionId = this.id(resultAction && resultAction.Action_ID);
+            this.finish(gameState, true, ret.reason || 'GUARD_SUCCESS', { resultAction, normalReturnComplete: true });
+            return true;
+        }
+        this.updateTargetUI(gameState);
+        this.refreshDebugSnapshot(gameState, dt);
+        return true;
+    },
+
+    startHiddenClearReturn(gameState, reason = 'PATTERN_END') {
+        // 히든 성공도 일반 성공과 같은 복귀 문법을 사용한다.
+        // 종료 대화가 끝나는 즉시 백색 암전 → 원래 Stage 복구 → 그로기 자세 → 잔여 HP 제거 순서로 진행한다.
+        return this.startNormalClearReturn(gameState, reason || 'PATTERN_END');
     },
 
     updateHiddenClearReturn(gameState, deltaTime) {
@@ -2237,8 +2471,10 @@ const P3M3FinalIssenSystem = {
         rt.finalResolving = true;
         rt.finalResolveTimer = (success && rt.routeType === 'ROUTE_HIDDEN' && reason === 'PARRY_SUCCESS') ? 0.8 : (reason === 'FINAL_ISSEN_DEATH' ? 2.15 : 2.0);
         if (!success && (reason === 'FINAL_ISSEN_DEATH' || (gameState.player && gameState.player.hp <= 0))) rt.finalIssenDeathPending = true;
-        const useWhiteClear = success && rt.routeType === 'ROUTE_HIDDEN' && reason === 'PARRY_SUCCESS';
-        rt.finalEffectSuppressed = !!success || !!rt.finalEffectSuppressed;
+        const hiddenParrySuccess = success && rt.routeType === 'ROUTE_HIDDEN' && reason === 'PARRY_SUCCESS';
+        // 일반 Guard 성공은 일섬 이펙트를 끝까지 보여준다.
+        // 히든 Parry 성공은 기존 연출처럼 즉시 최종 일섬 잔여 이펙트를 정리하고 백색 배경에서 종료 대화로 전환한다.
+        rt.finalEffectSuppressed = hiddenParrySuccess ? true : (!!rt.finalEffectSuppressed && !success);
         rt.finalCollapse = success ? null : {
             active: true,
             timer: 0,
@@ -2251,6 +2487,7 @@ const P3M3FinalIssenSystem = {
                 const caster = (gameState.monsters || []).find(mm => mm && mm.active && mm.isP3M3Monster && this.id(mm.p3m3Role).toUpperCase() === 'TRUE_BOSS');
                 rt.hiddenClearFinalFaceDir = caster && caster.faceDir === -1 ? -1 : 1;
             }
+            // 히든 Parry 성공 직후에는 기존 연출처럼 백색 배경으로 전환한 뒤 그 상태에서 종료 대화를 진행한다.
             rt.hiddenWhiteBackdrop = true;
             gameState.screenHitFlash = { life: 0.35, maxLife: 0.35, strength: 0.84, mode: 'fullwhite' };
         }
@@ -2258,21 +2495,52 @@ const P3M3FinalIssenSystem = {
         rt.finalResolveReason = reason;
         rt.finalSuccess = !!success;
         rt.finalFailed = !success;
+        const finalCasterId = this.id(rt.route && rt.route.Final_Attack_Caster_Monster_ID);
+        const finalHoldAction = this.getAction(gameState, rt.finalAttackActionId);
         (gameState.monsters || []).forEach(m => {
             if (!m || !m.isP3M3Monster || !m.boss) return;
+            const selfId = this.id(m.p3m3Row && m.p3m3Row.P3_M3_Monster_ID);
+            // 일반 성공/실패 연출은 마지막 일섬 자세를 유지하지만,
+            // 히든 Parry 성공은 백색 배경 대화로 넘어가므로 패리/일섬 자세를 고정하지 않는다.
+            const shouldHoldFinalPose = !hiddenParrySuccess && !!finalHoldAction && finalCasterId && selfId === finalCasterId;
             m.boss.noPatternWaitTimer = 999999;
-            m.boss.action = null;
             m.boss.activePattern = null;
             m.boss.runtimeActions = null;
+            m.boss.currentActionIndex = -1;
+            m.boss.actionMove = null;
+            m.boss.actionMoveCompleted = false;
             m.kbVx = 0;
             m.kbVy = 0;
+            m.vz = 0;
+            m.z = 0;
+            if (shouldHoldFinalPose) {
+                // 일섬의 판정이 끝난 뒤에도 연출/결과 처리가 끝날 때까지
+                // 검을 휘두른 마지막 프레임을 유지한다.
+                m.boss.action = { ...finalHoldAction };
+                m.timer = Math.max(0.001, this.num(finalHoldAction.Action_Anim_Duration, rt.finalAttackDuration || 2));
+                m.state = 'ATK';
+                m.p3m3HoldFinalPose = true;
+            } else {
+                m.boss.action = null;
+                m.p3m3HoldFinalPose = false;
+                if (hiddenParrySuccess && finalCasterId && selfId === finalCasterId) {
+                    // 종료 대화에서는 공격/패리 마지막 프레임 대신 정적인 기본 자세로 보이게 한다.
+                    m.state = 'IDLE';
+                    m.timer = 0;
+                } else if (m.state === 'Walk' || m.state === 'Run' || m.state === 'CHASE' || m.state === 'BOUNDARY') {
+                    m.state = 'IDLE';
+                }
+            }
         });
+        if (success && rt.routeType === 'ROUTE_NORMAL' && reason === 'GUARD_SUCCESS') {
+            this.startNormalClearReturn(gameState, reason);
+        }
     },
 
     updateTargetUI(gameState) {
         const rt = gameState && gameState.p3m3Runtime;
         if (!rt || !gameState.targetUI) return;
-        const centerId = this.id(this.getSystem(gameState).Center_Area_ID || 902001);
+        const centerId = this.getCenterStageId(gameState);
         if (this.id(rt.currentAreaId) === centerId && rt.linkedBoss) {
             gameState.targetUI.monster = rt.linkedBoss;
             gameState.targetUI.timer = 999999;
@@ -2300,6 +2568,9 @@ const P3M3FinalIssenSystem = {
             this.updateIntroSequence(gameState, deltaTime);
             return;
         }
+        if (this.updateNormalClearReturn(gameState, deltaTime)) {
+            return;
+        }
         if (this.updateHiddenClearReturn(gameState, deltaTime)) {
             return;
         }
@@ -2307,6 +2578,7 @@ const P3M3FinalIssenSystem = {
             return;
         }
         if (rt.finalResolving) {
+            if (rt.finalStarted) this.updateFinalTimeline(gameState, deltaTime);
             if (rt.finalIssenDeathPending || (gameState.player && gameState.player.hp <= 0)) {
                 const go = document.getElementById('gameOverScreen');
                 if (go) go.style.display = 'none';
@@ -2316,16 +2588,18 @@ const P3M3FinalIssenSystem = {
             }
             rt.finalResolveTimer = Math.max(0, (rt.finalResolveTimer || 0) - deltaTime);
             if (rt.finalResolveTimer <= 0) {
+                if (rt.finalResolveSuccess && rt.routeType === 'ROUTE_NORMAL' && rt.finalResolveReason === 'GUARD_SUCCESS') {
+                    this.startNormalClearReturn(gameState, rt.finalResolveReason);
+                    return;
+                }
                 if (rt.finalResolveSuccess && rt.routeType === 'ROUTE_HIDDEN' && !rt.hiddenClearDialogueShown) {
                     rt.hiddenClearDialogueShown = true;
                     rt.finalResolving = false;
+                    // Parry 성공 때 진입한 백색 배경을 그대로 유지한 채 종료 대화를 시작한다.
                     rt.hiddenWhiteBackdrop = true;
                     if (gameState.screenHitFlash && gameState.screenHitFlash.mode === 'fullwhite') gameState.screenHitFlash = null;
-                    const casterId = this.id(rt.route && rt.route.Final_Attack_Caster_Monster_ID);
-                    const startedClearDialogue = this.startDialogueByTrigger(gameState, 'ROUTE_HIDDEN_CLEAR', {
-                        areaId: this.getSystem(gameState).Center_Area_ID || 902001,
-                        routeId: rt.route && rt.route.Route_ID,
-                        monsterId: casterId
+                    const startedClearDialogue = this.startDialogueByTrigger(gameState, 'EVENT', {
+                        triggerValue: 'P3_M3_HIDDEN_CLEAR'
                     });
                     if (!startedClearDialogue) this.executeRouteFinalResult(gameState, true, rt.finalResolveReason || 'FINAL_RESOLVE');
                 } else {
@@ -2337,33 +2611,16 @@ const P3M3FinalIssenSystem = {
             }
             return;
         }
-        rt.timer = Math.max(0, (rt.timer || 0) - deltaTime);
-        if (rt.timer <= 0) {
-            const system = rt.system || this.getSystem(gameState);
-            const failResultType = this.id(system.Time_Limit_Fail_Result_Type).toUpperCase();
-            if (failResultType === 'FINAL_ATTACK_HIT_AND_RETURN_NORMAL_MAP') {
-                this.executeResultType(gameState, failResultType, {
-                    reason: 'TIME_LIMIT',
+        if (!rt.timeLimitDisabled) {
+            rt.timer = Math.max(0, (rt.timer || 0) - deltaTime);
+            if (rt.timer <= 0) {
+                rt.resultActionId = this.id((this.getResultAction(gameState, 'FAIL') || {}).Action_ID || 243078);
+                this.startFailureFinalAttack(gameState, 'TIME_LIMIT', {
                     forceFailureSequence: true,
-                    route: rt.route || this.getRouteById(gameState, system.Time_Limit_Fail_Route_ID) || null
+                    route: rt.route || this.buildRuntimeRoute(gameState, rt.routeType || this.resolveRouteTypeFromPlayer(gameState))
                 });
-            } else if (failResultType === 'RETURN_NORMAL_MAP') {
-                const restoreType = this.id(system.Fail_Boss_HP_Restore_Type).toUpperCase();
-                const main = rt.linkedBoss;
-                if (main && restoreType && restoreType !== 'KEEP_CURRENT') {
-                    if (restoreType === 'RESTORE_TO_10_PERCENT' || restoreType === 'RESTORE_10_PERCENT') {
-                        const entryHpRate = this.getPatternHpRate(gameState, rt.patternId, 0.1);
-                        main.hp = Math.max(1, (main.maxHp || main.hp || 1) * entryHpRate);
-                    } else if (restoreType === 'RESTORE_FULL' || restoreType === 'FULL') {
-                        main.hp = Math.max(1, main.maxHp || main.hp || 1);
-                    }
-                }
-                this.finish(gameState, false, 'TIME_LIMIT');
-            } else {
-                // 구버전 데이터 fallback: 실패 결과가 지정되지 않은 경우 기존 재시작 동작을 유지한다.
-                this.restartPattern(gameState, 'TIME_LIMIT');
+                return;
             }
-            return;
         }
 
         const p = gameState.player;
@@ -2376,17 +2633,6 @@ const P3M3FinalIssenSystem = {
                 if (!rt.finalResolving) this.resolveFinal(gameState, false, 'FINAL_ISSEN_DEATH');
                 this.updateTargetUI(gameState);
                 this.refreshDebugSnapshot(gameState, deltaTime);
-                return;
-            }
-            const combatMonster = (gameState.monsters || []).find(m => m && m.active && m.isP3M3Monster && !m.p3m3TalkStandby && this.id(m.p3m3Row && m.p3m3Row.Area_ID) === this.id(rt.currentAreaId));
-            const failType = this.id(combatMonster && combatMonster.p3m3Row && combatMonster.p3m3Row.Fail_Result_Type).toUpperCase();
-            if (failType) {
-                this.executeResultType(gameState, failType, {
-                    fallbackSuccess: false,
-                    reason: 'MONSTER_BATTLE_DEATH',
-                    preservePlayerDeath: true,
-                    combatMonster
-                });
                 return;
             }
             if (!rt.playerDeathPending) {
@@ -2413,7 +2659,7 @@ const P3M3FinalIssenSystem = {
         }
 
         this.updatePortals(gameState, deltaTime);
-        if (rt.currentAreaId === this.id(this.getSystem(gameState).Center_Area_ID || 902001)) {
+        if (rt.currentAreaId === this.getCenterStageId(gameState)) {
             this.updateRoute(gameState, deltaTime);
         }
         this.updateTargetUI(gameState);
@@ -2474,8 +2720,7 @@ const P3M3FinalIssenSystem = {
                     endX: this.num(move.endX, 0),
                     endY: this.num(move.endY, 0),
                     duration: this.num(move.duration, 0)
-                } : null,
-                allowed: boss && Array.isArray(boss.p3m3AllowedPatternIds) ? boss.p3m3AllowedPatternIds.join(',') : ''
+                } : null
             });
         });
         rt.debugLastByKey = next;
@@ -2510,13 +2755,16 @@ const P3M3FinalIssenSystem = {
             main.kbVx = 0;
             main.kbVy = 0;
             if (success) {
-                main.x = Math.max(0, (gameState.WORLD_WIDTH || rt.snapshot.worldW || 1400) / 2);
-                main.y = Math.max(0, (gameState.WORLD_DEPTH || rt.snapshot.worldD || 300) / 2);
-                const finalFaceDir = (rt.hiddenClearFinalFaceDir === -1 || rt.hiddenClearFinalFaceDir === 1)
-                    ? rt.hiddenClearFinalFaceDir
-                    : (main.faceDir === -1 ? -1 : 1);
-                main.faceDir = finalFaceDir;
-                main.pacingDir = finalFaceDir;
+                if (!options.normalReturnComplete) {
+                    main.x = Math.max(0, (gameState.WORLD_WIDTH || rt.snapshot.worldW || 1400) / 2);
+                    main.y = Math.max(0, (gameState.WORLD_DEPTH || rt.snapshot.worldD || 300) / 2);
+                    const finalFaceDir = (rt.hiddenClearFinalFaceDir === -1 || rt.hiddenClearFinalFaceDir === 1)
+                        ? rt.hiddenClearFinalFaceDir
+                        : (main.faceDir === -1 ? -1 : 1);
+                    main.faceDir = finalFaceDir;
+                    main.pacingDir = finalFaceDir;
+                }
+                main.p3m3SuccessGroggyHold = false;
                 main.state = 'DIE';
                 main.deadTimer = 0;
                 main.hp = 0;
@@ -2546,10 +2794,13 @@ const P3M3FinalIssenSystem = {
         gameState.targetUI.monster = main || null;
         gameState.targetUI.timer = success ? 1.5 : 999999;
         if (success) {
-            gameState.stageClearPending = true;
-            gameState.isStageCleared = true;
-            gameState.screenHitFlash = { life: 0.9, maxLife: 0.9, strength: 0.78, mode: 'fullwhite' };
-            try { pushSystemNotice('던전 클리어', '#2ecc71', 2.0); } catch (e) {}
+            // 최종 패턴 성공 후 전투를 종료하고 독립된 GAME CLEAR 화면으로 전환한다.
+            if (!options.normalReturnComplete) {
+                gameState.screenHitFlash = { life: 0.9, maxLife: 0.9, strength: 0.78, mode: 'fullwhite' };
+            }
+            if (!(gameState.bossPractice && gameState.bossPractice.enabled) && typeof GameModeSystem !== 'undefined' && GameModeSystem.showGameClear) {
+                GameModeSystem.showGameClear(gameState);
+            }
         } else {
             gameState.screenHitFlash = { life: 0.35, maxLife: 0.35, strength: 0.55, mode: 'red' };
             try { pushSystemNotice(`이면세계 이탈: ${reason}`, '#ff8a7a', 1.7); } catch (e) {}

@@ -1,0 +1,10 @@
+[
+  {
+    "Special_Mode_ID": 901001,
+    "Dev_Name": "SpMode_DimensionDefense",
+    "Special_Mode_Type": "OBJECT_DEFENSE",
+    "Use_Content_Type": "MONSTER_PATTERN",
+    "Ref_Use_Content": "Pattern_P2M3_Start",
+    "Ref_Player": "Player_Special_DimensionDefense"
+  }
+]

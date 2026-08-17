@@ -303,8 +303,8 @@ const PlayerAction = {
             return;
         }
 
-        let dashAct = gameState.actions.find(a => String(a.Action_Name || '').trim() === '대쉬');
-        let jumpAct = gameState.actions.find(a => String(a.Action_Name || '').trim() === '점프');
+        let dashAct = gameState.actions.find(a => String(a.Dev_Name || '').trim() === 'Player_Act_Dash');
+        let jumpAct = gameState.actions.find(a => String(a.Dev_Name || '').trim() === 'Player_Act_Jump');
         let runAct = gameState.actions.find(a => String(a.Action_Type || '').trim() === 'ACT_RUN');
         let guardAct = gameState.actions.find(a => String(a.Action_Type || '').trim() === 'ACT_GUARD');
         let dashReqLv = dashAct ? parseFloat(dashAct.Require_Level) || 0 : 0;
@@ -657,7 +657,7 @@ const PlayerAction = {
                                                     if (typeof PlayerManager !== 'undefined' && PlayerManager.applyP3OniCurseLifeSteal) {
                                                         PlayerManager.applyP3OniCurseLifeSteal(gameState, Math.max(0, hpBefore - hpAfter), m);
                                                     }
-                                                    if (typeof PlayerManager !== 'undefined' && PlayerManager.addFightingSpirit && (player.fightingSpiritAtkGainCooldownTimer || 0) <= 0) {
+                                                    if (Math.max(0, hpBefore - hpAfter) > 0 && typeof PlayerManager !== 'undefined' && PlayerManager.addFightingSpirit && (player.fightingSpiritAtkGainCooldownTimer || 0) <= 0) {
                                                         if (PlayerManager.addFightingSpirit(gameState, player.atkGetFightingSpirit || 0, { lockTime: player.atkGetFightingSpiritCooldown || 0.3 })) {
                                                             player.fightingSpiritAtkGainCooldownTimer = Math.max(0, player.atkGetFightingSpiritCooldown || 0);
                                                         }

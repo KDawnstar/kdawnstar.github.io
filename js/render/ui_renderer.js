@@ -468,7 +468,6 @@ GameRenderer.drawTargetUI = function(ctx, canvas, targetUI, gameState = null) {
 
         let belowBossUiOffset = 0;
         const p3Player = gameState && gameState.player ? gameState.player : null;
-        const p3BossPhase = tm && tm.boss ? String(tm.boss.phaseId || tm.boss.phase && tm.boss.phase.Phase_ID || '').trim() : '';
 
         // 3페이즈 대형 1번 히든 보상은 보스 HP 상태창 아래가 아니라,
         // 던파식 좌측 상태 패널처럼 별도 표기한다. 미획득 상태는 표시하지 않는다.

@@ -139,7 +139,7 @@
         const ctx = this.ctx;
         const canvas = this.canvas;
         if (!ctx || !canvas) return;
-        const rt = gameState && gameState.p2m3DefenseRuntime;
+        const rt = gameState && gameState.specialModeObjectDefenseRuntime;
         if (!rt) return;
         const layout = this.getP2M3Layout(canvas);
 
@@ -781,8 +781,8 @@
             ctx.restore();
         };
 
-        if (cond === 'PER_LANE_HIT_COUNT') {
-            const perLaneMax = Math.max(1, parseFloat(slash.data && slash.data.HP_Per_Lane) || 1);
+        if (cond === 'PER_LANE_HIT_COUNT' || cond === 'PER_PART_HIT_COUNT') {
+            const perLaneMax = Math.max(1, parseFloat(slash.data && slash.data.HP_Per_Lane) || parseFloat(slash.data && slash.data.Object_Part_HP) || 1);
             const lanes = slash.lanes || [];
             for (const lane of lanes) {
                 const laneX = layout.left + layout.laneW * lane;
@@ -796,7 +796,7 @@
             return;
         }
 
-        const maxHp = Math.max(1, parseFloat(slash.maxHp) || parseFloat(slash.data && slash.data.Slash_HP) || 1);
+        const maxHp = Math.max(1, parseFloat(slash.maxHp) || parseFloat(slash.data && slash.data.Slash_HP) || parseFloat(slash.data && slash.data.Object_HP) || 1);
         const hp = Math.max(0, parseFloat(slash.hp) || 0);
         const gw = giant ? Math.min(b.w * 0.76, 360 * s) : Math.min(b.w * 0.70, 110 * s);
         const gh = giant ? Math.max(8 * s, 12 * s) : Math.max(5 * s, 7 * s);
@@ -1316,7 +1316,7 @@
         const maxTime = Math.max(0.01, parseFloat(rt.outroMaxTime) || 1.6);
         const remain = Math.max(0, parseFloat(rt.endingTimer) || 0);
         const ratio = Math.max(0, Math.min(1, 1 - remain / maxTime));
-        const strength = String(rt.result || '').toUpperCase() === 'PERFECT_SUCCESS' ? 1.0 : (String(rt.result || '').toUpperCase() === 'GUARD_SUCCESS' ? 0.82 : 0.68);
+        const strength = String(rt.result || '').toUpperCase() === 'MODE_ATK_SUCCESS' ? 1.0 : (String(rt.result || '').toUpperCase() === 'MODE_GUARD_SUCCESS' ? 0.82 : 0.68);
         const t = rt.timer || 0;
         ctx.save();
         // 게임 플레이 화면 전체에 차원이 일그러지는 듯한 공통 종료 연출을 얹는다. DOM 하단 HUD는 캔버스 밖이므로 영향받지 않는다.
@@ -1377,7 +1377,7 @@
     }
 
     GameRenderer.drawP2M3IntroOverlay = function(ctx, canvas, gameState) {
-        const intro = gameState && gameState.p2m3IntroRuntime;
+        const intro = gameState && gameState.specialModeObjectDefenseIntroRuntime;
         if (!intro || !intro.active || !canvas) return;
         const actionId = String(intro.actionId || '');
         const ratio = Math.max(0, Math.min(1, (parseFloat(intro.timer) || 0) / Math.max(0.05, parseFloat(intro.duration) || 1)));

@@ -1,38 +1,68 @@
 // boss_phase_system.js
-// Boss_Phase_info 기반 보스 페이즈 데이터 조회와 보스 런타임 초기화를 담당한다.
-//
-// 기존 MonsterManager 메서드와 호환되도록, 각 함수는 MonsterManager를 this로 받아 실행된다.
+// Boss_info에 통합된 단계/AI 운용 데이터를 사용해 보스 런타임과 단계 전환을 관리한다.
+// 파일명/외부 함수명은 기존 MonsterManager 연결 호환을 위해 유지한다.
 
 const BossPhaseSystem = {
-    createBossRuntimeForMonster: function(d, gameState) {
+    createBossRuntimeForMonster: function(d, gameState, options = {}) {
+        const aiType = String(d && d.aiType || '').trim().toUpperCase();
         const isBossPatternData = (this && typeof this.isBossPatternData === 'function')
             ? this.isBossPatternData(d)
-            : !!d && String(d.aiType || '').trim().toUpperCase() === 'BOSS_PATTERN';
+            : !!d && (aiType === 'BOSS_PATTERN' || aiType === 'BOSS_PATTERN_BASIC');
+        const forceRuntime = !!(options && options.forceRuntime);
+        if (!d || (!isBossPatternData && !forceRuntime)) return null;
 
-        if (!isBossPatternData) return null;
-
-        const phase = Object.values(gameState.DB_BOSS_PHASE || {})
-            .filter(p => String(p.Phase_Monster_ID || '').trim() === String(d.id || '').trim())
-            .sort((a, b) => (parseFloat(a.Phase_Order) || 0) - (parseFloat(b.Phase_Order) || 0))[0];
-
-        if (!phase) return null;
+        const config = d.bossConfig ? { ...d.bossConfig } : {
+            Monster_ID: d.id,
+            Phase_Order: null,
+            Phase_Name: '',
+            Chase_Stop_Distance: null,
+            No_Pattern_Wait_Time: null,
+            Late_Phase_HP_Rate: null,
+            Next_Boss_ID: null,
+            Phase_Transition_Type: null
+        };
+        if (!config.Monster_ID) config.Monster_ID = d.id;
 
         const patternSetId = String(d.patternSetId || '').trim();
-        const patterns = gameState.DB_BOSS_PATTERN_BY_SET && gameState.DB_BOSS_PATTERN_BY_SET[patternSetId]
+        const allPatterns = gameState.DB_BOSS_PATTERN_BY_SET && gameState.DB_BOSS_PATTERN_BY_SET[patternSetId]
             ? gameState.DB_BOSS_PATTERN_BY_SET[patternSetId]
             : [];
+        const basicPatternOnly = aiType === 'BOSS_PATTERN_BASIC';
+        const selectablePatterns = basicPatternOnly
+            ? allPatterns.filter(pattern => String(pattern && pattern.Pattern_Category || '').trim().toUpperCase() === 'BASIC')
+            : allPatterns;
 
+        const lateThreshold = this.getBossLatePhaseThreshold(config);
+        const startsLate = Number.isFinite(lateThreshold) && lateThreshold >= 1;
         const patternCooldowns = {};
-        for (const pattern of patterns) {
+        for (const pattern of selectablePatterns) {
             const patternId = String(pattern.Pattern_ID || '').trim();
             if (!patternId) continue;
-            patternCooldowns[patternId] = parseFloat(pattern.Pattern_Initial_Cooltime) || 0;
+            const normalInitial = parseFloat(pattern.Pattern_Initial_Cooltime);
+            const lateInitial = parseFloat(pattern.Late_Phase_Pattern_Initial_Cooltime);
+            const useLateInitial = startsLate && Number.isFinite(lateInitial) && lateInitial > 0;
+            const initialCooldown = useLateInitial
+                ? Math.max(0, lateInitial)
+                : Math.max(0, Number.isFinite(normalInitial) ? normalInitial : 0);
+            patternCooldowns[patternId] = (typeof GameModeSystem !== 'undefined' && GameModeSystem.adjustInitialPatternCooldown)
+                ? GameModeSystem.adjustInitialPatternCooldown(gameState, pattern, initialCooldown)
+                : initialCooldown;
+        }
+
+        let lateOpeningPatternId = '';
+        if (!basicPatternOnly) {
+            const lateOpening = allPatterns.find(pattern => String(pattern && pattern.Pattern_Cond_Type || '').trim().toUpperCase() === 'LATE_PHASE_START');
+            lateOpeningPatternId = String(lateOpening && lateOpening.Pattern_ID || '').trim();
         }
 
         return {
-            phase: phase,
-            phaseId: String(phase.Phase_ID || '').trim(),
+            // phase는 구형 Phase DB가 아니라 현재 Boss_info의 단계 운용값을 가리키는 런타임 호환 alias다.
+            phase: config,
+            config: config,
+            bossId: String(d.id || config.Monster_ID || '').trim(),
+            phaseId: String(config.Phase_Order || d.id || '').trim(),
             patternSetId: patternSetId,
+            basicPatternOnly: basicPatternOnly,
             patternCooldowns: patternCooldowns,
             activePattern: null,
             currentActionIndex: -1,
@@ -41,10 +71,11 @@ const BossPhaseSystem = {
             action: null,
             actionHitFired: false,
             noPatternWaitTimer: 0,
-            isLatePhase: false,
-            lateNoticeShown: false,
-            lateOpeningPatternUsed: false,
-            lateOpeningPatternStarted: false,
+            isLatePhase: startsLate,
+            lateNoticeShown: startsLate,
+            lateOpeningPatternId: lateOpeningPatternId,
+            lateOpeningPatternUsed: basicPatternOnly || !lateOpeningPatternId,
+            lateOpeningPatternStarted: basicPatternOnly || !lateOpeningPatternId,
             pendingLateOpeningPatternId: null,
             previewDashPath: null,
             currentDashPath: null,
@@ -52,16 +83,19 @@ const BossPhaseSystem = {
         };
     },
 
-    getBossLatePhaseThreshold: function(phase) {
-        const raw = parseFloat(phase && phase.Late_Phase_HP_Rate);
-        if (isNaN(raw)) return 0.5;
-        return raw > 1 ? raw / 100 : raw;
+    getBossLatePhaseThreshold: function(config) {
+        const rawValue = config && config.Late_Phase_HP_Rate;
+        if (rawValue === null || rawValue === undefined || String(rawValue).trim() === '') return null;
+        const raw = parseFloat(rawValue);
+        if (isNaN(raw)) return null;
+        return Math.max(0, raw > 1 ? raw / 100 : raw);
     },
 
-    getBossNextPhase: function(phase, gameState) {
-        const nextPhaseId = String(phase && phase.Next_Phase_ID || '').trim();
-        if (!nextPhaseId || nextPhaseId === '0') return null;
-        return gameState && gameState.DB_BOSS_PHASE ? gameState.DB_BOSS_PHASE[nextPhaseId] || null : null;
+    // 외부 호출명은 유지하지만 이제 Next_Boss_ID를 통해 다음 Boss_info 런타임 데이터를 직접 반환한다.
+    getBossNextPhase: function(config, gameState) {
+        const nextBossId = String(config && config.Next_Boss_ID || '').trim();
+        if (!nextBossId || nextBossId === '0') return null;
+        return gameState && gameState.DB_MONSTER ? gameState.DB_MONSTER[nextBossId] || null : null;
     },
 
     resetPlayerForBossPhaseTransition: function(m, gameState) {
@@ -134,6 +168,7 @@ const BossPhaseSystem = {
             boss.groggyTimer = 0;
             boss.groggyMaxTime = 0;
             boss.groggyPoseType = null;
+            boss.hpTriggerProtection = null;
             boss.majorPattern1Runtime = null;
             boss.majorPattern2Runtime = null;
             boss.majorPattern3Runtime = null;
@@ -169,35 +204,34 @@ const BossPhaseSystem = {
 
     startBossPhaseTransition: function(m, gameState) {
         const boss = m && m.boss ? m.boss : null;
-        if (!boss || !boss.phase || !gameState) return false;
+        const config = boss && (boss.config || boss.phase);
+        if (!boss || !config || !gameState) return false;
         if (boss.phaseTransition && boss.phaseTransition.active) return true;
 
-        const nextPhase = this.getBossNextPhase(boss.phase, gameState);
-        if (!nextPhase) return false;
+        const nextData = this.getBossNextPhase(config, gameState);
+        if (!nextData) return false;
+        const nextConfig = nextData.bossConfig || {};
 
-        const transitionType = String(boss.phase.Phase_Transition_Type || '').trim();
+        const transitionType = String(config.Phase_Transition_Type || '').trim();
         const transitionTypeKey = transitionType.toUpperCase();
-        const durationRaw = parseFloat(boss.phase.Phase_Transition_Duration);
         const defaultTransitionDuration = transitionTypeKey === 'KASIYAS_P2_TO_P3' ? 9.0 : 10.0;
-        const duration = !isNaN(durationRaw) && durationRaw > 0 ? durationRaw : defaultTransitionDuration;
-        const restoreType = String(boss.phase.Next_Phase_HP_Restore_Type || 'FULL').trim().toUpperCase();
-        const rawStartText = String(boss.phase.Next_Phase_Start_Text || nextPhase.Phase_Name || '다음 단계 돌입').trim();
+        const duration = defaultTransitionDuration;
+        const startTextRaw = String(nextConfig.Phase_Name || nextData.name || '다음 단계 돌입').trim();
         const startText = typeof formatKasiyasPublicText === 'function'
-            ? formatKasiyasPublicText(rawStartText, { phaseStep: true, latePhase: false })
-            : rawStartText.replace(/1페이즈/g, '1단계').replace(/2페이즈/g, '2단계').replace(/3페이즈/g, '3단계');
+            ? formatKasiyasPublicText(startTextRaw, { phaseStep: true, latePhase: false })
+            : startTextRaw.replace(/1페이즈/g, '1단계').replace(/2페이즈/g, '2단계').replace(/3페이즈/g, '3단계');
 
         this.clearBossPhaseTransitionRuntime(m, gameState);
         this.resetPlayerForBossPhaseTransition(m, gameState);
 
         const worldW = Math.max(1, parseFloat(gameState.WORLD_WIDTH) || 2000);
         const worldD = Math.max(1, parseFloat(gameState.WORLD_DEPTH) || 300);
-        const isP2ToP3Transition = String(transitionType || '').trim().toUpperCase() === 'KASIYAS_P2_TO_P3';
+        const isP2ToP3Transition = transitionTypeKey === 'KASIYAS_P2_TO_P3';
         const stage = gameState.currentStage || null;
         const rawBossSpawnX = parseFloat(stage && (stage.Boss_Spawn_Center_X !== undefined ? stage.Boss_Spawn_Center_X : stage.Boss_Spawn_X));
         const rawBossSpawnY = parseFloat(stage && (stage.Boss_Spawn_Center_Y !== undefined ? stage.Boss_Spawn_Center_Y : stage.Boss_Spawn_Y));
         const defaultBossX = Number.isFinite(rawBossSpawnX) ? rawBossSpawnX : Math.max(220, Math.min(worldW - 180, worldW * 0.74));
         const defaultBossY = Number.isFinite(rawBossSpawnY) ? rawBossSpawnY : worldD * 0.50;
-        // 3페이즈 개시 연출은 2페이즈 개시와 같은 문법으로, 플레이어/카시야스를 기본 자리로 정렬한 뒤 카시야스 쪽을 확대한다.
         const targetX = isP2ToP3Transition
             ? Math.max(220, Math.min(worldW - 180, defaultBossX))
             : Math.max(220, Math.min(worldW - 180, worldW * 0.74));
@@ -217,7 +251,6 @@ const BossPhaseSystem = {
         m.kbVy = 0;
         m.vz = 0;
         m.isGrounded = true;
-        // 전환 준비/컷신 중에는 실제 사망 처리를 막고, UI상 HP 0 상태를 유지한다.
         m.hp = 0;
         m.faceDir = targetX >= worldW * 0.50 ? -1 : 1;
 
@@ -235,10 +268,9 @@ const BossPhaseSystem = {
             preMoveTargetX: targetX,
             preMoveTargetY: targetY,
             boss: m,
-            fromPhaseId: String(boss.phase.Phase_ID || '').trim(),
-            nextPhaseId: String(nextPhase.Phase_ID || '').trim(),
-            nextPhase: nextPhase,
-            restoreType: restoreType,
+            fromBossId: String(config.Monster_ID || boss.bossId || m.id || '').trim(),
+            nextBossId: String(nextData.id || nextConfig.Monster_ID || '').trim(),
+            nextData: nextData,
             startText: startText,
             initialHp: 0
         };
@@ -249,7 +281,7 @@ const BossPhaseSystem = {
         if (gameState.targetUI && gameState.targetUI.monster === m) gameState.targetUI.timer = 999999;
 
         if (typeof this.pushBossDebugLog === 'function') {
-            this.pushBossDebugLog(gameState, 'PHASE', String(transition.fromPhaseId || '') + ' → ' + String(transition.nextPhaseId || ''), transition.type);
+            this.pushBossDebugLog(gameState, 'PHASE', `${transition.fromBossId} → ${transition.nextBossId}`, transition.type);
         }
         return true;
     },
@@ -270,7 +302,6 @@ const BossPhaseSystem = {
         m.kbVy = 0;
         m.vz = 0;
         m.isGrounded = true;
-        // 페이즈 전환 준비/컷신 중에는 HP 0을 유지하되, 사망 처리는 이 함수가 가로챈다.
         m.hp = 0;
 
         if (phase === 'PRE_MOVE') {
@@ -313,11 +344,7 @@ const BossPhaseSystem = {
         transition = transition || (boss && boss.phaseTransition) || (gameState && gameState.phaseTransition);
         if (!m || !gameState || !transition) return false;
 
-        const nextPhase = transition.nextPhase || (gameState.DB_BOSS_PHASE ? gameState.DB_BOSS_PHASE[String(transition.nextPhaseId || '').trim()] : null);
-        if (!nextPhase) return false;
-
-        const nextMonsterId = String(nextPhase.Phase_Monster_ID || '').trim();
-        const nextData = gameState.DB_MONSTER ? gameState.DB_MONSTER[nextMonsterId] || null : null;
+        const nextData = transition.nextData || (gameState.DB_MONSTER ? gameState.DB_MONSTER[String(transition.nextBossId || '').trim()] : null);
         if (!nextData) return false;
 
         const keepX = m.x;
@@ -353,7 +380,8 @@ const BossPhaseSystem = {
         m.isProvoked = true;
         m.boss = this.createBossRuntimeForMonster(nextData, gameState);
         if (m.boss) {
-            m.boss.noPatternWaitTimer = Math.max(0.6, parseFloat(m.boss.phase && m.boss.phase.No_Pattern_Wait_Time) || 0.2);
+            const config = m.boss.config || m.boss.phase || {};
+            m.boss.noPatternWaitTimer = Math.max(0.6, parseFloat(config.No_Pattern_Wait_Time) || 0.2);
             m.boss.phaseStartedFromTransition = true;
         }
 
@@ -361,7 +389,7 @@ const BossPhaseSystem = {
             gameState.targetUI.monster = m;
             gameState.targetUI.timer = 999999;
         }
-        gameState.bossBattle = { boss: m, phase: nextPhase };
+        gameState.bossBattle = { boss: m, phase: m.boss ? (m.boss.config || m.boss.phase) : null };
         if (gameState.bossDebug) {
             gameState.bossDebug.patternCheck = null;
             gameState.bossDebug.currentAction = null;
@@ -376,7 +404,8 @@ const BossPhaseSystem = {
         gameState.screenHitFlash = { life: 0.24, maxLife: 0.24, strength: 0.42, mode: 'red' };
 
         if (typeof this.pushBossDebugLog === 'function') {
-            this.pushBossDebugLog(gameState, 'PHASE_START', String(nextPhase.Phase_ID || '').trim(), transition.startText || '');
+            const nextConfig = m.boss ? (m.boss.config || m.boss.phase || {}) : {};
+            this.pushBossDebugLog(gameState, 'PHASE_START', String(nextConfig.Phase_Order || nextData.id || '').trim(), transition.startText || '');
         }
         return true;
     }

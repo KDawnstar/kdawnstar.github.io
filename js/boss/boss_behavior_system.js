@@ -7,9 +7,9 @@
 const BossBehaviorSystem = {
     updateBossDefaultAction: function(m, distX, distY, deltaTime, gameState) {
         const boss = m.boss;
-        const phase = boss && boss.phase ? boss.phase : {};
-        const stopDist = parseFloat(phase.Chase_Stop_Distance) || 120;
-        const moveRate = parseFloat(phase.Default_Move_Speed_Rate) || 1;
+        const config = boss && (boss.config || boss.phase) ? (boss.config || boss.phase) : {};
+        const stopDist = parseFloat(config.Chase_Stop_Distance) || 120;
+        const moveRate = 1;
 
         const dx = gameState.player.x - m.x;
         const dy = gameState.player.y - m.y;

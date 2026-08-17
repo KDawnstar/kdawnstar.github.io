@@ -68,7 +68,7 @@ init: function(monsterData, patternData, skillData, gameState) {
                     String(m.Aggressive).toLowerCase() === 'true' ||
                     m.Aggressive === true ||
                     String(m.Monster_Type || '').toUpperCase() === 'BOSS' ||
-                    String(m.AI_Type || '').toUpperCase() === 'BOSS_PATTERN',
+                    ['BOSS_PATTERN', 'BOSS_PATTERN_BASIC'].includes(String(m.AI_Type || '').toUpperCase()),
 
                 recog: parseFloat(m.Recog_Range) || 0,
                 unrecog: parseFloat(m.UnRecog_Range) || 0,
@@ -93,6 +93,16 @@ init: function(monsterData, patternData, skillData, gameState) {
                 championExpRate: parseFloat(m.Champion_EXP_Rate) || 1,
 
                 aiType: m.AI_Type || '',
+                bossConfig: {
+                    Monster_ID: monsterKey,
+                    Phase_Order: m.Phase_Order,
+                    Phase_Name: m.Phase_Name,
+                    Chase_Stop_Distance: m.Chase_Stop_Distance,
+                    No_Pattern_Wait_Time: m.No_Pattern_Wait_Time,
+                    Late_Phase_HP_Rate: m.Late_Phase_HP_Rate,
+                    Next_Boss_ID: m.Next_Boss_ID,
+                    Phase_Transition_Type: m.Phase_Transition_Type
+                },
                 patrolSpd: parseFloat(m.Patrol_Move_Speed_Rate) || 1.0,
                 boundSpd: parseFloat(m.Boundary_Move_Speed_Rate) || 1,
                 boundDist: parseFloat(m.Boundary_Move_Distance) || 50,

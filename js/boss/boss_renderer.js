@@ -966,7 +966,7 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
 
         const now = Date.now();
         const pulse = 0.5 + Math.sin(now / 110) * 0.5;
-        const lateAura = isAuraWalk && String(action && action.Action_Name || '').indexOf('후반부') >= 0;
+        const lateAura = isAuraWalk && !!(action && !String(action.Action_Order || '').trim() && String(action.Late_Phase_Action_Order || '').trim());
         const rx = isAuraWalk ? Math.max(w * 2.2, (parseFloat(action && action.Hitbox_Size_X) || 720) * 0.50) : w * 0.95;
         const ry = isAuraWalk ? Math.max(h * 0.26, (parseFloat(action && action.Hitbox_Size_Y) || 220) * 0.50) : h * 0.12;
 
@@ -3345,6 +3345,99 @@ GameRenderer.drawKasiyasP3M2LandingWarning = function(ctx, m, groundY, bodyY, bo
     ctx.restore();
 };
 
+GameRenderer.drawP3M3FinalIssenGauge = function(ctx, m, bodyY, bodyH) {
+    const gs = (typeof gameState !== 'undefined') ? gameState : null;
+    const rt = gs && gs.p3m3Runtime;
+    if (!gs || gs.specialMode !== 'P3_M3_FINAL_ISSEN' || !rt || !rt.active || !m || !m.isP3M3Monster) return;
+    if (rt.dialogue && rt.dialogue.active) return;
+    if (rt.failureSequence && rt.failureSequence.active) return;
+    if (rt.finalResolving || rt.finalShatterDamageStarted) return;
+    if (!rt.finalPending && !rt.finalStarted) return;
+
+    const casterId = String(rt.route && rt.route.Final_Attack_Caster_Monster_ID || '').trim();
+    const selfId = String(m.p3m3Row && m.p3m3Row.P3_M3_Monster_ID || '').trim();
+    const selfRole = String(m.p3m3Role || m.p3m3Row && m.p3m3Row.Monster_Role || '').trim().toUpperCase();
+    const expectedRole = String(rt.routeType || '').toUpperCase() === 'ROUTE_HIDDEN' ? 'TRUE_BOSS' : 'CENTER_BOSS';
+    if (casterId) {
+        if (selfId !== casterId) return;
+    } else if (selfRole !== expectedRole) {
+        return;
+    }
+
+    const delayTotal = Math.max(0, parseFloat(rt.finalStartDelayTotal) || 0);
+    const delayRemain = rt.finalPending ? Math.max(0, parseFloat(rt.finalStartDelayTimer) || 0) : 0;
+    const chargeDuration = Math.max(0, parseFloat(rt.finalChargeDuration) || 0);
+    const hitStart = Math.max(0, parseFloat(rt.finalAttackHitStartLocal) || 0);
+    const total = Math.max(0.001, delayTotal + chargeDuration + hitStart);
+    let elapsed = 0;
+    if (rt.finalPending) {
+        elapsed = Math.max(0, delayTotal - delayRemain);
+    } else {
+        const localElapsed = Math.max(0, parseFloat(rt.finalTimelineElapsed) || 0);
+        elapsed = delayTotal + Math.min(localElapsed, chargeDuration + hitStart);
+    }
+    if (elapsed >= total - 0.001) return;
+    const ratio = Math.max(0, Math.min(1, elapsed / total));
+
+    const modelW = (m.d && m.d.bodyX ? parseFloat(m.d.bodyX) : 80) * (m.scale || 1);
+    const gaugeW = Math.max(185, Math.min(250, modelW * 2.35));
+    const gaugeH = 18;
+    const x = m.x;
+    const y = bodyY - Math.max(110, bodyH * 1.28) - 34;
+    const pulse = 0.5 + Math.sin(Date.now() / 74) * 0.5;
+    const hidden = String(rt.routeType || '').toUpperCase() === 'ROUTE_HIDDEN';
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.font = '900 14px Malgun Gothic, 맑은 고딕, Segoe UI, sans-serif';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(0,0,0,0.88)';
+    ctx.strokeText('세계를 가르는 일섬', 0, -gaugeH / 2 - 6);
+    ctx.fillStyle = hidden ? 'rgba(255,226,188,0.98)' : 'rgba(255,238,248,0.98)';
+    ctx.fillText('세계를 가르는 일섬', 0, -gaugeH / 2 - 6);
+
+    ctx.shadowColor = hidden ? 'rgba(255,132,78,0.62)' : 'rgba(198,70,185,0.64)';
+    ctx.shadowBlur = 10 + pulse * 5;
+    ctx.fillStyle = 'rgba(8,5,10,0.88)';
+    ctx.strokeStyle = hidden ? 'rgba(255,190,118,0.88)' : 'rgba(226,126,216,0.92)';
+    ctx.lineWidth = 1.8;
+    this.roundRect(ctx, -gaugeW / 2, -gaugeH / 2, gaugeW, gaugeH, 7);
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    const innerX = -gaugeW / 2 + 4;
+    const innerY = -gaugeH / 2 + 4;
+    const innerW = gaugeW - 8;
+    const innerH = gaugeH - 8;
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    this.roundRect(ctx, innerX, innerY, innerW, innerH, 4);
+    ctx.fill();
+    if (ratio > 0.001) {
+        const grad = ctx.createLinearGradient(innerX, 0, innerX + innerW, 0);
+        if (hidden) {
+            grad.addColorStop(0, 'rgba(255,214,156,0.96)');
+            grad.addColorStop(0.62, 'rgba(255,137,78,0.98)');
+            grad.addColorStop(1, 'rgba(255,246,224,1.0)');
+        } else {
+            grad.addColorStop(0, 'rgba(142,58,142,0.98)');
+            grad.addColorStop(0.64, 'rgba(224,70,164,1.0)');
+            grad.addColorStop(1, 'rgba(255,232,248,1.0)');
+        }
+        ctx.fillStyle = grad;
+        this.roundRect(ctx, innerX, innerY, innerW * ratio, innerH, 4);
+        ctx.fill();
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.38)';
+    ctx.lineWidth = 1;
+    this.roundRect(ctx, innerX, innerY, innerW, innerH, 4);
+    ctx.stroke();
+    ctx.restore();
+};
+
+
 GameRenderer.drawMonsterEntity = function(ctx, m) {
     if (m && m.p3m3MainBossSuppressed) return;
     if (m && m.boss && (m.boss.kasiyasP1M3RushHidden || m.boss.kasiyasP2M2Hidden || m.boss.kasiyasP3M2Hidden)) return;
@@ -3395,5 +3488,8 @@ GameRenderer.drawMonsterEntity = function(ctx, m) {
 
     if (typeof this.drawBossOverheadShockwaveGauge === 'function') {
         this.drawBossOverheadShockwaveGauge(ctx, m, bodyY, h);
+    }
+    if (typeof this.drawP3M3FinalIssenGauge === 'function') {
+        this.drawP3M3FinalIssenGauge(ctx, m, bodyY, h);
     }
 };

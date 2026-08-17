@@ -4478,7 +4478,60 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         const core = eff.color || (renderType === 'EFT_STRIKE' ? "rgba(245,245,245,0.96)" : "rgba(241,196,15,0.95)");
         const accent = eff.accentColor || (renderType === 'EFT_STRIKE' ? "rgba(210,220,230,0.92)" : "rgba(255,255,255,0.95)");
 
-        if (renderType === 'EFT_P3_ONI_CURSE_LIFE_STEAL') {
+        if (renderType === 'EFT_P2_M3_FAIL_SLASH') {
+            const w = Math.max(150, eff.w || 190) * burstScale;
+            const h = Math.max(160, eff.h || 210) * burstScale;
+            const t = 1 - alpha;
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.scale(eff.dir || 1, 1);
+            ctx.shadowBlur = 26;
+            ctx.shadowColor = 'rgba(116,42,255,0.88)';
+
+            const glow = ctx.createRadialGradient(0, 0, 4, 0, 0, Math.max(w, h) * 0.48);
+            glow.addColorStop(0, `rgba(255,230,250,${0.22 * alpha})`);
+            glow.addColorStop(0.36, `rgba(166,68,255,${0.18 * alpha})`);
+            glow.addColorStop(0.72, `rgba(180,18,54,${0.12 * alpha})`);
+            glow.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, w * (0.38 + t * 0.08), h * (0.36 + t * 0.08), 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            const cuts = [
+                [-0.52, 0.34, 0.48, -0.34],
+                [-0.44, -0.38, 0.50, 0.30],
+                [-0.58, 0.02, 0.54, -0.12]
+            ];
+            ctx.lineCap = 'round';
+            cuts.forEach((c, idx) => {
+                ctx.strokeStyle = `rgba(20,0,34,${0.90 * alpha})`;
+                ctx.lineWidth = idx === 2 ? 10 : 13;
+                ctx.beginPath();
+                ctx.moveTo(c[0] * w, c[1] * h);
+                ctx.lineTo(c[2] * w, c[3] * h);
+                ctx.stroke();
+
+                ctx.strokeStyle = idx === 1
+                    ? `rgba(255,68,116,${0.92 * alpha})`
+                    : `rgba(204,132,255,${0.96 * alpha})`;
+                ctx.lineWidth = idx === 2 ? 3.2 : 4.4;
+                ctx.beginPath();
+                ctx.moveTo(c[0] * w * (0.94 - t * 0.04), c[1] * h * (0.94 - t * 0.04));
+                ctx.lineTo(c[2] * w, c[3] * h);
+                ctx.stroke();
+            });
+
+            ctx.fillStyle = `rgba(255,220,245,${0.72 * alpha})`;
+            for (let i = 0; i < 8; i++) {
+                const ang = (Math.PI * 2 / 8) * i + t * 0.8;
+                const r = w * (0.12 + t * 0.18 + (i % 2) * 0.03);
+                ctx.beginPath();
+                ctx.arc(Math.cos(ang) * r, Math.sin(ang) * r * 0.72, 1.8 + (i % 3) * 0.7, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        } else if (renderType === 'EFT_P3_ONI_CURSE_LIFE_STEAL') {
             const w = Math.max(120, eff.w || 180) * burstScale;
             const h = Math.max(110, eff.h || 170) * burstScale;
             const t = 1 - alpha;

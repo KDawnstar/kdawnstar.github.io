@@ -6,11 +6,12 @@
 
 const BossPatternSystem = {
     isBossPatternData: function(d) {
-        return !!d && String(d.aiType || '').trim().toUpperCase() === 'BOSS_PATTERN';
+        const aiType = String(d && d.aiType || '').trim().toUpperCase();
+        return !!d && (aiType === 'BOSS_PATTERN' || aiType === 'BOSS_PATTERN_BASIC');
     },
 
     isBossPatternMonster: function(m) {
-        return !!(m && m.boss && this.isBossPatternData(m.d));
+        return !!(m && m.boss && (this.isBossPatternData(m.d) || m.p3m3ManualBossRuntime));
     },
 
     isBossPatternRepeatAllowed: function(pattern) {
@@ -32,8 +33,78 @@ const BossPatternSystem = {
     },
 
 
+    getBossPatternCooldown: function(pattern, boss) {
+        const normalRaw = pattern ? pattern.Pattern_Cooldown : undefined;
+        const lateRaw = pattern ? pattern.Late_Phase_Pattern_Cooldown : undefined;
+        const hasLateValue = lateRaw !== undefined && lateRaw !== null && String(lateRaw).trim() !== '';
+        const normalValue = parseFloat(normalRaw);
+        const lateValue = parseFloat(lateRaw);
+
+        if (boss && boss.isLatePhase && hasLateValue && Number.isFinite(lateValue)) {
+            return Math.max(0, lateValue);
+        }
+        if (Number.isFinite(normalValue)) return Math.max(0, normalValue);
+        return 1;
+    },
+
+
     getBossPatternActionSourceId: function(pattern) {
         return String(pattern && (pattern.Runtime_Action_Source_ID || pattern.Pattern_Action_Source_ID || pattern.Pattern_ID) || '').trim();
+    },
+
+    // 후반부 개시 패턴이 종료되면, 해당 패턴을 Action Source로 공유하는
+    // 일반 사이클용 후반부 대형 패턴의 쿨타임을 그 시점부터 시작한다.
+    // 예) 231008 -> 231009, 232008 -> 232009
+    // 특정 ID를 하드코딩하지 않고 Pattern_Action_Source_ID 관계를 사용한다.
+    applyLinkedPatternCooldownsAfterSourceEnd: function(m, sourcePatternOrId, gameState) {
+        const boss = m && m.boss;
+        if (!boss || !gameState || !gameState.DB_BOSS_PATTERN) return [];
+
+        const sourcePatternId = String(
+            sourcePatternOrId && typeof sourcePatternOrId === 'object'
+                ? sourcePatternOrId.Pattern_ID
+                : sourcePatternOrId || ''
+        ).trim();
+        if (!sourcePatternId) return [];
+
+        const patterns = Array.isArray(gameState.DB_BOSS_PATTERN)
+            ? gameState.DB_BOSS_PATTERN
+            : Object.values(gameState.DB_BOSS_PATTERN);
+        const applied = [];
+
+        for (const linkedPattern of patterns) {
+            if (!linkedPattern) continue;
+            const linkedPatternId = String(linkedPattern.Pattern_ID || '').trim();
+            if (!linkedPatternId || linkedPatternId === sourcePatternId) continue;
+
+            const condType = String(linkedPattern.Pattern_Cond_Type || '').trim().toUpperCase();
+            if (condType !== 'LATE_PHASE_MAJOR_PATTERN') continue;
+
+            const actionSourceId = this.getBossPatternActionSourceId(linkedPattern);
+            if (actionSourceId !== sourcePatternId) continue;
+
+            const linkedCooldown = this.getBossPatternCooldown(linkedPattern, boss);
+            boss.patternCooldowns = boss.patternCooldowns || {};
+            const currentCooldown = Math.max(0, parseFloat(boss.patternCooldowns[linkedPatternId]) || 0);
+            boss.patternCooldowns[linkedPatternId] = Math.max(currentCooldown, linkedCooldown);
+
+            applied.push({
+                patternId: linkedPatternId,
+                pattern: linkedPattern,
+                cooldown: boss.patternCooldowns[linkedPatternId]
+            });
+
+            if (typeof this.pushBossDebugLog === 'function') {
+                this.pushBossDebugLog(
+                    gameState,
+                    'LINK_CD',
+                    `${sourcePatternId} -> ${linkedPatternId} ${this.getBossDebugName ? this.getBossDebugName(linkedPattern) : ''}`.trim(),
+                    `cooldown ${boss.patternCooldowns[linkedPatternId].toFixed(1)}s`
+                );
+            }
+        }
+
+        return applied;
     },
 
     isKasiyasMajorPattern3Pattern: function(pattern) {
@@ -165,6 +236,11 @@ const BossPatternSystem = {
         const cond = String(action && action.Action_Condition_Type || '').trim().toUpperCase();
         if (!cond || cond === 'NONE') return false;
         if ((cond === 'LATE_PHASE' || cond === 'LATE_PHASE_START') && !(m && m.boss && m.boss.isLatePhase)) return true;
+        if (cond === 'SPECIAL_MODE_RESULT') {
+            const expected = String(action && action.Action_Condition_Value || '').trim().toUpperCase();
+            const actual = String(m && m.boss && m.boss.specialModeResult || '').trim().toUpperCase();
+            return !expected || !actual || actual !== expected;
+        }
         if (cond === 'P3_M2_ONLY_CENTER_DISTORTION_EXISTS' || cond === 'P3_M2_NO_SPACE_DISTORTION' || cond === 'P3_M2_SPACE_DISTORTION_REMAIN') {
             if (typeof BossObjectSystem !== 'undefined' && BossObjectSystem.isKasiyasP3M2ActionConditionMet) {
                 return !BossObjectSystem.isKasiyasP3M2ActionConditionMet(action, gameState);
@@ -327,10 +403,10 @@ const BossPatternSystem = {
         }
     },
 
-    getBossPatternUseRangeX: function(pattern, phase) {
+    getBossPatternUseRangeX: function(pattern) {
         const patternRange = parseFloat(pattern && pattern.Pattern_Use_Range_X);
         if (!isNaN(patternRange) && patternRange > 0) return patternRange;
-        return parseFloat(phase && phase.Chase_Start_Distance) || 300;
+        return 300;
     },
 
     getBossPatternUseRangeY: function(pattern, phase) {
@@ -511,13 +587,12 @@ const BossPatternSystem = {
             return null;
         }
 
-        const phase = boss.phase || {};
+        const phase = boss.config || boss.phase || {};
         let patterns = gameState.DB_BOSS_PATTERN_BY_SET && gameState.DB_BOSS_PATTERN_BY_SET[boss.patternSetId]
             ? gameState.DB_BOSS_PATTERN_BY_SET[boss.patternSetId]
             : [];
-        if (Array.isArray(boss.p3m3AllowedPatternIds)) {
-            const allowed = new Set(boss.p3m3AllowedPatternIds.map(id => String(id || '').trim()).filter(Boolean));
-            patterns = patterns.filter(pattern => allowed.has(String(pattern.Pattern_ID || '').trim()));
+        if (boss.basicPatternOnly) {
+            patterns = patterns.filter(pattern => String(pattern && pattern.Pattern_Category || '').trim().toUpperCase() === 'BASIC');
         }
 
         const checks = [];
@@ -642,11 +717,17 @@ const BossPatternSystem = {
 
         boss.activePattern = pattern;
         const startedPatternId = String(pattern.Pattern_ID || '').trim();
+        if (boss.hpTriggerProtection && boss.hpTriggerProtection.active && String(boss.hpTriggerProtection.patternId || '').trim() === startedPatternId) {
+            if (typeof this.pushBossDebugLog === 'function') {
+                this.pushBossDebugLog(gameState, 'HP_GUARD_END', `패턴 ${startedPatternId} 시작`, 'HP 트리거 보호 해제');
+            }
+            boss.hpTriggerProtection = null;
+        }
         boss.usedPatternIds = boss.usedPatternIds || {};
         if (startedPatternId && !this.isBossPatternRepeatAllowed(pattern)) {
             boss.usedPatternIds[startedPatternId] = true;
         }
-        if (String(pattern.Pattern_ID || '').trim() === String(boss.phase && boss.phase.Late_Opening_Pattern_ID || '').trim()) {
+        if (String(pattern.Pattern_ID || '').trim() === String(boss.lateOpeningPatternId || '').trim()) {
             boss.lateOpeningPatternStarted = true;
             boss.lateOpeningPatternUsed = true;
             boss.pendingLateOpeningPatternId = null;
@@ -753,6 +834,15 @@ const BossPatternSystem = {
             if (patternId === '232006') {
                 boss.p2MajorPattern1Runtime = null;
             }
+            const patternActionSourceId = typeof this.getBossPatternActionSourceId === 'function'
+                ? this.getBossPatternActionSourceId(pattern)
+                : patternId;
+            if (patternId === '232008' || patternActionSourceId === '232008') {
+                // P2_M3 결과 액션(242074~242076)이 모두 끝난 뒤에는
+                // 다음 실행에 이전 결과가 섞이지 않도록 전용 결과 상태를 초기화한다.
+                boss.specialModeResult = null;
+                boss.specialModeStarted = false;
+            }
             if (patternId === '232007') {
                 // 검벽 웨이브가 끝나도 파괴된 거대 검/조준/발사체는 후속 파훼 기믹으로 이어질 수 있으므로 유지한다.
                 // 연습 모드에서 다른 패턴을 강제 실행하거나 패턴을 새로 시작할 때는 기본 정리 옵션으로 제거된다.
@@ -775,7 +865,14 @@ const BossPatternSystem = {
                     PlayerManager.clearP3OniCurse(gameState, { reason: 'PATTERN_END', keepBuff: true, silent: true });
                 }
             }
-            boss.patternCooldowns[patternId] = parseFloat(pattern.Pattern_Cooldown) || 1;
+
+            // 후반부 개시 패턴을 막 끝낸 시점부터, 연결된 일반 사이클용 패턴의
+            // 쿨타임을 시작한다. 개시 패턴 진행 중에는 쿨타임이 감소하지 않는다.
+            if (typeof this.applyLinkedPatternCooldownsAfterSourceEnd === 'function') {
+                this.applyLinkedPatternCooldownsAfterSourceEnd(m, pattern, gameState);
+            }
+
+            boss.patternCooldowns[patternId] = this.getBossPatternCooldown(pattern, boss);
             this.pushBossDebugLog(
                 gameState,
                 'END',
@@ -807,7 +904,7 @@ const BossPatternSystem = {
         boss.kasiyasP3M2Hidden = false;
         boss.kasiyasP3M2HiddenStarted = false;
         boss.kasiyasP3M2LandingActionId = '';
-        boss.noPatternWaitTimer = parseFloat(boss.phase && boss.phase.No_Pattern_Wait_Time) || 0.2;
+        boss.noPatternWaitTimer = parseFloat((boss.config || boss.phase || {}).No_Pattern_Wait_Time) || 0.2;
 
         m.state = 'IDLE';
         m.timer = 0;
@@ -908,7 +1005,7 @@ const BossPatternSystem = {
             boss.parryCueTimer = 0;
 
             const actionType = String(action.Action_Type || '').trim().toUpperCase();
-            if (['WAIT','WARNING_PATH','WARNING','SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT','MOVE','MOVE_GROUP','CALL_OBJECT_ACTION','DIRECT_ACT','P2_M3_EXCLUSIVE_MODE_START','P3_M3_EXCLUSIVE_MODE_START'].includes(actionType)) m.state = 'IDLE';
+            if (['WAIT','WARNING_PATH','WARNING','SPAWN_ATTACK_OBJECT','SPAWN_OBJECT','CAST_SPAWN_OBJECT','MOVE','MOVE_GROUP','CALL_OBJECT_ACTION','DIRECT_ACT','SPECIAL_MODE_START','P3_M3_EXCLUSIVE_MODE_START'].includes(actionType)) m.state = 'IDLE';
             else m.state = 'ATK_MELEE';
 
             m.timer = 0;

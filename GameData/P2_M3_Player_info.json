@@ -1,7 +1,7 @@
 [
   {
     "Character_ID": 109001,
-    "Dev_Name": "Player_Adventurer_P2_M3",
+    "Dev_Name": "Player_P2M3_Adventurer",
     "Character_Name": "모험가(차원 내부)",
     "HP": 10,
     "ATK": 1,
@@ -15,18 +15,12 @@
     "Guard_Range_Tile": 1,
     "Guard_Range_Y": 150,
     "Guard_Gauge_Max": 100,
-    "Guard_Gauge_Regen_Per_sec": 30,
+    "Guard_Gauge_Regen_Per_Sec": 30,
     "Guard_Regen_Delay": 0.1,
     "Guard_Gauge_Hit_Cost": 15,
     "Guard_Gauge_Hold_Cost_Per_Sec": 10,
     "Skill_Cooldown": 8,
     "Skill_Cast_Time": 0.1,
-    "Skill_Range_Tile": 3,
-    "Perfect_Groggy_Occurrence_Type": "FINAL_SLASH_ATK_WITH_SPECIAL_ENERGY",
-    "Perfect_Groggy_Time": 8,
-    "Perfect_Groggy_DMG_Rate": 1.2,
-    "Normal_Groggy_Occurrence_Cond": "FINAL_SLASH_GUARD_WITH_SPECIAL_ENERGY",
-    "Normal_Groggy_Time": 5,
-    "Normal_Groggy_DMG_Rate": 1.2
+    "Skill_Range_Tile": 3
   }
 ]

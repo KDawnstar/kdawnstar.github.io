@@ -39,6 +39,6 @@
     "Late_Phase_HP_Rate": 0.5,
     "Late_Opening_Pattern_ID": 0,
     "Next_Phase_ID": 0,
-    "Phase_Transition_Type": null
+    "Phase_Transition_Type": ""
   }
 ]

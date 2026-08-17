@@ -4,7 +4,10 @@
     if (typeof GameRenderer === 'undefined') return;
 
     GameRenderer.isP3M3Active = function(gameState) {
-        return !!(gameState && gameState.specialMode === 'P3_M3_FINAL_ISSEN' && gameState.p3m3Runtime && gameState.p3m3Runtime.active);
+        const rt = gameState && gameState.p3m3Runtime;
+        // 성공 복귀 중 원래 Stage/좌표/보스 상태 준비가 끝난 뒤에는 P3 전용 렌더를 즉시 끈다.
+        // 백색 암전이 걷히기 시작할 때 이미 정상 Stage만 보이게 해 전용 맵이 한 프레임 비치는 현상을 막는다.
+        return !!(gameState && gameState.specialMode === 'P3_M3_FINAL_ISSEN' && rt && rt.active && !rt.normalClearStageRestored);
     };
 
     GameRenderer.drawP3M3WorldBackground = function(ctx, canvas, gameState) {
@@ -13,10 +16,10 @@
         const intro = rt.intro || null;
         // 이면세계 진입 연출 중에는 검격으로 화면을 깨기 전까지 기존 맵을 유지한다.
         if (intro && intro.active && !intro.innerWorldVisible) return;
-        const areaName = (typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.getArea)
-            ? ((P3M3FinalIssenSystem.getArea(gameState, rt.currentAreaId) || {}).Area_Name || '')
+        const stageName = (typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.getStage)
+            ? ((P3M3FinalIssenSystem.getStage(gameState, rt.currentAreaId) || {}).Stage_Name || '')
             : '';
-        const worldMode = String(rt.worldMode || (rt.system || {}).World_Mode || 'INVERTED_BLACK_WHITE').trim().toUpperCase();
+        const worldMode = String(rt.worldMode || 'INVERTED_BLACK_WHITE').trim().toUpperCase();
         if (worldMode && worldMode !== 'INVERTED_BLACK_WHITE') return;
         const w = canvas.width;
         const h = canvas.height;
@@ -123,7 +126,7 @@
 
         ctx.fillStyle = 'rgba(255,255,255,0.66)';
         ctx.font = '700 13px Arial';
-        ctx.fillText(areaName || '카시야스 이면세계', 18, 28);
+        ctx.fillText(stageName || '카시야스 이면세계', 18, 28);
         ctx.restore();
     };
 
@@ -159,13 +162,253 @@
             ctx.beginPath();
             ctx.ellipse(0, -26, 34, 68, 0, 0, Math.PI * 2);
             ctx.stroke();
-            ctx.fillStyle = 'rgba(255,255,255,0.88)';
-            ctx.font = '700 12px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText(String(portal.Portal_Side || '').toUpperCase(), 0, 74);
             ctx.restore();
         });
         ctx.restore();
+    };
+
+    GameRenderer.drawP3M3BossAuraObjects = function(ctx, gameState) {
+        if (!this.isP3M3Active(gameState)) return;
+        const rt = gameState.p3m3Runtime || {};
+        const now = Date.now() / 1000;
+        const groundY = this.GROUND_BASE_Y || 220;
+        const clamp01 = v => Math.max(0, Math.min(1, parseFloat(v) || 0));
+
+        const getBody = monster => {
+            if (!monster) return null;
+            const scale = parseFloat(monster.scale) || 1;
+            const bodyW = Math.max(76, parseFloat(monster.d && monster.d.bodyX) || 92) * scale;
+            const bodyH = Math.max(130, parseFloat(monster.d && monster.d.bodyZ) || 170) * scale;
+            return {
+                x: parseFloat(monster.x) || 0,
+                y: groundY + (parseFloat(monster.y) || 0) - (parseFloat(monster.z) || 0) - bodyH * 0.43,
+                bodyW,
+                bodyH
+            };
+        };
+
+        const drawNormalShield = (monster, obj) => {
+            if (!monster || !obj || !obj.active) return;
+            const vfx = String((obj.data && obj.data.VFX_Type) || '').trim().toUpperCase();
+            if (vfx !== 'EFT_P3_M3_NORMAL_DEFENCE_AURA') return;
+            const body = getBody(monster);
+            if (!body) return;
+            const hitT = clamp01((parseFloat(obj.hitFlashTimer) || 0) / 0.16);
+            const idlePulse = 1 + Math.sin(now * 4.8) * 0.012;
+            const hitScale = 1 + hitT * 0.065;
+            const rx = body.bodyW * 1.04;
+            const ry = body.bodyH * 0.68;
+
+            ctx.save();
+            ctx.translate(body.x, body.y);
+            ctx.scale(idlePulse * hitScale, idlePulse * hitScale);
+            ctx.globalCompositeOperation = 'lighter';
+
+            // 캐릭터 몸에 붙는 오라가 아니라, 신체 외곽에 한 겹 떨어진 반투명 보호막으로 보이게 한다.
+            const membrane = ctx.createRadialGradient(0, 0, Math.max(8, rx * 0.18), 0, 0, Math.max(rx, ry));
+            membrane.addColorStop(0.00, 'rgba(255,72,120,0.015)');
+            membrane.addColorStop(0.55, 'rgba(170,28,190,0.035)');
+            membrane.addColorStop(0.82, 'rgba(116,10,158,0.075)');
+            membrane.addColorStop(1.00, 'rgba(40,0,74,0)');
+            ctx.fillStyle = membrane;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            const rim = ctx.createLinearGradient(-rx, 0, rx, 0);
+            rim.addColorStop(0.00, 'rgba(255,90,145,0.88)');
+            rim.addColorStop(0.16, 'rgba(186,42,232,0.72)');
+            rim.addColorStop(0.50, 'rgba(102,16,154,0.42)');
+            rim.addColorStop(0.84, 'rgba(208,46,230,0.74)');
+            rim.addColorStop(1.00, 'rgba(255,100,150,0.90)');
+            ctx.strokeStyle = rim;
+            ctx.lineWidth = 3.4;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // 참고 이미지처럼 좌우가 특히 밝아 보이는 에너지 날/초승달을 만든다.
+            const hotAlpha = 0.70 + Math.sin(now * 6.3) * 0.10;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = `rgba(255,196,225,${hotAlpha})`;
+            ctx.shadowColor = 'rgba(235,52,214,0.88)';
+            ctx.shadowBlur = 12;
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, rx * 1.015, ry * 0.985, 0, -0.34 * Math.PI, 0.34 * Math.PI);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.ellipse(0, 0, rx * 1.015, ry * 0.985, 0, 0.66 * Math.PI, 1.34 * Math.PI);
+            ctx.stroke();
+
+            ctx.shadowBlur = 5;
+            ctx.lineWidth = 2.1;
+            const spin = now * 0.72;
+            for (let i = 0; i < 3; i++) {
+                const phase = spin + i * (Math.PI * 2 / 3);
+                ctx.strokeStyle = i === 1 ? 'rgba(255,68,122,0.48)' : 'rgba(183,66,255,0.48)';
+                ctx.beginPath();
+                ctx.ellipse(0, 0, rx * (0.86 + i * 0.055), ry * (0.72 + i * 0.055), phase * 0.08, phase, phase + Math.PI * 0.78);
+                ctx.stroke();
+            }
+
+            // 피격 시: 크게 부풀기보다는 짧은 붉은 점멸 + 약한 팽창 + 충격선으로 반응한다.
+            if (hitT > 0) {
+                const hitAlpha = Math.pow(hitT, 0.72);
+                ctx.shadowBlur = 18;
+                ctx.shadowColor = `rgba(255,28,48,${0.78 * hitAlpha})`;
+                ctx.strokeStyle = `rgba(255,54,76,${0.92 * hitAlpha})`;
+                ctx.lineWidth = 4.2;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, rx * (1.00 + 0.035 * hitAlpha), ry * (1.00 + 0.035 * hitAlpha), 0, 0, Math.PI * 2);
+                ctx.stroke();
+
+                const impactSide = ((obj.hitCount || 0) % 2 === 0) ? 1 : -1;
+                const ix = impactSide * rx * 0.78;
+                ctx.lineWidth = 2.8;
+                for (let i = 0; i < 5; i++) {
+                    const a = (-0.55 + i * 0.275) * Math.PI;
+                    const len = 18 + i * 3;
+                    ctx.beginPath();
+                    ctx.moveTo(ix, Math.sin(a) * ry * 0.18);
+                    ctx.lineTo(ix + impactSide * Math.cos(a) * len, Math.sin(a) * ry * 0.18 + Math.sin(a) * len);
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
+        };
+
+        const drawHiddenSmoke = (monster, obj) => {
+            if (!monster || !obj || !obj.active) return;
+            const vfx = String((obj.data && obj.data.VFX_Type) || '').trim().toUpperCase();
+            if (vfx !== 'EFT_P3_M3_HIDDEN_HP_DRAIN_AURA') return;
+            const body = getBody(monster);
+            if (!body) return;
+
+            ctx.save();
+            ctx.translate(body.x, body.y + body.bodyH * 0.25);
+
+            // 몸 주변 공간 자체가 숨쉬듯 맥동하는 흰색 에너지장. 보호막과 달리 단단한 외곽선은 만들지 않는다.
+            const pulse = 0.5 + Math.sin(now * 3.4) * 0.5;
+            const slowPulse = 0.5 + Math.sin(now * 1.65 + 0.8) * 0.5;
+            ctx.globalCompositeOperation = 'lighter';
+            const auraR = Math.max(body.bodyW * 0.72, body.bodyH * 0.46);
+            const aura = ctx.createRadialGradient(0, -body.bodyH * 0.18, body.bodyW * 0.05, 0, -body.bodyH * 0.18, auraR);
+            aura.addColorStop(0, `rgba(255,255,255,${0.19 + pulse * 0.08})`);
+            aura.addColorStop(0.34, `rgba(248,250,255,${0.105 + pulse * 0.045})`);
+            aura.addColorStop(0.70, `rgba(225,232,242,${0.055 + slowPulse * 0.035})`);
+            aura.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = aura;
+            ctx.beginPath();
+            ctx.ellipse(0, -body.bodyH * 0.18, body.bodyW * (0.62 + pulse * 0.07), body.bodyH * (0.55 + pulse * 0.05), 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 공간 파동: 여러 겹의 타원 파장이 몸에서 바깥쪽으로 반복해서 퍼져 나간다.
+            ctx.lineCap = 'round';
+            for (let i = 0; i < 4; i++) {
+                const phase = (now * 0.46 + i * 0.245) % 1;
+                const eased = phase * phase * (3 - 2 * phase);
+                const alpha = (1 - phase) * (0.30 - i * 0.025);
+                ctx.strokeStyle = `rgba(245,248,255,${Math.max(0, alpha)})`;
+                ctx.lineWidth = 2.2 + (1 - phase) * 2.8;
+                ctx.shadowColor = `rgba(255,255,255,${Math.max(0, alpha * 0.75)})`;
+                ctx.shadowBlur = 10 + (1 - phase) * 8;
+                ctx.beginPath();
+                ctx.ellipse(0, -body.bodyH * 0.22, body.bodyW * (0.45 + eased * 0.62), body.bodyH * (0.42 + eased * 0.48), 0, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // 신체에서 직접 솟구치는 굵은 반투명 흰 연기. 검은 이면세계에서도 분명히 보이도록 기존보다 농도를 높인다.
+            ctx.globalCompositeOperation = 'source-over';
+            for (let i = 0; i < 24; i++) {
+                const seed = (i * 0.137 + 0.19) % 1;
+                const phase = (now * (0.25 + (i % 5) * 0.016) + seed) % 1;
+                const rise = phase;
+                const side = (i % 2 === 0 ? -1 : 1);
+                const baseX = side * body.bodyW * (0.06 + (i % 6) * 0.052);
+                const drift = Math.sin(now * 1.2 + i * 1.71) * body.bodyW * 0.13;
+                const x = baseX * (1 - rise * 0.30) + drift * rise;
+                const y = -body.bodyH * (0.08 + rise * (0.74 + (i % 3) * 0.055));
+                const radius = body.bodyW * (0.15 + rise * 0.24 + (i % 3) * 0.022);
+                const fade = Math.sin(Math.PI * phase);
+                const alpha = Math.max(0, fade) * (0.17 + (i % 4) * 0.018);
+                const g = ctx.createRadialGradient(x, y, radius * 0.08, x, y, radius);
+                g.addColorStop(0, `rgba(255,255,255,${alpha})`);
+                g.addColorStop(0.34, `rgba(250,251,255,${alpha * 0.74})`);
+                g.addColorStop(0.72, `rgba(228,232,240,${alpha * 0.34})`);
+                g.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = g;
+                ctx.beginPath();
+                ctx.ellipse(x, y, radius * (0.84 + rise * 0.40), radius * (0.60 + rise * 0.48), Math.sin(i * 1.9) * 0.18, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // 신체 표면의 핵심 발광층도 강하게 유지한다.
+            ctx.globalCompositeOperation = 'lighter';
+            for (let i = 0; i < 7; i++) {
+                const x = (i - 3) * body.bodyW * 0.10;
+                const y = -body.bodyH * (0.18 + (i % 2) * 0.095);
+                const r = body.bodyW * (0.22 + pulse * 0.035);
+                const g = ctx.createRadialGradient(x, y, 1, x, y, r);
+                g.addColorStop(0, `rgba(255,255,255,${0.24 + pulse * 0.08})`);
+                g.addColorStop(0.44, `rgba(240,244,252,${0.105 + pulse * 0.035})`);
+                g.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = g;
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        };
+
+        const centerBoss = rt.monstersByRole && rt.monstersByRole.CENTER_BOSS;
+        const trueBoss = rt.monstersByRole && rt.monstersByRole.TRUE_BOSS;
+        drawNormalShield(centerBoss, rt.normalDefenceObject);
+        drawHiddenSmoke(trueBoss, rt.hiddenDebuffObject);
+
+        // 보호막 파훼 순간에는 강하게 터지되, 지속 오라처럼 보이지 않도록 짧게 소멸시킨다.
+        const fx = rt.normalDefenceBreakFx;
+        if (fx && fx.timer > 0 && centerBoss) {
+            const body = getBody(centerBoss);
+            const maxTimer = Math.max(0.01, parseFloat(fx.maxTimer) || 0.46);
+            const t = 1 - clamp01((parseFloat(fx.timer) || 0) / maxTimer);
+            const remain = Math.pow(1 - t, 1.7);
+            const rx = body.bodyW * 1.04;
+            const ry = body.bodyH * 0.68;
+            ctx.save();
+            ctx.translate(body.x, body.y);
+            ctx.globalCompositeOperation = 'lighter';
+
+            const flashAlpha = Math.max(0, 1 - t * 3.4);
+            if (flashAlpha > 0) {
+                ctx.strokeStyle = `rgba(255,210,232,${0.96 * flashAlpha})`;
+                ctx.shadowColor = 'rgba(244,38,205,0.95)';
+                ctx.shadowBlur = 22;
+                ctx.lineWidth = 8 * flashAlpha + 2;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, rx * (1 + t * 0.18), ry * (1 + t * 0.18), 0, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            ctx.shadowBlur = 8;
+            for (let i = 0; i < 18; i++) {
+                const a = (Math.PI * 2 * i / 18) + 0.18;
+                const edgeX = Math.cos(a) * rx;
+                const edgeY = Math.sin(a) * ry;
+                const travel = 34 + 105 * t + (i % 4) * 9;
+                const tx = edgeX + Math.cos(a) * travel;
+                const ty = edgeY + Math.sin(a) * travel * 0.72;
+                ctx.strokeStyle = i % 3 === 0
+                    ? `rgba(255,88,124,${0.92 * remain})`
+                    : `rgba(200,72,255,${0.80 * remain})`;
+                ctx.lineWidth = Math.max(1, 4.5 * remain);
+                ctx.beginPath();
+                ctx.moveTo(edgeX * (0.92 + 0.08 * t), edgeY * (0.92 + 0.08 * t));
+                ctx.lineTo(tx, ty);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
     };
 
     GameRenderer.drawP3M3MonsterDebug = function(ctx, gameState) {
@@ -208,82 +451,9 @@
     };
 
 
+    // 패턴 제한시간은 하단 HUD의 공용 bossCastGauge를 재사용해 숫자 없이 표시한다.
     GameRenderer.drawP3M3TimeLimitUI = function(ctx, canvas, gameState) {
-        if (!this.isP3M3Active(gameState)) return;
-        const rt = gameState.p3m3Runtime || {};
-        if (rt.intro && rt.intro.active) return;
-        if (rt.failureSequence && rt.failureSequence.active) return;
-        const w = canvas.width;
-        const total = Math.max(1, parseFloat(rt.timeLimitTotal) || parseFloat((rt.system || {}).Time_Limit) || 120);
-        const remain = Math.max(0, parseFloat(rt.timer) || 0);
-        const rate = Math.max(0, Math.min(1, remain / total));
-        const bw = Math.max(430, Math.min(620, w * 0.43));
-        const x = (w - bw) / 2;
-        // 상단 보스 HP 상태창(ui_renderer.js: y=14, h=96) 바로 아래쪽에 고정한다.
-        const y = 116;
-        const panelH = 42;
-        const bh = 13;
-        ctx.save();
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.shadowColor = 'rgba(0,0,0,0.62)';
-        ctx.shadowBlur = 11;
-        ctx.shadowOffsetY = 3;
-        const bg = ctx.createLinearGradient(x, y, x, y + panelH);
-        bg.addColorStop(0, 'rgba(37,34,29,0.94)');
-        bg.addColorStop(0.46, 'rgba(12,13,18,0.94)');
-        bg.addColorStop(1, 'rgba(0,0,0,0.88)');
-        ctx.fillStyle = bg;
-        ctx.strokeStyle = 'rgba(218,180,84,0.82)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(x + 8, y);
-        ctx.lineTo(x + bw - 8, y);
-        ctx.lineTo(x + bw, y + 8);
-        ctx.lineTo(x + bw, y + panelH - 8);
-        ctx.lineTo(x + bw - 8, y + panelH);
-        ctx.lineTo(x + 8, y + panelH);
-        ctx.lineTo(x, y + panelH - 8);
-        ctx.lineTo(x, y + 8);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = 'rgba(255,255,255,0.16)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x + 5.5, y + 5.5, bw - 11, panelH - 11);
-
-        const fontFamily = '"Malgun Gothic", "Noto Sans KR", "Segoe UI", Arial, sans-serif';
-        ctx.font = `900 13px ${fontFamily}`;
-        ctx.textBaseline = 'alphabetic';
-        ctx.textAlign = 'left';
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = 'rgba(0,0,0,0.75)';
-        ctx.fillStyle = '#ffd987';
-        ctx.strokeText('패턴 제한 시간', x + 14, y + 17);
-        ctx.fillText('패턴 제한 시간', x + 14, y + 17);
-        ctx.textAlign = 'right';
-        ctx.fillStyle = 'rgba(255,255,255,0.88)';
-        const timeText = `${remain.toFixed(1)}s`;
-        ctx.strokeText(timeText, x + bw - 14, y + 17);
-        ctx.fillText(timeText, x + bw - 14, y + 17);
-
-        const bx = x + 14;
-        const by = y + 24;
-        const innerW = bw - 28;
-        ctx.fillStyle = 'rgba(255,255,255,0.11)';
-        ctx.fillRect(bx, by, innerW, bh);
-        const fill = ctx.createLinearGradient(bx, by, bx + innerW, by);
-        fill.addColorStop(0, '#8fcfff');
-        fill.addColorStop(0.72, '#5ba7ff');
-        fill.addColorStop(1, '#ffffff');
-        ctx.fillStyle = fill;
-        ctx.fillRect(bx, by, innerW * rate, bh);
-        ctx.fillStyle = 'rgba(255,255,255,0.22)';
-        ctx.fillRect(bx, by, innerW * rate, 3);
-        ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(bx + 0.5, by + 0.5, innerW - 1, bh - 1);
-        ctx.restore();
+        return;
     };
 
     GameRenderer.drawP3M3IntroOverlay = function(ctx, canvas, gameState) {
@@ -416,7 +586,7 @@
         if (!this.isP3M3Active(gameState)) return false;
         const rt = gameState.p3m3Runtime || {};
         if ((!rt.finalStarted && !rt.finalResolving) || (rt.dialogue && rt.dialogue.active)) return false;
-        if (rt.finalResolveSuccess || rt.finalEffectSuppressed) return false;
+        if (rt.finalEffectSuppressed) return false;
 
         const hidden = String(rt.routeType || '').toUpperCase() === 'ROUTE_HIDDEN';
         const w = canvas.width;
@@ -676,11 +846,6 @@
         const rt = gameState.p3m3Runtime;
         const rows = Array.isArray(rt.debugSnapshot) ? rt.debugSnapshot : [];
         const w = canvas.width;
-        const time = Math.max(0, parseFloat(rt.timer) || 0);
-        const routeName = rt.route ? String(rt.route.Route_Name || rt.routeType || '') : '분신 돌파';
-        const gaugeMax = Math.max(1, parseFloat(rt.gaugeMax) || 100);
-        const gauge = Math.max(0, Math.min(gaugeMax, parseFloat(rt.gauge) || 0));
-        const gaugeRate = gauge / gaugeMax;
 
         ctx.save();
         ctx.globalCompositeOperation = 'source-over';
@@ -772,60 +937,15 @@
             ctx.restore();
         };
 
-        // 패턴 제한 시간 UI는 상단 보스 HP UI가 그려진 뒤 별도 렌더 단계에서 출력한다.
 
         if (rt.dialogue && rt.dialogue.active) {
             ctx.restore();
             return;
         }
 
-        const getFinalMetric = function() {
-            const delayTotal = Math.max(0, parseFloat(rt.finalStartDelayTotal) || 0);
-            const delayRemain = rt.finalPending ? Math.max(0, parseFloat(rt.finalStartDelayTimer) || 0) : 0;
-            const chargeDur = Math.max(0.001, parseFloat(rt.finalChargeDuration) || 0.001);
-            const localElapsed = rt.finalStarted ? Math.max(0, parseFloat(rt.finalTimelineElapsed) || 0) : 0;
-            // 최종 일섬 게이지는 데미지 판정 시간이 아니라, 검흔이 생성되기 직전까지의 캐스팅 시간을 표시한다.
-            // 따라서 100%가 된 뒤 검흔 → 화면 파괴 → 판정 순서가 유지된다.
-            const total = Math.max(0.001, delayTotal + chargeDur);
-            const elapsed = rt.finalPending
-                ? Math.max(0, delayTotal - delayRemain)
-                : delayTotal + Math.min(localElapsed, chargeDur);
-            const remain = Math.max(0, delayTotal + chargeDur - elapsed);
-            return {
-                rate: elapsed / total,
-                remain
-            };
-        };
+        // 최종 일섬 타이밍 게이지는 보스 렌더 단계에서 카시야스 머리 위에 직접 표시한다.
+        // 대기 + 준비 액션 + 실제 공격 Hitbox_Start_Time까지 하나의 연속 게이지로 계산한다.
 
-        const bottomY = Math.max(300, canvas.height - 140);
-        const barW = Math.max(280, Math.min(420, (w - 120) / 2));
-        const attackX = 38;
-        const timeX = w - barW - 38;
-        const gaugeType = String(rt.gaugeType || (rt.route || {}).Gauge_Type || '').trim().toUpperCase();
-        if (!(rt.failureSequence && rt.failureSequence.active) && rt.routeStarted && gaugeType === 'ISSEN_GAUGE' && !rt.finalSuccess && !rt.finalFailed) {
-            drawBottomGauge(
-                attackX,
-                bottomY,
-                barW,
-                '세계를 가르는 일섬',
-                `${Math.floor(gauge)} / ${Math.floor(gaugeMax)}`,
-                gaugeRate,
-                '#5fc8ff'
-            );
-        }
-
-        if (!(rt.failureSequence && rt.failureSequence.active) && (rt.finalPending || rt.finalStarted)) {
-            const metric = getFinalMetric();
-            drawBottomGauge(
-                timeX,
-                bottomY,
-                barW,
-                '세계를 가르는 일섬',
-                `${Math.max(0, metric.remain).toFixed(1)}s`,
-                metric.rate,
-                rt.routeType === 'ROUTE_HIDDEN' ? '#ffcf62' : '#f5f5f5'
-            );
-        }
 
         if (gameState.isDebugView) {
             ctx.fillStyle = 'rgba(5,7,10,0.72)';

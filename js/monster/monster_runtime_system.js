@@ -60,6 +60,10 @@ const MonsterManager = {
         return BossCombatSystem.enterBossGroggyFromGuardSpecial.apply(this, arguments);
     },
 
+    tryEnterBossGroggyAtActionStart: function() {
+        return BossCombatSystem.tryEnterBossGroggyAtActionStart.apply(this, arguments);
+    },
+
     tryApplyBossGuardSpecialResult: function() {
         return BossCombatSystem.tryApplyBossGuardSpecialResult.apply(this, arguments);
     },
@@ -118,6 +122,16 @@ const MonsterManager = {
 
     isBossFrontDamageImmuneAgainstPlayer: function() {
         return BossCombatSystem.isBossFrontDamageImmuneAgainstPlayer.apply(this, arguments);
+    },
+
+    // BossCombatSystem.takeDamage()는 MonsterManager를 this로 사용하므로
+    // HP 트리거 보호용 보조 함수도 동일한 호환 wrapper를 제공해야 한다.
+    getBossHpTriggerProtectionTarget: function() {
+        return BossCombatSystem.getBossHpTriggerProtectionTarget.apply(this, arguments);
+    },
+
+    showBossHpTriggerInvincibleFeedback: function() {
+        return BossCombatSystem.showBossHpTriggerInvincibleFeedback.apply(this, arguments);
     },
 
     takeDamage: function() {
@@ -200,8 +214,16 @@ const MonsterManager = {
         return BossPatternSystem.getPatternLoopCount.apply(this, arguments);
     },
 
+    getBossPatternCooldown: function() {
+        return BossPatternSystem.getBossPatternCooldown.apply(this, arguments);
+    },
+
     getBossPatternActionSourceId: function() {
         return BossPatternSystem.getBossPatternActionSourceId.apply(this, arguments);
+    },
+
+    applyLinkedPatternCooldownsAfterSourceEnd: function() {
+        return BossPatternSystem.applyLinkedPatternCooldownsAfterSourceEnd.apply(this, arguments);
     },
 
     isKasiyasMajorPattern3Pattern: function() {

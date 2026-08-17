@@ -233,7 +233,7 @@ GameRenderer.drawBossPatternObjectEntity = function(ctx, obj) {
     const isP1M2AfterimageSlamWarning = patternId === '231007'
         && actionType === 'WARNING'
         && rawPose === 'POSE_KASIYAS_SLAM_THE_SWORD_DOWN_READY'
-        && actionName.indexOf('잔상 내려찍기 전조') >= 0;
+        && ['261054', '261059', '261064', '261069'].includes(objectActionId);
     const isP1M2AfterimageShockwaveAtk = patternId === '231007'
         && actionType === 'ATK'
         && identityEffect === 'EFT_SHOCKWAVE'

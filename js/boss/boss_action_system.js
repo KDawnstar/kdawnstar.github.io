@@ -522,25 +522,32 @@ const BossActionSystem = {
 
 
     startBossPatternDialogue: function(m, action, gameState) {
-        const text = String(action.Pattern_Dialogue_Output || action.Action_Dialogue || '').trim();
+        const actionId = String(action && action.Action_ID || '').trim();
+        if (!actionId || !gameState) return;
+
+        const rows = (gameState.DB_DIALOGUE || [])
+            .filter(row => (
+                String(row && row.Dialogue_Render_Type || '').trim().toUpperCase() === 'PATTERN_ALERT' &&
+                String(row && row.Trigger_Type || '').trim().toUpperCase() === 'ACTION_START' &&
+                String(row && row.Trigger_Value || '').trim() === actionId
+            ))
+            .sort((a, b) => (parseFloat(a.Line_Order) || 0) - (parseFloat(b.Line_Order) || 0));
+
+        const line = rows[0];
+        const text = String(line && line.Dialogue_Text || '').trim();
         if (!text) return;
-        const start = Math.max(0, parseFloat(action.Pattern_Dialogue_Start_Time) || 0);
-        const endRaw = parseFloat(action.Pattern_Dialogue_End_Time);
-        // 대형 패턴 대사는 데이터의 End_Time을 기준으로 소멸시킨다.
-        // End_Time 누락 시 액션 전체 시간으로 길게 잔류하지 않도록 안전 기본값만 적용한다.
-        const fallbackDuration = 1.5;
-        const end = !isNaN(endRaw) && endRaw > start ? endRaw : start + fallbackDuration;
-        const duration = Math.max(0.1, end - start);
+
+        const durationRaw = parseFloat(line.Display_Time);
+        const duration = Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : 1.5;
         gameState.bossPatternDialogue = {
             text: text.replace(/^['"]|['"]$/g, ''),
-            delay: start,
+            delay: 0,
             timer: duration,
             maxTime: duration,
-            sourceActionId: String(action.Action_ID || '').trim(),
-            fallbackDurationUsed: isNaN(endRaw) || endRaw <= start
+            sourceActionId: actionId,
+            sourceDialogueId: String(line.Dialogue_ID || '').trim()
         };
     },
-
 
 
     pushBossActiveAttackRangeWarning: function(m, action, gameState) {
@@ -683,9 +690,9 @@ const BossActionSystem = {
         const db = gameState && gameState.DB_BOSS_PATTERN_OBJECT ? gameState.DB_BOSS_PATTERN_OBJECT : {};
         for (const key of Object.keys(db)) {
             const data = db[key];
-            const patternName = String(data && data.Object_Name || '').trim();
+            const objectDevName = String(data && data.Dev_Name || '').trim();
             const type = String(data && data.Object_Type || '').trim().toUpperCase();
-            if ((type === 'TERRAIN_COLLAPSE' || type === 'TERRAIN_COLLAPSE_HIT') && patternName.indexOf('페이즈2_기본패턴3') >= 0) {
+            if ((type === 'TERRAIN_COLLAPSE' || type === 'TERRAIN_COLLAPSE_HIT') && objectDevName.indexOf('Obj_P2B3_') === 0) {
                 const rect = normalizeRect(data);
                 if (rect) return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2, rect };
             }
@@ -905,9 +912,9 @@ const BossActionSystem = {
         let maxX = -Infinity;
         const scan = (data) => {
             if (!data) return;
-            const name = String(data.Object_Name || '').trim();
+            const objectDevName = String(data.Dev_Name || '').trim();
             const type = String(data.Object_Type || '').trim().toUpperCase();
-            if (name.indexOf('페이즈2_기본패턴3') < 0) return;
+            if (objectDevName.indexOf('Obj_P2B3_') !== 0) return;
             if (type !== 'TERRAIN_WARNING' && type !== 'TERRAIN_COLLAPSE' && type !== 'TERRAIN_BLOCK') return;
             const x = parseFloat(data.Terrain_Area_X);
             const w = parseFloat(data.Terrain_Area_W);
@@ -987,6 +994,19 @@ const BossActionSystem = {
         boss.syncedObjectActionId = '';
 
         const type = String(action.Action_Type || '').trim().toUpperCase();
+
+        // Boss 교체는 일반 액션 시퀀스가 아니라 Dialogue 등 외부 조건에서 호출되는 즉시 실행형 액션이다.
+        if (type === 'MONSTER_CHANGE' || type === 'BOSS_CHANGE') {
+            if (
+                typeof P3M3FinalIssenSystem !== 'undefined' &&
+                P3M3FinalIssenSystem.handleBossChangeAction
+            ) {
+                P3M3FinalIssenSystem.handleBossChangeAction(m, action, gameState);
+            }
+            boss.actionHitFired = true;
+            return;
+        }
+
         const hitboxType = String(action.Hitbox_Type || '').trim().toUpperCase();
         const pathSource = String(action.Hitbox_Path_Source || '').trim().toUpperCase();
         const vfxType = String(action.VFX_Type || action.Warning_Render_Type || action.Effect_Render_Type || '').trim().toUpperCase();
@@ -997,6 +1017,22 @@ const BossActionSystem = {
         const actionId = String(action.Action_ID || '').trim();
         const defenceType = String(action.Action_Defence_Type || '').trim().toUpperCase();
         const isFrontDamageImmuneAction = defenceType === 'FRONT_DMG_IMMUNE' || defenceType === 'FRONT_DAMAGE_IMMUNE' || defenceType === 'FRONT_INVINCIBLE';
+        const actionConditionType = String(action.Action_Condition_Type || '').trim().toUpperCase();
+        const actionConditionValue = String(action.Action_Condition_Value || '').trim().toUpperCase();
+
+        // 데이터상 Groggy_Occurrence_Cond=ACTION_START인 결과 액션은
+        // 액션 진입 순간 패턴 종료/쿨타임 처리를 거친 뒤 즉시 그로기에 들어간다.
+        if (typeof this.tryEnterBossGroggyAtActionStart === 'function' && this.tryEnterBossGroggyAtActionStart(m, action, gameState)) {
+            return;
+        }
+
+        // P2_M3 실패 결과는 일반 Hitbox 공격이 아니라 기존 직접 피해 시퀀스를 유지하되,
+        // 피해량/횟수/주기/이펙트 등은 242076 Boss Action 데이터에서 읽는다.
+        if (actionConditionType === 'SPECIAL_MODE_RESULT' && actionConditionValue === 'FAIL') {
+            if (typeof SpecialModeObjectDefenseSystem !== 'undefined' && SpecialModeObjectDefenseSystem.startFailDamageFromBossAction) {
+                SpecialModeObjectDefenseSystem.startFailDamageFromBossAction(gameState, m, action);
+            }
+        }
 
         if (typeof this.pushPlayerOutOfKasiyasP2GroundPunchZone === 'function') {
             this.pushPlayerOutOfKasiyasP2GroundPunchZone(m, action, gameState);

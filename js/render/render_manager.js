@@ -127,7 +127,7 @@ const GameRenderer = {
         const canvas = this.canvas;
 
         // 2페이즈 대형 패턴3 차원 방어전은 기존 월드 좌표/깊이 정렬과 완전히 분리된 전용 렌더를 사용한다.
-        if (gameState && gameState.specialMode === 'P2_M3_DIMENSION_DEFENSE' && typeof this.renderP2M3DimensionDefense === 'function') {
+        if (gameState && gameState.specialMode === 'SPECIAL_MODE_OBJECT_DEFENSE' && typeof this.renderP2M3DimensionDefense === 'function') {
             this.renderP2M3DimensionDefense(gameState);
             return;
         }
@@ -371,6 +371,9 @@ const GameRenderer = {
         ctx.globalAlpha = 1.0;
 
         this.drawStageWarp(gameState);
+        if (typeof this.drawP3M3BossAuraObjects === 'function') {
+            this.drawP3M3BossAuraObjects(ctx, gameState);
+        }
         if (typeof this.drawP3M3Portals === 'function') {
             this.drawP3M3Portals(ctx, gameState);
         }
@@ -397,14 +400,15 @@ const GameRenderer = {
         if (typeof this.drawP3M3Overlay === 'function') {
             this.drawP3M3Overlay(ctx, canvas, gameState);
         }
-        if (typeof this.drawP3M3Dialogue === 'function') {
-            this.drawP3M3Dialogue(ctx, canvas, gameState);
-        }
         this.drawTargetUI(ctx, canvas, targetUI, gameState);
         if (typeof this.drawP3M3TimeLimitUI === 'function') {
             this.drawP3M3TimeLimitUI(ctx, canvas, gameState);
         }
         this.drawScreenHitFeedback(ctx, canvas, gameState.screenHitFlash);
+        // P3_M3 대화창은 전투 UI/피격 오버레이보다 항상 앞에 표시한다.
+        if (typeof this.drawP3M3Dialogue === 'function') {
+            this.drawP3M3Dialogue(ctx, canvas, gameState);
+        }
     },
 
     drawScreenHitFeedback: function(ctx, canvas, flash) {
@@ -435,17 +439,26 @@ const GameRenderer = {
                 const ramp = Math.max(0, Math.min(1, elapsed / rampTime));
                 const smoothRamp = ramp * ramp * (3 - 2 * ramp);
                 flashPulse = elapsed >= rampTime ? Math.max(0, 1 - ((elapsed - rampTime) / pulseTime)) : 0;
-                fullAlpha = Math.min(0.88, 0.76 * smoothRamp + 0.10 * flashPulse);
+                const requestedMaxAlpha = parseFloat(flash.maxAlpha);
+                const maxAlpha = isFinite(requestedMaxAlpha) ? Math.max(0.2, Math.min(1.0, requestedMaxAlpha)) : 0.88;
+                fullAlpha = Math.min(maxAlpha, maxAlpha * smoothRamp + Math.min(0.10, maxAlpha * 0.10) * flashPulse);
                 if (life < fadeOutTime) fullAlpha *= Math.max(0, Math.min(1, life / fadeOutTime));
             }
+            const usePureWhite = mode === 'fullwhite' && !!flash.pureWhite;
             ctx.fillStyle = mode === 'gold'
                 ? `rgba(255, 232, 120, ${fullAlpha})`
-                : `rgba(255, 255, 245, ${fullAlpha})`;
+                : (usePureWhite ? `rgba(255, 255, 255, ${fullAlpha})` : `rgba(255, 255, 245, ${fullAlpha})`);
             ctx.fillRect(0, 0, w, h);
             const glow = ctx.createRadialGradient(w / 2, h * 0.48, 0, w / 2, h * 0.48, Math.max(w, h) * 0.72);
-            glow.addColorStop(0, `rgba(255, 247, 198, ${Math.min(0.34, fullAlpha * 0.46 + flashPulse * 0.06)})`);
-            glow.addColorStop(0.45, `rgba(205, 238, 255, ${Math.min(0.16, fullAlpha * 0.20)})`);
-            glow.addColorStop(1, 'rgba(255, 206, 84, 0)');
+            if (usePureWhite) {
+                glow.addColorStop(0, `rgba(255, 255, 255, ${Math.min(0.24, fullAlpha * 0.24)})`);
+                glow.addColorStop(0.55, `rgba(245, 250, 255, ${Math.min(0.10, fullAlpha * 0.10)})`);
+                glow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            } else {
+                glow.addColorStop(0, `rgba(255, 247, 198, ${Math.min(0.34, fullAlpha * 0.46 + flashPulse * 0.06)})`);
+                glow.addColorStop(0.45, `rgba(205, 238, 255, ${Math.min(0.16, fullAlpha * 0.20)})`);
+                glow.addColorStop(1, 'rgba(255, 206, 84, 0)');
+            }
             ctx.fillStyle = glow;
             ctx.fillRect(0, 0, w, h);
             ctx.restore();
