@@ -1493,14 +1493,14 @@ GameRenderer.drawKasiyasEnergySwordObject = function(ctx, obj) {
         ctx.fill();
         ctx.stroke();
         ctx.fillStyle = '#fff6d0';
-        ctx.font = 'bold 13px Malgun Gothic, sans-serif';
+        ctx.font = 'bold 13px "DNF Forged Blade", Malgun Gothic, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('X 흡수', groundX, boxY + 16);
         ctx.restore();
     } else if (disabled) {
         ctx.save();
         ctx.fillStyle = 'rgba(210,210,220,0.28)';
-        ctx.font = 'bold 12px Malgun Gothic, sans-serif';
+        ctx.font = 'bold 12px "DNF Forged Blade", Malgun Gothic, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('흡수됨', groundX, bodyY - 118);
         ctx.restore();
@@ -2152,7 +2152,7 @@ GameRenderer.drawKasiyasP2M2GiantSwordWallObject = function(ctx, obj) {
         this.roundRect(ctx, barX + 2, barY + 2, Math.max(0, (barW - 4) * ratio), barH - 4, 4);
         ctx.fill();
         ctx.fillStyle = 'rgba(255,235,218,0.92)';
-        ctx.font = 'bold 11px Malgun Gothic, sans-serif';
+        ctx.font = 'bold 11px "DNF Forged Blade", Malgun Gothic, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('사도의 거대 검', sx, barY - 4);
         ctx.restore();
@@ -2284,7 +2284,7 @@ GameRenderer.drawKasiyasP2M2BrokenGiantSwordObject = function(ctx, obj) {
         ctx.fill();
         ctx.stroke();
         ctx.fillStyle = '#fff1d0';
-        ctx.font = 'bold 13px Malgun Gothic, sans-serif';
+        ctx.font = 'bold 13px "DNF Forged Blade", Malgun Gothic, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('X 조준', sx, boxY + 17);
         ctx.restore();
@@ -2342,10 +2342,10 @@ GameRenderer.drawKasiyasP2M2AimingGiantSwordObject = function(ctx, obj) {
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = '#ffe8ca';
-    ctx.font = 'bold 13px Malgun Gothic, sans-serif';
+    ctx.font = 'bold 13px "DNF Forged Blade", Malgun Gothic, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(`조준 ${String(obj.fireDirection || 'RIGHT').toUpperCase()} ${angle.toFixed(0)}°  /  ${remain.toFixed(1)}초`, sx, uiY + 17);
-    ctx.font = '12px Malgun Gothic, sans-serif';
+    ctx.font = '12px "DNF Forged Blade", Malgun Gothic, sans-serif';
     ctx.fillText('←/→: 방향 / X 유지: 위로 / 떼기: 아래로 / Z·Space: 발사 / C: 취소', sx, uiY + 34);
     ctx.restore();
 };

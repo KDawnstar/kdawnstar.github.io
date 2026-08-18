@@ -3274,7 +3274,7 @@ GameRenderer.drawBossOverheadShockwaveGauge = function(ctx, m, bodyY, bodyH) {
     }
 
     const label = warning ? `⚠ ${labelPrefix} ${remain.toFixed(1)}s` : `${labelPrefix} ${remain.toFixed(1)}s`;
-    ctx.font = 'bold 14px Malgun Gothic, 맑은 고딕, Segoe UI, sans-serif';
+    ctx.font = 'bold 14px "DNF Forged Blade", Malgun Gothic, 맑은 고딕, Segoe UI, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     ctx.lineWidth = 4;
@@ -3391,7 +3391,7 @@ GameRenderer.drawP3M3FinalIssenGauge = function(ctx, m, bodyY, bodyH) {
     ctx.translate(x, y);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.font = '900 14px Malgun Gothic, 맑은 고딕, Segoe UI, sans-serif';
+    ctx.font = '900 14px "DNF Forged Blade", Malgun Gothic, 맑은 고딕, Segoe UI, sans-serif';
     ctx.lineWidth = 4;
     ctx.strokeStyle = 'rgba(0,0,0,0.88)';
     ctx.strokeText('세계를 가르는 일섬', 0, -gaugeH / 2 - 6);

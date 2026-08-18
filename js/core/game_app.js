@@ -121,9 +121,6 @@ const gameState = {
     DB_BOSS_PATTERN_OBJECT_ACTION: {},
     DB_BOSS_PATTERN_OBJECT_ACTION_BY_OBJECT: {},
     DB_SPECIAL_MODE: [],
-    DB_SPECIAL_MODE_PLAYER: [],
-    DB_SPECIAL_MODE_OBJECT: [],
-    DB_SPECIAL_MODE_OBJECT_ACTION: [],
     DB_PORTAL: [],
     DB_DIALOGUE: [],
     actions: [],
@@ -151,7 +148,10 @@ const gameState = {
     // 카시야스 패턴 연습 모드(F10)
     bossPractice: {
         enabled: false,
-        lastPatternId: null
+        lastPatternId: null,
+        manualCollapsed: false,
+        autoCollapsed: false,
+        manualExpandedDuringPattern: false
     },
 
     // 새 게임 진행 모드
@@ -413,6 +413,9 @@ function resetBossBattleToTitle() {
     if (gameState.bossPractice) {
         gameState.bossPractice.enabled = false;
         gameState.bossPractice.lastPatternId = null;
+        gameState.bossPractice.manualCollapsed = false;
+        gameState.bossPractice.autoCollapsed = false;
+        gameState.bossPractice.manualExpandedDuringPattern = false;
     }
 
     try {
@@ -772,16 +775,10 @@ async function loadGameDataAndInit() {
         const bpoaData = GameDataNormalizer.normalizeRuntimeDataSet(rawData.monsterPatternObjectActionData, 'bossPatternObjectAction');
         const stData = GameDataNormalizer.normalizeRuntimeDataSet(rawData.stageData, 'stage');
         const specialModeData = GameDataNormalizer.normalizeRuntimeDataSet(rawData.specialModeData, 'specialMode');
-        const specialModePlayerData = GameDataNormalizer.normalizeRuntimeDataSet(rawData.specialModePlayerData, 'specialModePlayer');
-        const specialModeObjectData = GameDataNormalizer.normalizeRuntimeDataSet(rawData.specialModeObjectData, 'specialModeObject');
-        const specialModeObjectActionData = GameDataNormalizer.normalizeRuntimeDataSet(rawData.specialModeObjectActionData, 'specialModeObjectAction');
         const portalData = GameDataNormalizer.normalizeRuntimeDataSet(rawData.portalData, 'portal');
         const dialogueData = GameDataNormalizer.normalizeRuntimeDataSet(rawData.dialogueData, 'dialogue');
 
         gameState.DB_SPECIAL_MODE = specialModeData || [];
-        gameState.DB_SPECIAL_MODE_PLAYER = specialModePlayerData || [];
-        gameState.DB_SPECIAL_MODE_OBJECT = specialModeObjectData || [];
-        gameState.DB_SPECIAL_MODE_OBJECT_ACTION = specialModeObjectActionData || [];
         gameState.DB_PORTAL = portalData || [];
         gameState.DB_DIALOGUE = dialogueData || [];
 
@@ -934,7 +931,16 @@ function gameLoop(timestamp) {
             return;
         }
 
-        // P2_M3 실패 결과 피해는 전용 모드 복귀 후에도 0.3초 주기로 이어지므로
+        // F1로 직접 연 상세 조작법이 표시되는 동안에는 렌더/HUD만 유지하고
+        // 전투, 패턴, 이펙트, 실패 피해 등 모든 gameplay timer를 정지한다.
+        if (gameState.helpPauseActive) {
+            GameRenderer.render(gameState);
+            updateHUD();
+            requestAnimationFrame(gameLoop);
+            return;
+        }
+
+        // OBJECT_DEFENSE 실패 결과 피해는 스페셜 모드 복귀 후에도 데이터의 주기값에 따라 이어지므로
         // 일반 게임 루프에서도 별도 시퀀스를 갱신한다.
         if (typeof SpecialModeObjectDefenseSystem !== 'undefined' && SpecialModeObjectDefenseSystem.updateFailDamageSequence) {
             SpecialModeObjectDefenseSystem.updateFailDamageSequence(gameState, deltaTime);
@@ -943,6 +949,7 @@ function gameLoop(timestamp) {
         if (gameState.specialMode === 'SPECIAL_MODE_OBJECT_DEFENSE' && typeof SpecialModeObjectDefenseSystem !== 'undefined' && SpecialModeObjectDefenseSystem.isActive(gameState)) {
             updateEnvironment(deltaTime);
             SpecialModeObjectDefenseSystem.update(gameState, deltaTime);
+            syncBossPracticePanelCollapseState();
             GameRenderer.render(gameState);
             updateHUD();
             requestAnimationFrame(gameLoop);
@@ -958,6 +965,7 @@ function gameLoop(timestamp) {
         if (typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.isActive(gameState)) {
             P3M3FinalIssenSystem.update(gameState, deltaTime);
         }
+        syncBossPracticePanelCollapseState();
         updateEnvironment(deltaTime);
         if (!phaseTransitionActive) {
             updateStageFlow();
@@ -1575,6 +1583,9 @@ function triggerBossPhaseTransitionDebug() {
     if (gameState.bossPractice && gameState.bossPractice.enabled) {
         gameState.bossPractice.enabled = false;
         gameState.bossPractice.lastPatternId = null;
+        gameState.bossPractice.manualCollapsed = false;
+        gameState.bossPractice.autoCollapsed = false;
+        gameState.bossPractice.manualExpandedDuringPattern = false;
         buildUIButtons();
     }
 
@@ -1720,6 +1731,8 @@ function switchKasiyasBossToPhaseDebug(targetPhase, options = {}) {
     if (gameState.bossPractice) {
         gameState.bossPractice.enabled = practiceWasEnabled;
         gameState.bossPractice.lastPatternId = null;
+        gameState.bossPractice.autoCollapsed = false;
+        gameState.bossPractice.manualExpandedDuringPattern = false;
     }
 
     buildUIButtons();
@@ -1916,8 +1929,8 @@ function resetBossPracticeRuntimeState(options = {}) {
     boss.majorPattern2Runtime = null;
     boss.majorPattern3Runtime = null;
     boss.p2MajorPattern2Runtime = null;
-    // 연습 모드에서 P2_M3을 다시 실행할 때 이전 실행의 결과가
-    // 242073에서 새 실행 결과로 오인되지 않도록 전용 결과 상태를 초기화한다.
+    // 연습 모드에서 OBJECT_DEFENSE 스페셜 모드를 다시 실행할 때 이전 실행의 결과가
+    // SPECIAL_MODE_START가 새 실행 결과로 오인하지 않도록 전용 결과 상태를 초기화한다.
     boss.specialModeResult = null;
     boss.specialModeStarted = false;
     gameState.specialModeObjectDefenseFailDamageRuntime = null;
@@ -2017,6 +2030,9 @@ function restartBossBattleAfterPracticeMode() {
     const bossMonster = resetBossPracticeRuntimeState({ resetPosition: true, reviveBoss: true });
     gameState.bossPractice.enabled = false;
     gameState.bossPractice.lastPatternId = null;
+    gameState.bossPractice.manualCollapsed = false;
+    gameState.bossPractice.autoCollapsed = false;
+    gameState.bossPractice.manualExpandedDuringPattern = false;
 
     if (bossMonster && bossMonster.boss) {
         bossMonster.hp = Math.max(1, bossMonster.maxHp || 1);
@@ -2039,6 +2055,99 @@ function restartBossBattleAfterPracticeMode() {
     pushSystemNotice('연습 모드 비활성화 · 기존 전투 재개', '#ffb8b8', 1.4);
 }
 
+function isBossPracticePatternRunning() {
+    if (!gameState.bossPractice || !gameState.bossPractice.enabled) return false;
+
+    const bossMonster = getKasiyasPracticeBoss();
+    const boss = bossMonster && bossMonster.boss ? bossMonster.boss : null;
+    if (boss && boss.activePattern) return true;
+
+    if (gameState.phaseTransition && gameState.phaseTransition.active) return true;
+    if (gameState.specialModeObjectDefenseIntroRuntime && gameState.specialModeObjectDefenseIntroRuntime.active) return true;
+    if (gameState.specialModeObjectDefenseRuntime && gameState.specialModeObjectDefenseRuntime.active) return true;
+    if (gameState.p3m3Runtime && gameState.p3m3Runtime.active) return true;
+
+    return false;
+}
+
+function isBossPracticeBossIdle() {
+    const bossMonster = getKasiyasPracticeBoss();
+    if (!bossMonster || !bossMonster.boss) return false;
+    if (isBossPracticePatternRunning()) return false;
+    return String(bossMonster.state || '').trim().toUpperCase() === 'IDLE';
+}
+
+function isBossPracticePanelCollapsed() {
+    const practice = gameState.bossPractice || {};
+    return !!(practice.manualCollapsed || practice.autoCollapsed);
+}
+
+function applyBossPracticePanelCollapseState() {
+    const panel = document.querySelector('.boss-practice-panel');
+    if (!panel) return;
+
+    const collapsed = isBossPracticePanelCollapsed();
+    panel.classList.toggle('collapsed', collapsed);
+
+    const body = panel.querySelector('.practice-collapsible');
+    if (body) body.setAttribute('aria-hidden', collapsed ? 'true' : 'false');
+
+    const toggle = panel.querySelector('[data-practice-toggle]');
+    if (toggle) {
+        toggle.textContent = collapsed ? '▼' : '▲';
+        toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        toggle.setAttribute('aria-label', collapsed ? '연습모드 패널 펼치기' : '연습모드 패널 접기');
+        toggle.title = collapsed ? '패널 펼치기' : '패널 접기';
+    }
+}
+
+function collapseBossPracticePanelForPattern() {
+    if (!gameState.bossPractice) return;
+    gameState.bossPractice.autoCollapsed = true;
+    gameState.bossPractice.manualExpandedDuringPattern = false;
+    applyBossPracticePanelCollapseState();
+}
+
+function toggleBossPracticePanelCollapsed() {
+    const practice = gameState.bossPractice;
+    if (!practice || !practice.enabled) return;
+
+    const collapsed = isBossPracticePanelCollapsed();
+    const running = isBossPracticePatternRunning();
+
+    if (collapsed) {
+        // 자동 접힘을 사용자가 직접 펼친 경우에는 해당 패턴이 끝날 때까지 다시 자동 접지 않는다.
+        practice.manualCollapsed = false;
+        practice.autoCollapsed = false;
+        practice.manualExpandedDuringPattern = running;
+    } else {
+        // 사용자가 직접 접은 상태는 패턴 종료 후에도 유지한다.
+        practice.manualCollapsed = true;
+        practice.autoCollapsed = false;
+        practice.manualExpandedDuringPattern = false;
+    }
+
+    applyBossPracticePanelCollapseState();
+}
+
+function syncBossPracticePanelCollapseState() {
+    const practice = gameState.bossPractice;
+    if (!practice || !practice.enabled) return;
+
+    // 패턴 시작 때문에 자동으로 접힌 경우에만, 패턴 종료 후 카시야스가 IDLE로 돌아오면 다시 펼친다.
+    if (practice.autoCollapsed && isBossPracticeBossIdle()) {
+        practice.autoCollapsed = false;
+        practice.manualExpandedDuringPattern = false;
+        applyBossPracticePanelCollapseState();
+        return;
+    }
+
+    // 진행 중 사용자가 직접 펼친 override는 패턴이 완전히 끝난 뒤 정리한다.
+    if (practice.manualExpandedDuringPattern && isBossPracticeBossIdle()) {
+        practice.manualExpandedDuringPattern = false;
+    }
+}
+
 function setBossPracticeModeEnabled(enabled) {
     const nextEnabled = !!enabled;
     const wasEnabled = !!gameState.bossPractice.enabled;
@@ -2049,7 +2158,10 @@ function setBossPracticeModeEnabled(enabled) {
     }
 
     gameState.bossPractice.enabled = nextEnabled;
+    gameState.bossPractice.autoCollapsed = false;
+    gameState.bossPractice.manualExpandedDuringPattern = false;
     if (gameState.bossPractice.enabled) {
+        gameState.bossPractice.manualCollapsed = false;
         const bossMonster = resetBossPracticeRuntimeState({ resetPosition: false });
         const phaseName = bossMonster && bossMonster.boss && bossMonster.boss.phase
             ? formatKasiyasPublicText(String(bossMonster.boss.phase.Phase_Name || '').trim(), { phaseStep: true, latePhase: false })
@@ -2082,11 +2194,16 @@ function handleBossPracticeKeyInput(e) {
 }
 
 function handleBossPracticePanelClick(e) {
-    const target = e.target && e.target.closest ? e.target.closest('[data-practice-pattern], [data-practice-control]') : null;
+    const target = e.target && e.target.closest ? e.target.closest('[data-practice-toggle], [data-practice-pattern], [data-practice-control]') : null;
     if (!target) return;
 
     e.preventDefault();
     e.stopPropagation();
+
+    if (target.hasAttribute('data-practice-toggle')) {
+        toggleBossPracticePanelCollapsed();
+        return;
+    }
 
     const patternId = target.getAttribute('data-practice-pattern');
     if (patternId) {
@@ -2136,18 +2253,27 @@ function forceStartBossPracticePattern(patternId) {
 
     gameState.bossPractice.lastPatternId = id;
     MonsterManager.startBossPattern(bossMonster, pattern, gameState);
+    collapseBossPracticePanelForPattern();
     pushSystemNotice(`연습 실행: ${formatKasiyasPublicText(pattern.Pattern_Name || pattern.Dev_Name || id, { phaseStep: false, latePhase: true })}`, '#f4d36a', 1.2);
     buildUIButtons();
 }
 
 function stopBossPracticePattern() {
     resetBossPracticeRuntimeState({ resetPosition: false });
+    if (gameState.bossPractice) {
+        gameState.bossPractice.autoCollapsed = false;
+        gameState.bossPractice.manualExpandedDuringPattern = false;
+    }
     pushSystemNotice('연습 모드: 현재 패턴 중단', '#ffd86b', 1.0);
     buildUIButtons();
 }
 
 function resetBossPracticeAllPositions() {
     resetBossPracticeRuntimeState({ resetPosition: true });
+    if (gameState.bossPractice) {
+        gameState.bossPractice.autoCollapsed = false;
+        gameState.bossPractice.manualExpandedDuringPattern = false;
+    }
     buildUIButtons();
 }
 
@@ -2178,30 +2304,44 @@ function renderBossPracticePanel(container) {
         return `<button type="button" class="practice-btn" data-practice-pattern="${escapeDebugHtml(item.id)}">${label}</button>`;
     };
 
+    const collapsed = isBossPracticePanelCollapsed();
     container.innerHTML = `
-        <div class="boss-practice-panel">
-            <div class="practice-title">
-                <span>🧪 카시야스 연습 모드</span>
-                <span class="practice-status">${escapeDebugHtml(phaseName || 'ON')}</span>
+        <div class="boss-practice-panel${collapsed ? ' collapsed' : ''}">
+            <div class="practice-section header">
+                <div class="practice-title">
+                    <span>연습모드</span>
+                    <div class="practice-header-meta">
+                        <span class="practice-status">진행 단계 · ${escapeDebugHtml(phaseName || '-')}</span>
+                        <button type="button" class="practice-toggle" data-practice-toggle aria-expanded="${collapsed ? 'false' : 'true'}" aria-label="${collapsed ? '연습모드 패널 펼치기' : '연습모드 패널 접기'}" title="${collapsed ? '패널 펼치기' : '패널 접기'}">${collapsed ? '▼' : '▲'}</button>
+                    </div>
+                </div>
+                <div class="practice-help">각 단계의 패턴을 테스트할 수 있습니다.</div>
             </div>
-            <div class="practice-help">
-                현재 보스 단계의 패턴만 표시합니다. PageUp 다음 단계, PageDown 이전 단계, 숫자키는 구현된 패턴 순서대로 실행합니다.
-            </div>
-            <div class="practice-group-title">기본 패턴</div>
-            <div class="practice-grid">
-                ${basic.map(makeButton).join('')}
-            </div>
-            <div class="practice-group-title">대형 패턴</div>
-            <div class="practice-grid">
-                ${major.length ? major.map(makeButton).join('') : '<button type="button" class="practice-btn disabled" disabled>대형 패턴 없음</button>'}
-            </div>
-            ${other.length ? `<div class="practice-group-title">기타 패턴</div><div class="practice-grid">${other.map(makeButton).join('')}</div>` : ''}
-            <div class="practice-group-title">제어</div>
-            <div class="practice-grid">
-                <button type="button" class="practice-btn control" data-practice-control="stop">현재 패턴 중단</button>
-                <button type="button" class="practice-btn control" data-practice-control="reset-position">위치 초기화</button>
-                <button type="button" class="practice-btn control" data-practice-control="revive-boss">보스 부활</button>
-                <button type="button" class="practice-btn danger" data-practice-control="off">연습 모드 OFF</button>
+            <div class="practice-collapsible" aria-hidden="${collapsed ? 'true' : 'false'}">
+                <div class="practice-collapsible-inner">
+                    <div class="practice-section">
+                        <div class="practice-group-title">기본 패턴</div>
+                        <div class="practice-pattern-list">
+                            ${basic.map(makeButton).join('')}
+                        </div>
+                    </div>
+                    <div class="practice-section">
+                        <div class="practice-group-title">대형 패턴</div>
+                        <div class="practice-pattern-list">
+                            ${major.length ? major.map(makeButton).join('') : '<button type="button" class="practice-btn disabled" disabled>대형 패턴 없음</button>'}
+                        </div>
+                        ${other.length ? `<div class="practice-group-title" style="margin-top:9px;">기타 패턴</div><div class="practice-pattern-list">${other.map(makeButton).join('')}</div>` : ''}
+                    </div>
+                    <div class="practice-section">
+                        <div class="practice-group-title">제어</div>
+                        <div class="practice-control-grid">
+                            <button type="button" class="practice-btn control" data-practice-control="stop">현재 패턴 중단</button>
+                            <button type="button" class="practice-btn control" data-practice-control="reset-position">위치 초기화</button>
+                            <button type="button" class="practice-btn control" data-practice-control="revive-boss">보스 부활</button>
+                            <button type="button" class="practice-btn danger" data-practice-control="off">연습 모드 OFF</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     `;
@@ -2214,6 +2354,7 @@ window.forceStartBossPracticePattern = forceStartBossPracticePattern;
 window.stopBossPracticePattern = stopBossPracticePattern;
 window.resetBossPracticeAllPositions = resetBossPracticeAllPositions;
 window.reviveBossPracticeBoss = reviveBossPracticeBoss;
+window.toggleBossPracticePanelCollapsed = toggleBossPracticePanelCollapsed;
 
 window.toggleAutoSpawn = function() {
     gameState.isAutoSpawn = !gameState.isAutoSpawn;
@@ -2752,130 +2893,57 @@ function updateHUD() {
             if (textEl) textEl.innerText = text;
         };
 
-        const p2m3Rt = (gameState.specialMode === 'SPECIAL_MODE_OBJECT_DEFENSE' && gameState.specialModeObjectDefenseRuntime && gameState.specialModeObjectDefenseRuntime.active)
+        const objectDefenseRt = (gameState.specialMode === 'SPECIAL_MODE_OBJECT_DEFENSE' && gameState.specialModeObjectDefenseRuntime && gameState.specialModeObjectDefenseRuntime.active)
             ? gameState.specialModeObjectDefenseRuntime
             : null;
 
-        if (p2m3Rt && p2m3Rt.player && p2m3Rt.phase !== 'INTRO') {
-            const dp = p2m3Rt.player;
-            const waveNow = Math.min(((p2m3Rt.waveIndex || 0) + 1), Math.max(1, (p2m3Rt.waves || []).length || 1));
-            const waveTotal = Math.max(1, (p2m3Rt.waves || []).length || 1);
+        if (objectDefenseRt && objectDefenseRt.player && objectDefenseRt.phase !== 'INTRO') {
+            const dp = objectDefenseRt.player;
+            const requiredBuffKey = String(objectDefenseRt.requiredResponseBuffKey || '').trim();
+            const hasRequiredResponseBuff = !!(requiredBuffKey && dp.buffs && dp.buffs[requiredBuffKey]);
             const spiritLabel = document.querySelector('.spirit-panel .hud-orb-label');
             const skillTitleEl = document.querySelector('.hud-skill-title');
             const skillSlots = Array.from(document.querySelectorAll('#hudSkills .skill-slot'));
-            if (hudPlayerName) hudPlayerName.innerText = `Lv.${p.level} ${p.name} · 차원 방어전`;
-            if (hudPrimaryLabel) hudPrimaryLabel.innerText = '차원 방어전';
-            if (hudPrimaryValue) {
-                hudPrimaryValue.innerText = dp.hasTemperedWill ? '연단된 칼날' : `Wave ${waveNow}/${waveTotal}`;
-                hudPrimaryValue.classList.remove('melee', 'range');
-                hudPrimaryValue.classList.add('p2m3');
-            }
-            if (spiritLabel) spiritLabel.innerText = '가드';
-            if (skillTitleEl) skillTitleEl.innerText = dp.hasTemperedWill ? '패턴 조작 · 연단 준비' : '패턴 조작';
+            if (hudPlayerName) hudPlayerName.innerText = `Lv.${p.level} ${p.name}`;
+            // 하단 HUD는 플레이어 정보만 유지한다. P2M3의 보스/패턴 상태 문구는 노출하지 않는다.
+            if (hudPrimaryStatus) hudPrimaryStatus.style.display = 'none';
+            if (spiritLabel) spiritLabel.innerText = '연단된 칼날';
+            if (skillTitleEl) skillTitleEl.innerText = '스킬 슬롯';
 
             const dpMaxHp = Math.max(1, parseFloat(dp.maxHp) || 1);
             const dpHp = clamp(parseFloat(dp.hp) || 0, 0, dpMaxHp);
             const dpHpRatio = clamp((dpHp / dpMaxHp) * 100, 0, 100);
-            if (hudHpFill) {
-                hudHpFill.style.width = '100%';
-                hudHpFill.style.height = dpHpRatio + '%';
-                hudHpFill.style.left = '0';
-                hudHpFill.style.bottom = '0';
-                hudHpFill.style.top = 'auto';
-                hudHpFill.style.transition = 'height 0.12s ease-out';
-            }
-            if (hudHpText) {
-                const guideDamageView = !!(typeof GameModeSystem !== 'undefined' && GameModeSystem.isGuide && GameModeSystem.isGuide(gameState));
-                hudHpText.innerText = guideDamageView
-                    ? `${dpHp.toFixed(1)} / ${dpMaxHp.toFixed(1)}\n${dpHpRatio.toFixed(1)}%`
-                    : `${Math.ceil(dpHp)} / ${Math.ceil(dpMaxHp)}\n${dpHpRatio.toFixed(1)}%`;
+            if (hudHpFill) { hudHpFill.style.width='100%'; hudHpFill.style.height=dpHpRatio+'%'; hudHpFill.style.left='0'; hudHpFill.style.bottom='0'; hudHpFill.style.top='auto'; hudHpFill.style.transition='height 0.12s ease-out'; }
+            if (hudHpText) { const guideDamageView=!!(typeof GameModeSystem!=='undefined'&&GameModeSystem.isGuide&&GameModeSystem.isGuide(gameState)); hudHpText.innerText=guideDamageView?`${dpHp.toFixed(1)} / ${dpMaxHp.toFixed(1)}\n${dpHpRatio.toFixed(1)}%`:`${Math.ceil(dpHp)} / ${Math.ceil(dpMaxHp)}\n${dpHpRatio.toFixed(1)}%`; }
+
+            const guardMax = Math.max(0.01, parseFloat(dp.guardMaxTimer) || parseFloat(objectDefenseRt.guardAction && objectDefenseRt.guardAction.Guard_Max_Hold_Time) || 1.5);
+            const guardRemain = dp.isGuarding ? clamp(parseFloat(dp.guardTimer)||0,0,guardMax) : (dp.guardCooldownTimer>0?0:guardMax);
+            const guardRatio = clamp((guardRemain/guardMax)*100,0,100);
+
+            // 구 투기 오브는 P2M3에서 '연단된 칼날' 보유 여부 전용 표시로 사용한다.
+            // 거대 검기 파괴 시 0→100%로 차오르고, 최종 대응에 사용하면 다시 비워진다.
+            const temperedRatio = hasRequiredResponseBuff ? 100 : 0;
+            if (hudSpiritFill) { hudSpiritFill.style.width='100%'; hudSpiritFill.style.height=temperedRatio+'%'; hudSpiritFill.style.left='0'; hudSpiritFill.style.bottom='0'; hudSpiritFill.style.top='auto'; hudSpiritFill.style.transition='height 0.42s cubic-bezier(.2,.8,.2,1)'; }
+            if (hudSpiritText) hudSpiritText.innerText = '';
+            if (hudSpiritTooltip) hudSpiritTooltip.innerHTML = `<b>연단된 칼날</b><br><span class="muted">거대 검기를 파괴하면 획득합니다.</span><br>카시야스의 최종 공격에 대응할 때 소모됩니다.`;
+            if (hudSpiritOrb) {
+                hudSpiritOrb.title = '연단된 칼날';
+                hudSpiritOrb.classList.add('tempered-mode');
+                hudSpiritOrb.classList.toggle('tempered-ready', hasRequiredResponseBuff);
             }
 
-            const dpMaxGuard = Math.max(1, parseFloat(dp.guardGaugeMax) || 100);
-            const dpGuard = clamp(parseFloat(dp.guardGauge) || 0, 0, dpMaxGuard);
-            const dpGuardRatio = clamp((dpGuard / dpMaxGuard) * 100, 0, 100);
-            if (hudSpiritFill) {
-                hudSpiritFill.style.width = '100%';
-                hudSpiritFill.style.height = dpGuardRatio + '%';
-                hudSpiritFill.style.left = '0';
-                hudSpiritFill.style.bottom = '0';
-                hudSpiritFill.style.top = 'auto';
-                hudSpiritFill.style.transition = 'height 0.12s ease-out';
-            }
-            if (hudSpiritText) hudSpiritText.innerText = `${Math.floor(dpGuard)} / ${Math.floor(dpMaxGuard)}\n${dpGuardRatio.toFixed(1)}%`;
-            if (hudSpiritTooltip) {
-                hudSpiritTooltip.innerHTML = `<b>가드 게이지</b><br><span class="muted">현재 ${Math.floor(dpGuard)} / ${Math.floor(dpMaxGuard)}</span><br>가드 유지 시 소모되며, 시간에 따라 회복됩니다.<br><span class="muted">가드 준비 상태와 웨이브 스킬은 하단 슬롯 안내를 참고하세요.</span>`;
-            }
-            if (hudSpiritOrb) hudSpiritOrb.title = `가드 게이지\n현재 ${Math.floor(dpGuard)} / ${Math.floor(dpMaxGuard)}\n가드 유지 시 소모되며 시간에 따라 회복됩니다.`;
-
-            if (meleeChip) {
-                meleeChip.innerText = '차원 방어전';
-                meleeChip.style.opacity = '1';
-                meleeChip.style.transform = 'translateY(-1px) scale(1.03)';
-                meleeChip.style.borderColor = 'rgba(150,220,255,0.72)';
-                meleeChip.style.boxShadow = '0 0 14px rgba(52,152,219,0.22), inset 0 0 8px rgba(255,255,255,0.05)';
-                meleeChip.style.filter = 'none';
-            }
-            if (rangeChip) {
-                rangeChip.innerText = dp.hasTemperedWill ? '연단된 칼날의 의지' : `Wave ${waveNow}/${waveTotal}`;
-                rangeChip.style.opacity = '1';
-                rangeChip.style.transform = 'translateY(-1px) scale(1.03)';
-                rangeChip.style.borderColor = dp.hasTemperedWill ? 'rgba(255,220,110,0.72)' : 'rgba(180,160,255,0.62)';
-                rangeChip.style.boxShadow = dp.hasTemperedWill
-                    ? '0 0 14px rgba(255,214,90,0.18), inset 0 0 8px rgba(255,255,255,0.05)'
-                    : '0 0 14px rgba(150,120,255,0.16), inset 0 0 8px rgba(255,255,255,0.05)';
-                rangeChip.style.filter = 'none';
-            }
-
-            setCombatMeter(
-                'combatMeterGuard', 'combatMeterGuardFill', 'combatMeterGuardText',
-                dpGuardRatio,
-                `가드 게이지  ${Math.floor(dpGuard)} / ${Math.floor(dpMaxGuard)}`,
-                dpGuardRatio <= 15 ? 'empty' : 'ready'
-            );
-            const waveCooldown = Math.max(0, parseFloat(dp.skillCooldown) || 0);
-
-            const p2SpecialSlots = [
-                { slot: getEl('maskSwap') ? getEl('maskSwap').closest('.skill-slot') : null, key: 'X', wave: false },
-                { slot: getEl('maskDash') ? getEl('maskDash').closest('.skill-slot') : null, key: 'C', wave: false },
-                { slot: getEl('maskGuard') ? getEl('maskGuard').closest('.skill-slot') : null, key: 'D', wave: false },
-                { slot: getEl('maskWave') ? getEl('maskWave').closest('.skill-slot') : null, key: 'A', wave: true }
+            setCombatMeter('combatMeterGuard','combatMeterGuardFill','combatMeterGuardText',guardRatio,dp.guardCooldownTimer>0?`가드 회복  ${dp.guardCooldownTimer.toFixed(1)}s`:`가드 유지  ${guardRemain.toFixed(1)} / ${guardMax.toFixed(1)}s`,dp.guardCooldownTimer>0?'recover':'ready');
+            const skillCooldown=Math.max(0,parseFloat(dp.skillCooldown)||0);
+            const keyFor=(action,fallback)=>{ if(!action)return fallback; const raw=String(action.Input_Key||'').trim().toUpperCase(); return raw.startsWith('KEY_')?raw.slice(4):fallback; };
+            const p2SpecialSlots=[
+                {slot:getEl('maskSwap')?getEl('maskSwap').closest('.skill-slot'):null,key:keyFor(objectDefenseRt.attackAction,'X'),skill:false},
+                {slot:getEl('maskDash')?getEl('maskDash').closest('.skill-slot'):null,key:keyFor(objectDefenseRt.jumpAction,'C'),skill:false},
+                {slot:getEl('maskGuard')?getEl('maskGuard').closest('.skill-slot'):null,key:keyFor(objectDefenseRt.guardAction,'D'),skill:false},
+                {slot:getEl('maskWave')?getEl('maskWave').closest('.skill-slot'):null,key:keyFor(objectDefenseRt.skillAction,'A'),skill:true}
             ];
-            skillSlots.forEach(slot => { if (slot) { slot.style.display = 'none'; slot.style.order = ''; } });
-            p2SpecialSlots.forEach((entry, index) => {
-                const slot = entry.slot;
-                if (!slot) return;
-                slot.style.display = '';
-                slot.style.order = String(index + 1);
-                const keyEl = slot.querySelector('.skill-key');
-                const lockEl = slot.querySelector('.skill-lock');
-                const maskEl = slot.querySelector('.skill-cd-mask');
-                const cooldownEl = slot.querySelector('.skill-cooldown-number');
-                if (keyEl) keyEl.innerText = entry.key;
-                if (lockEl) lockEl.style.display = 'none';
-                if (maskEl) {
-                    if (entry.wave && waveCooldown > 0) {
-                        const maxWaveCd = Math.max(0.01, parseFloat(dp.skillCooldownMax) || waveCooldown || 1);
-                        maskEl.style.height = clamp((waveCooldown / maxWaveCd) * 100, 0, 100) + '%';
-                    } else {
-                        maskEl.style.height = '0%';
-                    }
-                }
-                if (cooldownEl) {
-                    cooldownEl.innerText = (entry.wave && waveCooldown > 0.04)
-                        ? (waveCooldown >= 10 ? String(Math.ceil(waveCooldown)) : waveCooldown.toFixed(1))
-                        : '';
-                }
-            });
-
-            const bossGroggyGauge = getEl('bossGroggyGauge');
-            const bossCastGauge = getEl('bossCastGauge');
-            const bossGroggyGaugeFill = getEl('bossGroggyGaugeFill');
-            const bossCastGaugeFill = getEl('bossCastGaugeFill');
-            if (bossGroggyGauge) bossGroggyGauge.classList.add('hidden');
-            if (bossCastGauge) bossCastGauge.classList.add('hidden');
-            if (bossGroggyGaugeFill) bossGroggyGaugeFill.style.width = '0%';
-            if (bossCastGaugeFill) bossCastGaugeFill.style.width = '0%';
+            skillSlots.forEach(slot=>{if(slot){slot.style.display='none';slot.style.order='';}});
+            p2SpecialSlots.forEach((entry,index)=>{const slot=entry.slot;if(!slot)return;slot.style.display='';slot.style.order=String(index+1);const keyEl=slot.querySelector('.skill-key'),lockEl=slot.querySelector('.skill-lock'),maskEl=slot.querySelector('.skill-cd-mask'),cooldownEl=slot.querySelector('.skill-cooldown-number');if(keyEl)keyEl.innerText=entry.key;if(lockEl)lockEl.style.display='none';if(maskEl){if(entry.skill&&skillCooldown>0){const maxCd=Math.max(0.01,parseFloat(dp.skillCooldownMax)||skillCooldown||1);maskEl.style.height=clamp((skillCooldown/maxCd)*100,0,100)+'%';}else maskEl.style.height='0%';}if(cooldownEl)cooldownEl.innerText=(entry.skill&&skillCooldown>0.04)?(skillCooldown>=10?String(Math.ceil(skillCooldown)):skillCooldown.toFixed(1)):'';});
+            const bossGroggyGauge=getEl('bossGroggyGauge'),bossCastGauge=getEl('bossCastGauge'),bossGroggyGaugeFill=getEl('bossGroggyGaugeFill'),bossCastGaugeFill=getEl('bossCastGaugeFill');if(bossGroggyGauge)bossGroggyGauge.classList.add('hidden');if(bossCastGauge)bossCastGauge.classList.add('hidden');if(bossGroggyGaugeFill)bossGroggyGaugeFill.style.width='0%';if(bossCastGaugeFill)bossCastGaugeFill.style.width='0%';
             return;
         }
 
@@ -2883,8 +2951,10 @@ function updateHUD() {
         const spiritLabel = document.querySelector('.spirit-panel .hud-orb-label');
         const skillTitleEl = document.querySelector('.hud-skill-title');
         const skillSlots = Array.from(document.querySelectorAll('#hudSkills .skill-slot'));
+        if (hudPrimaryStatus) hudPrimaryStatus.style.display = '';
         if (spiritLabel) spiritLabel.innerText = '투기';
         if (skillTitleEl) skillTitleEl.innerText = '스킬 슬롯';
+        if (hudSpiritOrb) { hudSpiritOrb.classList.remove('tempered-mode', 'tempered-ready'); }
         ['A','S','D','F','Z'].forEach((key, index) => {
             const slot = skillSlots[index];
             if (!slot) return;

@@ -1,0 +1,9 @@
+던파 연단된 칼날 폰트 적용 안내
+
+원본 DNFForgedBlade 압축파일에서 아래 3개 OTF 파일을 이 폴더에 복사하면 게임 전반에 폰트가 적용됩니다.
+
+- DNFForgedBlade-Light.otf
+- DNFForgedBlade-Medium.otf
+- DNFForgedBlade-Bold.otf
+
+파일이 없을 경우 게임은 맑은 고딕 계열 폰트로 자동 대체됩니다.

@@ -125,7 +125,7 @@
         });
 
         ctx.fillStyle = 'rgba(255,255,255,0.66)';
-        ctx.font = '700 13px Arial';
+        ctx.font = '700 13px "DNF Forged Blade", Arial, sans-serif';
         ctx.fillText(stageName || '카시야스 이면세계', 18, 28);
         ctx.restore();
     };
@@ -435,7 +435,7 @@
             ctx.fill();
             ctx.stroke();
             ctx.fillStyle = row.hidden ? '#ffb0a8' : '#ffffff';
-            ctx.font = '700 11px Arial';
+            ctx.font = '700 11px "DNF Forged Blade", Arial, sans-serif';
             ctx.textAlign = 'left';
             ctx.fillText(line1, x - boxW / 2 + 8, y - 44);
             ctx.fillStyle = '#9fd7ff';
@@ -869,7 +869,7 @@
             ctx.textBaseline = 'middle';
             ctx.shadowColor = 'rgba(0,0,0,0.92)';
             ctx.shadowBlur = 16;
-            ctx.font = '900 34px Arial';
+            ctx.font = '900 34px "DNF Forged Blade", Arial, sans-serif';
             ctx.fillStyle = `rgba(255,255,255,${0.94 * alpha})`;
             ctx.fillText(title, canvas.width / 2, Math.max(72, canvas.height * 0.15));
             ctx.restore();
@@ -910,11 +910,11 @@
             ctx.strokeRect(x + 6.5, y + 6.5, bw - 13, panelH - 13);
 
             ctx.fillStyle = 'rgba(255,255,255,0.86)';
-            ctx.font = '900 13px Arial';
+            ctx.font = '900 13px "DNF Forged Blade", Arial, sans-serif';
             ctx.textAlign = 'left';
             ctx.fillText(label, x + 14, y + 19);
             ctx.fillStyle = 'rgba(255,255,255,0.72)';
-            ctx.font = '800 12px Arial';
+            ctx.font = '800 12px "DNF Forged Blade", Arial, sans-serif';
             ctx.textAlign = 'right';
             ctx.fillText(valueText, x + bw - 14, y + 19);
 
@@ -955,10 +955,10 @@
             ctx.fill();
             ctx.stroke();
             ctx.fillStyle = '#ffffff';
-            ctx.font = '800 14px Arial';
+            ctx.font = '800 14px "DNF Forged Blade", Arial, sans-serif';
             ctx.textAlign = 'left';
             ctx.fillText(`P3_M3 DEBUG frame ${rt.debugFrame || 0} area ${rt.currentAreaId}`, 36, 195);
-            ctx.font = '700 11px Arial';
+            ctx.font = '700 11px "DNF Forged Blade", Arial, sans-serif';
             rows.forEach((row, idx) => {
                 const y = 218 + idx * 58;
                 const moved = Math.hypot(parseFloat(row.dx) || 0, parseFloat(row.dy) || 0);
@@ -986,7 +986,7 @@
 
         const w = canvas.width;
         const h = canvas.height;
-        const fontFamily = '"Malgun Gothic", "Noto Sans KR", "Segoe UI", Arial, sans-serif';
+        const fontFamily = '"DNF Forged Blade", "Malgun Gothic", "Noto Sans KR", "Segoe UI", Arial, sans-serif';
         const panelW = Math.min(1260, Math.max(920, w - 180));
         const panelH = 168;
         const panelX = (w - panelW) / 2;

@@ -4,7 +4,33 @@
     <meta charset="UTF-8">
     <title>카시야스 보스전 테스트</title>
     <style>
-        body { margin: 0; background-color: #0a0a0a; color: white; font-family: 'Malgun Gothic', '맑은 고딕', 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
+        @font-face {
+            font-family: 'DNF Forged Blade';
+            src: local('DNF Forged Blade Light'), local('던파 연단된 칼날 Light'), url('./fonts/DNFForgedBlade-Light.otf') format('opentype');
+            font-style: normal;
+            font-weight: 300 400;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'DNF Forged Blade';
+            src: local('DNF Forged Blade Medium'), local('던파 연단된 칼날 Medium'), url('./fonts/DNFForgedBlade-Medium.otf') format('opentype');
+            font-style: normal;
+            font-weight: 500 600;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'DNF Forged Blade';
+            src: local('DNF Forged Blade Bold'), local('던파 연단된 칼날 Bold'), url('./fonts/DNFForgedBlade-Bold.otf') format('opentype');
+            font-style: normal;
+            font-weight: 700 900;
+            font-display: swap;
+        }
+        :root {
+            --game-font: 'DNF Forged Blade', 'Malgun Gothic', '맑은 고딕', 'Segoe UI', sans-serif;
+        }
+
+        button, input, select, textarea { font-family: var(--game-font); }
+        body { margin: 0; background-color: #0a0a0a; color: white; font-family: var(--game-font); display: flex; flex-direction: column; align-items: center; overflow: hidden; }
         
 .system-notice-anchor {
     position: absolute;
@@ -180,7 +206,7 @@
     flex: 1 1 auto;
     padding: 10px 12px;
     overflow: auto;
-    font-family: 'Courier New', Courier, monospace;
+    font-family: var(--game-font);
     font-size: 11px;
     line-height: 1.35;
     color: #dbeafe;
@@ -219,106 +245,202 @@
     flex-direction: column;
 }
 
-#bossAIPanel
-
 /* 카시야스 연습 모드 패널 */
 .boss-practice-panel {
-    width: 320px;
+    width: 338px;
     box-sizing: border-box;
-    padding: 10px 12px;
+    padding: 8px;
     border-radius: 12px;
-    background: linear-gradient(180deg, rgba(9,12,20,0.90), rgba(4,7,12,0.84));
-    border: 1px solid rgba(255,216,100,0.22);
-    box-shadow: 0 10px 24px rgba(0,0,0,0.36), inset 0 0 12px rgba(255,216,100,0.035);
-    backdrop-filter: blur(4px);
-    color: rgba(255,255,255,0.88);
+    background: linear-gradient(180deg, rgba(8,11,18,0.95), rgba(4,6,11,0.93));
+    border: 1px solid rgba(255,216,100,0.30);
+    box-shadow: 0 12px 28px rgba(0,0,0,0.50), inset 0 0 16px rgba(255,216,100,0.025);
+    backdrop-filter: blur(5px);
+    color: rgba(246,248,252,0.94);
     pointer-events: auto;
+    font-family: var(--game-font);
+}
+
+.boss-practice-panel .practice-section {
+    padding: 9px 10px;
+    margin-top: 7px;
+    border-radius: 9px;
+    background: rgba(25,31,43,0.88);
+    border: 1px solid rgba(255,255,255,0.09);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.025);
+}
+
+.boss-practice-panel .practice-section:first-child {
+    margin-top: 0;
+}
+
+.boss-practice-panel .practice-section.header {
+    padding: 10px 11px;
+    background: rgba(29,32,39,0.92);
+    border-color: rgba(255,216,100,0.17);
 }
 
 .boss-practice-panel .practice-title {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 8px;
-    color: #f4d36a;
-    font-size: 13px;
-    font-weight: 900;
-    letter-spacing: 0.2px;
+    gap: 10px;
+    color: #f2d16b;
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.1px;
+}
+
+.boss-practice-panel .practice-header-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.boss-practice-panel .practice-toggle {
+    width: 26px;
+    height: 26px;
+    flex: 0 0 26px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 7px;
+    border: 1px solid rgba(255,216,100,0.25);
+    background: rgba(70,62,40,0.72);
+    color: #f2d16b;
+    font-family: var(--game-font);
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.boss-practice-panel .practice-toggle:hover {
+    background: rgba(101,86,48,0.86);
+    border-color: rgba(255,216,100,0.42);
+    color: #fff0bc;
+}
+
+.boss-practice-panel .practice-collapsible {
+    display: grid;
+    grid-template-rows: 1fr;
+    opacity: 1;
+    transition: grid-template-rows 0.20s ease, opacity 0.14s ease;
+}
+
+.boss-practice-panel .practice-collapsible-inner {
+    min-height: 0;
+    overflow: hidden;
+}
+
+.boss-practice-panel.collapsed .practice-collapsible {
+    grid-template-rows: 0fr;
+    opacity: 0;
+    pointer-events: none;
 }
 
 .boss-practice-panel .practice-status {
-    font-size: 10px;
-    font-weight: 900;
-    color: #8ff0b0;
-    padding: 2px 6px;
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-weight: 500;
+    color: #9beab8;
+    padding: 3px 7px;
     border-radius: 999px;
-    background: rgba(46,204,113,0.14);
-    border: 1px solid rgba(46,204,113,0.24);
+    background: rgba(46,204,113,0.13);
+    border: 1px solid rgba(86,219,142,0.24);
 }
 
 .boss-practice-panel .practice-help {
-    margin-bottom: 9px;
-    color: rgba(255,255,255,0.58);
-    font-size: 10px;
-    line-height: 1.35;
+    margin-top: 7px;
+    color: rgba(239,243,249,0.84);
+    font-size: 13px;
+    font-weight: 300;
+    line-height: 1.42;
+    word-break: keep-all;
+}
+
+.boss-practice-panel.collapsed .practice-section.header {
+    margin-bottom: 0;
 }
 
 .boss-practice-panel .practice-group-title {
-    margin: 9px 0 5px;
-    color: #7fc6ff;
-    font-size: 11px;
-    font-weight: 900;
+    margin: 0 0 6px;
+    color: #91cbf5;
+    font-size: 13px;
+    font-weight: 500;
 }
 
-.boss-practice-panel .practice-grid {
+.boss-practice-panel .practice-pattern-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+}
+
+.boss-practice-panel .practice-control-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 5px;
 }
 
 .boss-practice-panel .practice-btn {
-    min-height: 28px;
-    padding: 5px 7px;
-    border-radius: 8px;
+    min-height: 29px;
+    padding: 5px 9px;
+    border-radius: 7px;
     border: 1px solid rgba(255,255,255,0.12);
-    background: rgba(255,255,255,0.075);
-    color: rgba(255,255,255,0.88);
-    font-size: 10px;
-    font-weight: 800;
+    background: rgba(69,78,94,0.72);
+    color: rgba(248,249,252,0.94);
+    font-family: var(--game-font);
+    font-size: 12px;
+    font-weight: 300;
+    line-height: 1.3;
     text-align: left;
     cursor: pointer;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.035);
 }
 
 .boss-practice-panel .practice-btn:hover {
-    background: rgba(255,216,100,0.16);
-    border-color: rgba(255,216,100,0.28);
-    color: #ffe8a6;
+    background: rgba(102,94,66,0.78);
+    border-color: rgba(255,216,100,0.35);
+    color: #fff0bc;
 }
 
 .boss-practice-panel .practice-btn.control {
     text-align: center;
-    color: #ffd86b;
+    font-weight: 500;
+    color: #f3d474;
+    background: rgba(78,70,47,0.78);
     border-color: rgba(255,216,100,0.24);
 }
 
+.boss-practice-panel .practice-btn.control:hover {
+    background: rgba(102,87,48,0.86);
+}
+
 .boss-practice-panel .practice-btn.danger {
-    color: #ffb8b8;
-    border-color: rgba(231,76,60,0.28);
-    background: rgba(231,76,60,0.12);
+    text-align: center;
+    font-weight: 500;
+    color: #f4b5b5;
+    border-color: rgba(231,76,60,0.30);
+    background: rgba(103,48,48,0.72);
+}
+
+.boss-practice-panel .practice-btn.danger:hover {
+    background: rgba(128,50,50,0.82);
 }
 
 .boss-practice-panel .practice-btn.disabled {
-    opacity: 0.42;
+    opacity: 0.45;
     cursor: not-allowed;
-    color: rgba(255,255,255,0.38);
+    color: rgba(230,234,240,0.54);
+    background: rgba(49,55,66,0.64);
 }
 
 .boss-practice-panel .practice-btn.disabled:hover {
-    background: rgba(255,255,255,0.075);
+    background: rgba(49,55,66,0.64);
     border-color: rgba(255,255,255,0.12);
-    color: rgba(255,255,255,0.38);
+    color: rgba(230,234,240,0.54);
 }
 
 .boss-ai-panel {
@@ -518,7 +640,7 @@
     display: flex;
     flex-direction: column;
     gap: 5px;
-    width: 320px;
+    width: 338px;
     z-index: 10;
     pointer-events: auto;
 }
@@ -532,7 +654,7 @@
     border: 1px solid rgba(255,255,255,0.12);
     border-radius: 8px;
     color: #dbeafe;
-    font-family: 'Courier New', Courier, monospace;
+    font-family: var(--game-font);
     font-size: 11px;
     line-height: 1.35;
     box-shadow: 0 8px 24px rgba(0,0,0,0.28);
@@ -542,7 +664,7 @@
 
 .boss-ai-title {
     color: #f4d36a;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-family: var(--game-font);
     font-size: 13px;
     font-weight: 800;
     margin-bottom: 8px;
@@ -670,7 +792,7 @@
     min-height: 0;
     color: #8dff93;
     padding: 10px 12px;
-    font-family: 'Courier New', Courier, monospace;
+    font-family: var(--game-font);
     font-size: 11px;
     overflow-y: auto;
     line-height: 1.45;
@@ -877,6 +999,21 @@
 
 .hud-mini-meter.empty .hud-mini-meter-fill {
     opacity: 0.18;
+}
+
+/* Pattern-mode guard: brightness communicates availability, width communicates remaining hold time. */
+.hud-mini-meter.guard.ready .hud-mini-meter-fill,
+.hud-mini-meter.guard.active .hud-mini-meter-fill {
+    opacity: 0.96;
+    filter: brightness(1.18) saturate(1.12);
+    box-shadow: inset 0 0 9px rgba(255,255,255,0.16), 0 0 10px rgba(91,200,255,0.20);
+}
+.hud-mini-meter.guard.recover .hud-mini-meter-fill,
+.hud-mini-meter.guard.cooldown .hud-mini-meter-fill,
+.hud-mini-meter.guard.empty .hud-mini-meter-fill {
+    opacity: 0.18;
+    filter: brightness(0.62) saturate(0.72);
+    box-shadow: none;
 }
 
 .hud-mode-chip-row {
@@ -1532,7 +1669,7 @@ body {
 
 /* v2.9 중앙 전투 화면 확대 + 패널 가독성 개선 */
 :root {
-    --panel-font: 'Malgun Gothic', '맑은 고딕', 'Segoe UI', sans-serif;
+    --panel-font: var(--game-font);
 }
 
 body,
@@ -1795,7 +1932,7 @@ button,
     border: 1px solid rgba(255, 216, 107, 0.32);
     background: rgba(10, 14, 22, 0.72);
     color: rgba(255, 236, 170, 0.92);
-    font-family: var(--panel-font, 'Malgun Gothic', '맑은 고딕', 'Segoe UI', sans-serif);
+    font-family: var(--panel-font, var(--game-font));
     font-size: 10px;
     font-weight: 900;
     cursor: pointer;
@@ -1826,7 +1963,7 @@ button,
 
 /* v5.2 하단 HUD / 보스 UI 폰트 가독성 개선 */
 :root {
-    --panel-font: 'Malgun Gothic', '맑은 고딕', 'Segoe UI', sans-serif;
+    --panel-font: var(--game-font);
 }
 
 body,
@@ -2035,7 +2172,7 @@ button,
 
 /* v5.3 보스 UI/좌우 로그 가시성 보정 */
 :root {
-    --panel-font: 'Malgun Gothic', '맑은 고딕', 'Segoe UI', sans-serif;
+    --panel-font: var(--game-font);
 }
 
 body,
@@ -2124,7 +2261,7 @@ button,
     padding: 28px; box-sizing: border-box;
     background: #05080d;
     color: #eef6ff;
-    font-family: 'Malgun Gothic', '맑은 고딕', 'Segoe UI', sans-serif;
+    font-family: var(--game-font);
 }
 #gameModeStartScreen.hidden { display: none; }
 .game-mode-start-card {
@@ -2152,7 +2289,7 @@ button,
 #gameModeHelpOverlay {
     position: fixed; inset: 0; z-index: 9500; display: none; align-items: center; justify-content: center;
     padding: 24px; background: rgba(0,0,0,0.64); backdrop-filter: blur(5px);
-    font-family: 'Malgun Gothic', '맑은 고딕', 'Segoe UI', sans-serif;
+    font-family: var(--game-font);
 }
 #gameModeHelpOverlay.visible { display:flex; }
 .game-mode-help-card { width:min(1040px, calc(100vw - 48px)); max-height:calc(100vh - 48px); overflow:auto; padding:24px; border-radius:16px; box-sizing:border-box; color:#eef6ff; background:rgba(11,16,24,0.98); border:1px solid rgba(255,255,255,0.13); box-shadow:0 20px 70px rgba(0,0,0,.48); }
@@ -2167,16 +2304,6 @@ button,
 .game-mode-help-key { align-self:start; display:inline-flex; min-height:25px; align-items:center; justify-content:center; padding:0 8px; border-radius:7px; background:rgba(0,0,0,.34); border:1px solid rgba(255,255,255,.12); color:#ffd96b; font-size:11px; font-weight:900; }
 .game-mode-help-row b { display:block; font-size:12px; color:#fff; }
 .game-mode-help-row p { margin:3px 0 0; font-size:11px; line-height:1.55; color:rgba(231,240,250,.72); }
-
-#normalModeHelpHint {
-    position:absolute; top:14px; left:14px; z-index:24; display:none;
-    padding:7px 10px; border-radius:8px; background:rgba(6,10,16,.76);
-    border:1px solid rgba(255,255,255,.12); color:rgba(235,243,252,.82);
-    font:800 12px 'Malgun Gothic','맑은 고딕',sans-serif; pointer-events:none;
-    box-shadow:0 5px 16px rgba(0,0,0,.26);
-}
-#normalModeHelpHint span { color:#ffe08a; margin-right:6px; }
-body.game-mode-normal #normalModeHelpHint { display:block; }
 
 #guideStrategyPanel { display:none; height:100%; min-height:0; flex-direction:column; }
 #guideStrategyContent { overflow:auto; min-height:0; flex:1 1 auto; padding:15px; }
@@ -2238,7 +2365,7 @@ body.boss-practice-active #topRightUI { display:flex !important; }
     width:300px; padding:14px 15px; box-sizing:border-box; border-radius:10px;
     background:rgba(8,8,12,.98); border:1px solid rgba(255,204,111,.52);
     box-shadow:0 12px 30px rgba(0,0,0,.52); color:rgba(255,246,222,.96); text-align:left;
-    font-family:'Malgun Gothic','맑은 고딕',sans-serif; opacity:0; visibility:hidden; pointer-events:none;
+    font-family:var(--game-font); opacity:0; visibility:hidden; pointer-events:none;
     transition:opacity .12s ease, transform .12s ease; z-index:5000;
 }
 .skill-slot:hover .skill-tooltip { opacity:1; visibility:visible; transform:translateX(-50%) translateY(0); }
@@ -2437,7 +2564,7 @@ body.game-mode-guide .guide-info-card p { font-size: 15px !important; line-heigh
     box-sizing: border-box;
     background: #05080d;
     color: #eef6ff;
-    font-family: 'Malgun Gothic', '맑은 고딕', 'Segoe UI', sans-serif;
+    font-family: var(--game-font);
 }
 #gameClearScreen.visible { display: flex; }
 .game-clear-card {
@@ -2497,6 +2624,96 @@ body.game-mode-guide .guide-info-card p { font-size: 15px !important; line-heigh
     text-shadow: 0 1px 3px rgba(0,0,0,.65);
 }
 
+
+
+/* === 2026-08-18 final UI polish: Normal side help / help pause / tempered blade orb === */
+#normalModeHelpHint { display:none !important; }
+#normalSideHelpHint { display:none; }
+
+body.game-mode-normal #leftSidePanel {
+    display:flex !important;
+    visibility:visible !important;
+    pointer-events:auto !important;
+}
+body.game-mode-normal #rightSidePanel {
+    display:flex !important;
+    visibility:hidden !important;
+    pointer-events:none !important;
+}
+body.game-mode-normal #leftSidePanel > #controlGuidePanel {
+    display:flex !important;
+    flex:0 0 auto !important;
+    min-height:0;
+    max-height:100%;
+}
+body.game-mode-normal #leftSidePanel > .external-panel:nth-child(2) { display:none !important; }
+body.game-mode-normal #sideGuideContent { display:none !important; }
+body.game-mode-normal #controlGuidePanel .external-panel-header { padding:9px 10px !important; }
+body.game-mode-normal #controlGuidePanel .external-panel-title { font-size:13px !important; }
+body.game-mode-normal #controlGuidePanel .external-panel-subtitle { font-size:9px !important; }
+body.game-mode-normal #normalSideHelpHint {
+    display:flex;
+    align-items:center;
+    gap:9px;
+    padding:10px !important;
+    color:#eef6ff;
+    font-family:var(--game-font);
+}
+.normal-side-help-key {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:44px;
+    height:28px;
+    border-radius:7px;
+    background:rgba(0,0,0,.35);
+    border:1px solid rgba(255,222,138,.32);
+    color:#ffe08a;
+    font-size:12px;
+    font-weight:900;
+}
+#normalSideHelpHint b { display:block; font-size:12px; line-height:1.25; }
+#normalSideHelpHint small { display:block; margin-top:2px; color:rgba(215,227,241,.60); font-size:9px; line-height:1.25; }
+body.game-mode-normal #gameModeHelpOverlay.visible { display:flex !important; }
+
+/* P2M3: the former fighting-spirit orb becomes the Tempered Blade resource. */
+.hud-orb.spirit.tempered-mode {
+    background:
+        radial-gradient(circle at 50% 34%, rgba(255,238,159,.045), rgba(21,17,8,.32) 47%, rgba(5,5,5,.96) 72%),
+        radial-gradient(circle at 50% 50%, rgba(255,220,112,.035), transparent 67%);
+    border-color:rgba(255,220,112,.28);
+    box-shadow:inset 0 0 16px rgba(255,231,151,.035), inset 0 -12px 18px rgba(0,0,0,.42);
+    transition:border-color .22s ease, box-shadow .22s ease, filter .22s ease;
+}
+.hud-orb.spirit.tempered-mode .hud-orb-fill {
+    background:
+        radial-gradient(circle at 50% 25%, rgba(255,255,221,.62), rgba(255,248,180,.16) 42%, rgba(255,220,92,0) 64%),
+        linear-gradient(180deg, rgba(255,247,157,.99), rgba(232,168,45,.99) 60%, rgba(151,84,15,.99));
+    box-shadow:inset 0 0 22px rgba(255,255,220,.22), 0 0 20px rgba(255,206,72,.30);
+    transition:height .42s cubic-bezier(.2,.8,.2,1) !important;
+}
+/* Tempered Blade is a binary resource: the orb itself communicates empty/charged state. */
+.hud-orb.spirit.tempered-mode .hud-orb-text {
+    display:none !important;
+}
+.hud-orb.spirit.tempered-mode.tempered-ready {
+    border-color:rgba(255,229,122,.82);
+    box-shadow:
+        inset 0 10px 20px rgba(255,255,255,.12),
+        inset 0 -14px 18px rgba(0,0,0,.34),
+        0 0 18px rgba(255,207,71,.64),
+        0 0 34px rgba(255,176,35,.25);
+    animation:temperedBladeOrbGlow 1.25s ease-in-out infinite alternate;
+}
+.hud-orb.spirit.tempered-mode.tempered-ready .hud-orb-text {
+    color:#fff0a6;
+    text-shadow:0 0 8px rgba(255,211,72,.92), 0 2px 3px rgba(0,0,0,.75);
+}
+@keyframes temperedBladeOrbGlow {
+    from { filter:brightness(1) saturate(1); }
+    to { filter:brightness(1.16) saturate(1.18); box-shadow:inset 0 10px 20px rgba(255,255,255,.14), inset 0 -14px 18px rgba(0,0,0,.32), 0 0 24px rgba(255,216,82,.82), 0 0 42px rgba(255,166,28,.34); }
+}
+
 </style>
 </head>
 <body>
@@ -2548,10 +2765,14 @@ body.game-mode-guide .guide-info-card p { font-size: 15px !important; line-heigh
 
     <div id="bossBattleLayout">
         <aside id="leftSidePanel" class="side-panel-column">
-            <section class="external-panel">
+            <section class="external-panel" id="controlGuidePanel">
                 <div class="external-panel-header">
                     <div class="external-panel-title">조작 가이드</div>
-                    <div class="external-panel-subtitle">KASIYAS BATTLE</div>
+                    <div class="external-panel-subtitle" id="controlGuideSubtitle">KASIYAS BATTLE</div>
+                </div>
+                <div id="normalSideHelpHint" class="external-panel-body">
+                    <span class="normal-side-help-key">F1</span>
+                    <div><b>조작법 안내</b><small>열기 · 게임 일시정지</small></div>
                 </div>
                 <div id="sideGuideContent" class="external-panel-body">
                     <div class="control-guide-card">
@@ -2591,7 +2812,6 @@ body.game-mode-guide .guide-info-card p { font-size: 15px !important; line-heigh
     <div id="gameSection">
     <div id="gameViewport">
         <canvas id="gameCanvas" width="1400" height="800"></canvas>
-        <div id="normalModeHelpHint"><span>F1</span> 조작법 안내</div>
 
         <div id="topLeftUI">
             <div class="ui-header">
@@ -2787,7 +3007,7 @@ body.game-mode-guide .guide-info-card p { font-size: 15px !important; line-heigh
     <script src="js/render/effect_renderer.js"></script>
     <script src="js/render/ui_renderer.js"></script>
     <script src="js/render/debug_renderer.js"></script>
-    <script src="js/special/p2_m3_dimension_defense_renderer.js"></script>
+    <script src="js/special/special_mode_object_defense_renderer.js"></script>
     <script src="js/special/special_mode_object_defense_system.js"></script>
     <script src="js/special/p3_m3_final_issen_renderer.js"></script>
     <script src="js/special/p3_m3_final_issen_system.js"></script>

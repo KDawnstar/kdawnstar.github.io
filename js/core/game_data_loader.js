@@ -17,9 +17,6 @@ const GameDataLoader = {
         monsterPatternObjectActionData: './GameData/Monster_Pattern_Obj_Action_info.json',
         stageData: './GameData/Stage_info.json',
         specialModeData: './GameData/Special_Mode_info.json',
-        specialModePlayerData: './GameData/Special_Mode_Player_info.json',
-        specialModeObjectData: './GameData/Special_Mode_Object_info.json',
-        specialModeObjectActionData: './GameData/Special_Mode_Object_Action_info.json',
         portalData: './GameData/Portal_info.json',
         dialogueData: './GameData/Dialogue_info.json'
     },

@@ -17,7 +17,7 @@ const GameModeSystem = {
         { group: '스킬 / 기능', key: 'A', name: '웨이브', desc: '전방으로 검기를 발사합니다. 근거리 공격 모드에서만 사용 가능합니다.' },
         { group: '스킬 / 기능', key: 'S', name: '캐논볼', desc: '전방으로 포탄을 발사합니다. 원거리 공격 모드에서만 사용 가능합니다.' },
         { group: '스킬 / 기능', key: 'F', name: '공격 모드 변경', desc: '공격 모드를 전환합니다.' },
-        { group: '도움말', key: 'F1', name: '조작법 안내', desc: '조작법 안내 화면을 열거나 닫습니다.' },
+        { group: '도움말', key: 'F1', name: '조작법 안내', desc: '조작법 안내 화면을 열거나 닫습니다. F1로 연 상세 조작법이 표시되는 동안 전투는 일시정지됩니다.' },
         { group: '개발 / 특수 기능', key: 'F9', name: '무적 모드', desc: '보스에게 가하는 피해가 10배로 증가하며, 플레이어가 무적 상태가 됩니다.' },
         { group: '개발 / 특수 기능', key: 'F10', name: '연습 모드', desc: '패턴을 선택해 테스트할 수 있는 연습 보드를 활성화합니다.' },
         { group: '개발 / 특수 기능', key: 'F11', name: '특별 버프 토글', desc: '3단계에서 획득 가능한 특별 버프 2종을 즉시 획득합니다.\n일반 플레이에서는 3단계 대형 패턴 1·2에서 각각 획득할 수 있습니다.\n두 버프의 보유 여부에 따라 3단계 대형 패턴 3의 진행 방식이 달라집니다.' },
@@ -99,6 +99,8 @@ const GameModeSystem = {
         if (!gameState) return;
         if (!gameState.presentationMode) gameState.presentationMode = null;
         if (typeof gameState.presentationStarted !== 'boolean') gameState.presentationStarted = false;
+        gameState.helpPauseActive = false;
+        this.helpOpen = false;
         this.bindStartButtons(gameState);
         this.bindClearButton(gameState);
         this.renderControlGuide(document.getElementById('sideGuideContent'));
@@ -194,9 +196,11 @@ const GameModeSystem = {
     },
 
     applyBodyMode(mode) {
-        document.body.classList.remove('game-mode-guide', 'game-mode-normal', 'game-mode-developer', 'game-mode-select');
+        document.body.classList.remove('game-mode-guide', 'game-mode-normal', 'game-mode-developer', 'game-mode-select', 'normal-help-open');
         if (!mode) document.body.classList.add('game-mode-select');
         else document.body.classList.add(`game-mode-${String(mode).toLowerCase()}`);
+        const subtitle = document.getElementById('controlGuideSubtitle');
+        if (subtitle) subtitle.textContent = String(mode || '').toUpperCase() === this.modes.NORMAL ? 'F1 · CONTROL HELP' : 'KASIYAS BATTLE';
     },
 
     isGuide(gameState) {
@@ -255,9 +259,17 @@ const GameModeSystem = {
     handleKeyDown(gameState, event) {
         if (!gameState || !event || !gameState.presentationStarted) return false;
         const code = event.code;
+        // F1로 직접 연 상세 도움말만 전투를 일시정지한다.
+        // 가이드 모드의 좌측 상시 조작 가이드는 helpOpen과 무관하므로 게임을 멈추지 않는다.
+        if (this.helpOpen) {
+            event.preventDefault();
+            if (gameState.keys) gameState.keys[code] = false;
+            if (code === 'F1' && !event.repeat) this.toggleHelp(false);
+            return true;
+        }
         if (code === 'F1' && !event.repeat) {
             event.preventDefault();
-            this.toggleHelp();
+            this.toggleHelp(true);
             return true;
         }
         if (code === 'F9' && !event.repeat) {
@@ -299,10 +311,23 @@ const GameModeSystem = {
 
     toggleHelp(force) {
         const overlay = document.getElementById('gameModeHelpOverlay');
-        if (!overlay) return;
-        const show = typeof force === 'boolean' ? force : !overlay.classList.contains('visible');
-        overlay.classList.toggle('visible', show);
-        overlay.setAttribute('aria-hidden', show ? 'false' : 'true');
+        const show = typeof force === 'boolean' ? force : !this.helpOpen;
+        this.helpOpen = show;
+
+        // Normal/Guide/Developer 모두 기존 상세 도움말 표시 방식을 유지한다.
+        // Normal의 F1 안내 진입점만 게임 화면 내부가 아니라 좌측 외부 패널로 이동한다.
+        if (overlay) {
+            overlay.classList.toggle('visible', show);
+            overlay.setAttribute('aria-hidden', show ? 'false' : 'true');
+        }
+        document.body.classList.remove('normal-help-open');
+
+        if (typeof gameState !== 'undefined' && gameState) {
+            gameState.helpPauseActive = !!(show && gameState.presentationStarted);
+            gameState.keys = {};
+        }
+        if (typeof lastTime !== 'undefined') lastTime = performance.now();
+        return show;
     },
 
     renderControlGuide(container) {
@@ -360,11 +385,16 @@ const GameModeSystem = {
 
     updateHudTooltips(gameState) {
         const p2 = !!(gameState && gameState.specialMode === 'SPECIAL_MODE_OBJECT_DEFENSE' && gameState.specialModeObjectDefenseRuntime && gameState.specialModeObjectDefenseRuntime.active);
+        const rt = p2 ? gameState.specialModeObjectDefenseRuntime : null;
+        const keyLabel = (action, fallback) => {
+            const raw = String(action && action.Input_Key || '').trim().toUpperCase();
+            return raw.startsWith('KEY_') ? raw.slice(4) : fallback;
+        };
         const special = {
-            swap: { title: '공격 [X]', desc: '현재 라인의 검기를 공격해 파괴합니다.', meta: '차원 방어전 전용 조작' },
-            dash: { title: '점프 [C]', desc: '검기와 지형 기믹에 대응하기 위해 점프합니다.', meta: 'C / Space / ↑' },
-            guard: { title: '가드 [D]', desc: '검기를 막아내고 밀어냅니다.', meta: '가드 게이지 사용' },
-            wave: { title: '웨이브 [A]', desc: '여러 라인의 검기를 동시에 공격합니다.', meta: '차원 방어전 전용 스킬' }
+            swap: { title: `공격 [${keyLabel(rt && rt.attackAction, 'X')}]`, desc: '현재 라인의 검기를 공격해 파괴합니다.', meta: '차원 방어전 전용 조작' },
+            dash: { title: `점프 [${keyLabel(rt && rt.jumpAction, 'C')}]`, desc: '낙하하는 검기에 대응하기 위해 점프합니다.', meta: '스페셜 모드 점프' },
+            guard: { title: `가드 [${keyLabel(rt && rt.guardAction, 'D')}]`, desc: '위 방향에서 내려오는 검기를 막아내고 밀어냅니다.', meta: '최대 유지시간 후 회복' },
+            wave: { title: `검기 발사 [${keyLabel(rt && rt.skillAction, 'A')}]`, desc: '여러 라인의 검기를 동시에 공격합니다.', meta: '차원 방어전 전용 스킬' }
         };
         document.querySelectorAll('#hudSkills .skill-slot').forEach(slot => {
             const role = slot.dataset.hudRole;
@@ -392,7 +422,7 @@ const GameModeSystem = {
         if (gameState.specialMode === 'P3_M3_FINAL_ISSEN' && gameState.p3m3Runtime && gameState.p3m3Runtime.active) {
             return String(gameState.p3m3Runtime.routeType || '').toUpperCase() === 'ROUTE_HIDDEN' ? '233008_HIDDEN' : '233008_NORMAL';
         }
-        if (gameState.specialMode === 'SPECIAL_MODE_OBJECT_DEFENSE' && gameState.specialModeObjectDefenseRuntime && gameState.specialModeObjectDefenseRuntime.active) return '232008';
+        if (gameState.specialMode === 'SPECIAL_MODE_OBJECT_DEFENSE' && gameState.specialModeObjectDefenseRuntime && gameState.specialModeObjectDefenseRuntime.active) return String(gameState.specialModeObjectDefenseRuntime.sourcePatternId || '');
         let patternId = '';
         for (const monster of (gameState.monsters || [])) {
             if (!monster || !monster.active || !monster.boss) continue;

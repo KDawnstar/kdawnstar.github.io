@@ -3,8 +3,16 @@
     "Special_Mode_ID": 901001,
     "Dev_Name": "SpMode_DimensionDefense",
     "Special_Mode_Type": "OBJECT_DEFENSE",
-    "Use_Content_Type": "MONSTER_PATTERN",
-    "Ref_Use_Content": "Pattern_P2M3_Start",
-    "Ref_Player": "Player_Special_DimensionDefense"
+    "Ref_Player": "Player_Special_DimensionDefense",
+    "Player_Start_Position_Type": "PRESET",
+    "Player_Start_Position_Value": "CENTER",
+    "Intro_Type": "FALL_LAND_STAND",
+    "Intro_Duration": 1.25,
+    "Result_End_Delay_ATK": 2.15,
+    "Result_End_Delay_GUARD": 1.75,
+    "Result_End_Delay_FAIL": 1.45,
+    "Object_Spawn_Y": 78,
+    "Player_Ground_Y": 690,
+    "Floor_Y": 720
   }
 ]

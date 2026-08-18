@@ -415,7 +415,7 @@ GameRenderer.drawPlayerEntity = function(ctx, player) {
         if (guardRatio > 0) {
             ctx.globalAlpha = 0.95;
             ctx.fillStyle = successRatio > 0 ? 'rgba(255,248,180,0.92)' : 'rgba(225,248,255,0.78)';
-            ctx.font = 'bold 13px "Malgun Gothic", "맑은 고딕", sans-serif';
+            ctx.font = 'bold 13px "DNF Forged Blade", "Malgun Gothic", "맑은 고딕", sans-serif';
             ctx.textAlign = 'center';
             ctx.scale(face, 1);
             ctx.fillText('GUARD', centerX * -0.04, -shieldH * 0.62);
@@ -454,13 +454,13 @@ GameRenderer.drawPlayerEntity = function(ctx, player) {
         ctx.strokeRect(uiX - barW / 2, uiY, barW, barH);
 
         ctx.fillStyle = "#fff";
-        ctx.font = "bold 18px sans-serif";
+        ctx.font = '700 18px \"DNF Forged Blade\", sans-serif';
         ctx.textAlign = "center";
         ctx.fillText(Math.max(0, player.freezeTimer).toFixed(1) + "s", uiX, uiY - 10);
 
         if (Math.floor(Date.now() / 150) % 2 === 0) {
             ctx.fillStyle = "#ffeb3b";
-            ctx.font = "bold 18px sans-serif";
+            ctx.font = '700 18px \"DNF Forged Blade\", sans-serif';
             ctx.fillText("방향키 연타!!", uiX, uiY - 32);
         }
     }

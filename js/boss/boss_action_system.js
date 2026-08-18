@@ -1026,8 +1026,8 @@ const BossActionSystem = {
             return;
         }
 
-        // P2_M3 실패 결과는 일반 Hitbox 공격이 아니라 기존 직접 피해 시퀀스를 유지하되,
-        // 피해량/횟수/주기/이펙트 등은 242076 Boss Action 데이터에서 읽는다.
+        // OBJECT_DEFENSE 실패 결과는 일반 Hitbox 공격이 아니라 직접 피해 시퀀스를 유지하되,
+        // 피해량/횟수/주기/이펙트 등은 현재 SPECIAL_MODE_RESULT=FAIL 액션 데이터에서 읽는다.
         if (actionConditionType === 'SPECIAL_MODE_RESULT' && actionConditionValue === 'FAIL') {
             if (typeof SpecialModeObjectDefenseSystem !== 'undefined' && SpecialModeObjectDefenseSystem.startFailDamageFromBossAction) {
                 SpecialModeObjectDefenseSystem.startFailDamageFromBossAction(gameState, m, action);

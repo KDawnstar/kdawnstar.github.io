@@ -243,7 +243,7 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
                 m.kbVx = 0;
                 m.kbVy = 0;
                 if (gameState) {
-                    // 이전 DIRECT_ACT용 오버레이는 여기서 종료하고, 이후에는 P2_M3 전용 INTRO가 담당한다.
+                    // 이전 DIRECT_ACT용 오버레이는 여기서 종료하고, 이후에는 OBJECT_DEFENSE INTRO가 담당한다.
                     gameState.specialModeObjectDefenseIntroRuntime = null;
                     if (gameState.specialMode === 'SPECIAL_MODE_OBJECT_DEFENSE' && !(gameState.specialModeObjectDefenseRuntime && gameState.specialModeObjectDefenseRuntime.active)) {
                         gameState.specialMode = null;
@@ -251,12 +251,12 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
                     }
                 }
                 // step214: 이전 프레임에서 시작 플래그만 true가 되었지만 실제 전용 모드 런타임이 활성화되지 않은 경우,
-                // 242073을 영구 대기시키지 말고 플래그를 풀어 다시 시작 시도한다.
-                const p2m3ActiveNow = !!(typeof SpecialModeObjectDefenseSystem !== 'undefined' && SpecialModeObjectDefenseSystem.isActive && SpecialModeObjectDefenseSystem.isActive(gameState));
+                // SPECIAL_MODE_START를 영구 대기시키지 말고 플래그를 풀어 다시 시작 시도한다.
+                const objectDefenseActiveNow = !!(typeof SpecialModeObjectDefenseSystem !== 'undefined' && SpecialModeObjectDefenseSystem.isActive && SpecialModeObjectDefenseSystem.isActive(gameState));
 
-                // 전용 모드가 정상 종료되어 결과가 확정된 경우에는 242073을 다시 시작하지 않고,
-                // 기존 Boss Action 흐름으로 복귀해 242074~242076 결과 액션을 판정한다.
-                if (!p2m3ActiveNow && String(boss.specialModeResult || '').trim()) {
+                // 스페셜 모드가 정상 종료되어 결과가 확정된 경우에는 SPECIAL_MODE_START를 다시 실행하지 않고,
+                // 기존 Boss Action 흐름으로 복귀해 SPECIAL_MODE_RESULT 액션을 판정한다.
+                if (!objectDefenseActiveNow && String(boss.specialModeResult || '').trim()) {
                     boss.specialModeStarted = false;
                     if (typeof this.startNextBossPatternAction === 'function') {
                         this.startNextBossPatternAction(m, gameState);
@@ -264,56 +264,56 @@ updateBossPatternMonster: function(m, deltaTime, distX, distY, dist2D, gameState
                     return true;
                 }
 
-                if (boss.specialModeStarted && !p2m3ActiveNow) {
+                if (boss.specialModeStarted && !objectDefenseActiveNow) {
                     boss.specialModeStarted = false;
                     if (typeof this.pushBossDebugLog === 'function') {
-                        this.pushBossDebugLog(gameState, 'P2_M3_START_RETRY', '242073 차원 방어전 시작 재시도', 'started flag existed but runtime was not active');
+                        this.pushBossDebugLog(gameState, 'SPECIAL_MODE_START_RETRY', '스페셜 모드 시작 재시도', 'started flag existed but runtime was not active');
                     }
                 }
 
                 if (!boss.specialModeStarted && typeof SpecialModeObjectDefenseSystem !== 'undefined' && SpecialModeObjectDefenseSystem.startFromPattern) {
-                    let startedP2M3 = false;
+                    let startedObjectDefense = false;
                     let activeAfterStart = false;
-                    const patternIdForP2M3 = String(boss.action.Pattern_ID || boss.activePattern && boss.activePattern.Pattern_ID || '232008');
-                    const sourceActionIdForP2M3 = String(boss.action.Action_ID || '');
+                    const patternIdForObjectDefense = String(boss.action.Runtime_Action_Source_ID || boss.action.Pattern_ID || boss.activePattern && (boss.activePattern.Runtime_Action_Source_ID || boss.activePattern.Pattern_ID) || '').trim();
+                    const sourceActionIdForObjectDefense = String(boss.action.Action_ID || '');
                     try {
-                        startedP2M3 = SpecialModeObjectDefenseSystem.startFromPattern(gameState, m, {
-                            patternId: patternIdForP2M3,
-                            sourceActionId: sourceActionIdForP2M3,
+                        startedObjectDefense = SpecialModeObjectDefenseSystem.startFromPattern(gameState, m, {
+                            patternId: patternIdForObjectDefense,
+                            sourceActionId: sourceActionIdForObjectDefense,
                             specialModeId: boss.action.Ref_Special_Mode
                         });
                         activeAfterStart = !!(SpecialModeObjectDefenseSystem.isActive && SpecialModeObjectDefenseSystem.isActive(gameState));
                     } catch (e) {
-                        console.warn('[P2M3] startFromPattern failed', e);
-                        startedP2M3 = false;
+                        console.warn('[OBJECT_DEFENSE] startFromPattern failed', e);
+                        startedObjectDefense = false;
                         activeAfterStart = false;
                     }
                     // stale specialMode 때문에 1회 실패한 경우 강제 정리 후 한 번만 재시도한다.
-                    if ((!startedP2M3 || !activeAfterStart) && gameState) {
+                    if ((!startedObjectDefense || !activeAfterStart) && gameState) {
                         gameState.specialMode = null;
                         gameState.specialModeObjectDefenseRuntime = null;
                         gameState.specialModeObjectDefenseIntroRuntime = null;
                         try {
-                            startedP2M3 = SpecialModeObjectDefenseSystem.startFromPattern(gameState, m, {
-                                patternId: patternIdForP2M3,
-                                sourceActionId: sourceActionIdForP2M3,
+                            startedObjectDefense = SpecialModeObjectDefenseSystem.startFromPattern(gameState, m, {
+                                patternId: patternIdForObjectDefense,
+                                sourceActionId: sourceActionIdForObjectDefense,
                                 specialModeId: boss.action.Ref_Special_Mode
                             });
                             activeAfterStart = !!(SpecialModeObjectDefenseSystem.isActive && SpecialModeObjectDefenseSystem.isActive(gameState));
                         } catch (e) {
-                            console.warn('[P2M3] startFromPattern retry failed', e);
-                            startedP2M3 = false;
+                            console.warn('[OBJECT_DEFENSE] startFromPattern retry failed', e);
+                            startedObjectDefense = false;
                             activeAfterStart = false;
                         }
                     }
-                    boss.specialModeStarted = !!(startedP2M3 && activeAfterStart);
+                    boss.specialModeStarted = !!(startedObjectDefense && activeAfterStart);
                     if (typeof this.pushBossDebugLog === 'function') {
                         const rt = gameState && gameState.specialModeObjectDefenseRuntime;
                         this.pushBossDebugLog(
                             gameState,
-                            boss.specialModeStarted ? 'P2_M3_START' : 'P2_M3_START_FAIL',
-                            `${sourceActionIdForP2M3 || '242073'} 차원 방어전 시작`,
-                            `started=${!!startedP2M3}, active=${!!activeAfterStart}, specialMode=${String(gameState && gameState.specialMode || '-')}, phase=${String(rt && rt.phase || '-')}`
+                            boss.specialModeStarted ? 'OBJECT_DEFENSE_START' : 'OBJECT_DEFENSE_START_FAIL',
+                            `${sourceActionIdForObjectDefense || 'SPECIAL_MODE_START'} 스페셜 모드 시작`,
+                            `started=${!!startedObjectDefense}, active=${!!activeAfterStart}, specialMode=${String(gameState && gameState.specialMode || '-')}, phase=${String(rt && rt.phase || '-')}`
                         );
                     }
                     if (boss.specialModeStarted) return true;

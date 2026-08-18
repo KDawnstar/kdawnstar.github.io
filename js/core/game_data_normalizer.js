@@ -76,9 +76,6 @@ function buildRuntimeReferenceIndex(rawData) {
     register(rawData && rawData.portalData, 'Portal_ID');
     register(rawData && rawData.dialogueData, 'Dialogue_ID');
     register(rawData && rawData.specialModeData, 'Special_Mode_ID');
-    register(rawData && rawData.specialModePlayerData, 'Character_ID');
-    register(rawData && rawData.specialModeObjectData, 'Object_ID');
-    register(rawData && rawData.specialModeObjectActionData, 'Object_Action_ID');
 
     // Pattern Set은 별도 시트가 없으므로 Monster_Pattern_info의 논리 그룹키를 등록한다.
     register(rawData && rawData.monsterPatternData, 'Pattern_Set_ID', 'Pattern_Set_Dev_Name');
@@ -148,6 +145,8 @@ function normalizeActionRuntimeRow(row) {
         row.Dev_Name,
         row.Action_Code
     );
+
+    newRow.Ref_Player = resolveRuntimeReference(pickRuntimeValue(row.Ref_Player, row.Character_ID, row.Use_Character));
 
     // #Action_Name은 기획 관리 전용으로 JSON에서 제외된다.
     // Runtime의 Action_Name 호환 필드는 Dev_Name을 사용해 기존 쿨타임/디버그 경로를 유지한다.
@@ -408,70 +407,7 @@ function normalizeSpecialModeRuntimeRow(row) {
     const newRow = { ...row };
     newRow.Special_Mode_ID = pickRuntimeValue(row.Special_Mode_ID, row.Dev_Name);
     newRow.Special_Mode_Name = pickRuntimeValue(row.Special_Mode_Name, row.Dev_Name, newRow.Special_Mode_ID);
-    newRow.Ref_Use_Content = resolveRuntimeReference(newRow.Ref_Use_Content);
     newRow.Ref_Player = resolveRuntimeReference(newRow.Ref_Player);
-    return newRow;
-}
-
-function normalizeSpecialModePlayerRuntimeRow(row) {
-    const newRow = { ...row };
-    // Runtime compatibility aliases: data columns are generic; the current object-defense handler
-    // can keep its proven input code while reading the generalized schema.
-    newRow.Guard_Gauge_Regen_Per_sec = pickRuntimeValue(row.Guard_Gauge_Regen_Per_sec, row.Guard_Gauge_Regen_Per_Sec);
-    newRow.Player_Start_Lane = pickRuntimeValue(row.Player_Start_Lane, row.Player_Start_Position_Value);
-    newRow.Lane_Move_Time = pickRuntimeValue(row.Lane_Move_Time, row.Player_Move_Time);
-    newRow.ATK_Range_Tile = pickRuntimeValue(row.ATK_Range_Tile, row.ATK_Hitbox_Size_X);
-    newRow.ATK_Range_Y = pickRuntimeValue(row.ATK_Range_Y, row.ATK_Hitbox_Size_Y);
-    newRow.Guard_Range_Tile = pickRuntimeValue(row.Guard_Range_Tile, row.Guard_Hitbox_Size_X);
-    newRow.Guard_Range_Y = pickRuntimeValue(row.Guard_Range_Y, row.Guard_Hitbox_Size_Y);
-    newRow.Skill_Range_Tile = pickRuntimeValue(row.Skill_Range_Tile, row.Skill_Hitbox_Size_X);
-    newRow.Skill_Wave_Height = pickRuntimeValue(row.Skill_Wave_Height, row.Skill_Hitbox_Size_Y);
-    newRow.Skill_Wave_Speed = pickRuntimeValue(row.Skill_Wave_Speed, row.Skill_Move_Speed);
-    newRow.Skill_Wave_Life = pickRuntimeValue(row.Skill_Wave_Life, row.Skill_Duration);
-    return newRow;
-}
-
-function normalizeSpecialModeObjectRuntimeRow(row) {
-    const newRow = { ...row };
-    newRow.Object_ID = pickRuntimeValue(row.Object_ID, row.Dev_Name);
-    newRow.Object_Name = pickRuntimeValue(row.Object_Name, row.Dev_Name, newRow.Object_ID);
-    // Compatibility aliases used only inside the current OBJECT_DEFENSE handler/renderer.
-    newRow.Slash_Type_ID = newRow.Object_ID;
-    newRow.Slash_Name = newRow.Object_Name;
-    newRow.Lane_Size = pickRuntimeValue(row.Lane_Size, row.Object_Hitbox_Size_X);
-    newRow.Slash_HP = pickRuntimeValue(row.Slash_HP, row.Object_HP);
-    newRow.HP_Per_Lane = pickRuntimeValue(row.HP_Per_Lane, row.Object_Part_HP);
-    newRow.Slash_Damage = pickRuntimeValue(row.Slash_Damage, row.Object_Damage);
-    newRow.Can_Attack_Destroy = String(row.ATK_Result_Type || '').trim().toUpperCase() === 'DAMAGE';
-    newRow.Can_Guard_Push = String(row.Guard_Result_Type || '').trim().toUpperCase() === 'PUSH';
-    newRow.Guard_Rebound_Speed = pickRuntimeValue(row.Guard_Rebound_Speed, row.Guard_Result_Move_Speed);
-    newRow.Guard_Rebound_Distance = pickRuntimeValue(row.Guard_Rebound_Distance, row.Guard_Result_Move_Distance);
-    newRow.Can_Skill_Hit = !['', 'NONE'].includes(String(row.Skill_Result_Type || '').trim().toUpperCase());
-    newRow.From_Skill_Damage = pickRuntimeValue(row.From_Skill_Damage, row.Skill_Result_Value);
-    newRow.Warning_Render_Type = pickRuntimeValue(row.Warning_Render_Type, row.Warning_Effect_Render_Type);
-    newRow.Slash_Render_Type = pickRuntimeValue(row.Slash_Render_Type, row.Object_Render_Type);
-    return newRow;
-}
-
-function normalizeSpecialModeObjectActionRuntimeRow(row) {
-    const newRow = { ...row };
-    newRow.Object_Action_ID = pickRuntimeValue(row.Object_Action_ID, row.Dev_Name);
-    newRow.Ref_Special_Mode = resolveRuntimeReference(newRow.Ref_Special_Mode);
-    newRow.Ref_Object = resolveRuntimeReference(newRow.Ref_Object);
-    // Compatibility aliases for the existing group/spawn execution path.
-    newRow.Wave_ID = pickRuntimeValue(row.Wave_ID, row.Action_Group);
-    newRow.Wave_Order = pickRuntimeValue(row.Wave_Order, row.Action_Group);
-    newRow.Spawn_Order = pickRuntimeValue(row.Spawn_Order, row.Action_Order);
-    newRow.Slash_Type_ID = pickRuntimeValue(row.Slash_Type_ID, newRow.Ref_Object);
-    newRow.Lane_Select_Type = pickRuntimeValue(row.Lane_Select_Type, row.Object_Start_Position_Type);
-    newRow.Lane_Value = pickRuntimeValue(row.Lane_Value, row.Object_Start_Position_Value);
-    newRow.Use_Same_Lane = pickRuntimeValue(row.Use_Same_Lane, row.Allow_Repeat_Position);
-    newRow.Warning_Time = pickRuntimeValue(row.Warning_Time, row.Warning_Duration);
-    newRow.Fall_Time_Rate = pickRuntimeValue(row.Fall_Time_Rate, row.Object_Move_Time_Rate);
-    newRow.Next_Spawn_Delay = pickRuntimeValue(row.Next_Spawn_Delay, row.Next_Action_Delay);
-    newRow.Initial_Fall_Speed = pickRuntimeValue(row.Initial_Fall_Speed, row.Object_Move_Speed);
-    newRow.Gravity = pickRuntimeValue(row.Gravity, row.Object_Move_Value);
-    newRow.Max_Fall_Speed = pickRuntimeValue(row.Max_Fall_Speed, row.Object_Move_Max_Speed);
     return newRow;
 }
 
@@ -492,6 +428,11 @@ function buildBossRuntimeTables(patternData, actionData, objectData, objectActio
         if (patternId) {
             const cond = String(action.Action_Condition_Type || '').trim().toUpperCase();
             if (cond === 'P3_M3_ROUTE_ACTION_ONLY') return;
+            // Ref_Special_Mode가 지정된 내부 Spawn/Wait 액션은 Special Mode executor 전용이다.
+            // SPECIAL_MODE_START 자체만 일반 보스 패턴 흐름에 남긴다.
+            const specialModeRef = action.Ref_Special_Mode;
+            const actionType = String(action.Action_Type || '').trim().toUpperCase();
+            if (specialModeRef !== null && specialModeRef !== undefined && String(specialModeRef).trim() !== '' && actionType !== 'SPECIAL_MODE_START') return;
             if (!actionsByPattern[patternId]) actionsByPattern[patternId] = [];
             actionsByPattern[patternId].push(action);
         }
@@ -591,9 +532,6 @@ function normalizeRuntimeDataSet(data, type) {
     if (type === 'portal') return rows.map(normalizePortalRuntimeRow);
     if (type === 'dialogue') return rows.map(normalizeDialogueRuntimeRow);
     if (type === 'specialMode') return rows.map(normalizeSpecialModeRuntimeRow);
-    if (type === 'specialModePlayer') return rows.map(normalizeSpecialModePlayerRuntimeRow);
-    if (type === 'specialModeObject') return rows.map(normalizeSpecialModeObjectRuntimeRow);
-    if (type === 'specialModeObjectAction') return rows.map(normalizeSpecialModeObjectActionRuntimeRow);
 
     return rows;
 }
@@ -617,9 +555,6 @@ window.GameDataNormalizer = {
     normalizePortalRuntimeRow,
     normalizeDialogueRuntimeRow,
     normalizeSpecialModeRuntimeRow,
-    normalizeSpecialModePlayerRuntimeRow,
-    normalizeSpecialModeObjectRuntimeRow,
-    normalizeSpecialModeObjectActionRuntimeRow,
     normalizeRuntimeDataSet,
     buildBossRuntimeTables
 };

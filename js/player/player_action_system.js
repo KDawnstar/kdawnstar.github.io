@@ -304,7 +304,7 @@ const PlayerAction = {
         }
 
         let dashAct = gameState.actions.find(a => String(a.Dev_Name || '').trim() === 'Player_Act_Dash');
-        let jumpAct = gameState.actions.find(a => String(a.Dev_Name || '').trim() === 'Player_Act_Jump');
+        let jumpAct = gameState.actions.find(a => String(a.Action_Type || '').trim().toUpperCase() === 'ACT_JUMP');
         let runAct = gameState.actions.find(a => String(a.Action_Type || '').trim() === 'ACT_RUN');
         let guardAct = gameState.actions.find(a => String(a.Action_Type || '').trim() === 'ACT_GUARD');
         let dashReqLv = dashAct ? parseFloat(dashAct.Require_Level) || 0 : 0;
@@ -485,7 +485,8 @@ const PlayerAction = {
                     player.atkTimer <= 0 &&
                     player.stanceSwapTimer <= 0
                 ) {
-                    player.vz = player.jumpPower;
+                    player.vz = Math.max(1, parseFloat(jumpAct && jumpAct.Jump_Power) || 600);
+                    player.actionGravity = Math.max(0, parseFloat(jumpAct && jumpAct.Action_Gravity) || parseFloat(gameState.GRAVITY) || 0);
                     player.isGrounded = false;
                     player.isRunning = false;
                     player.runDirection = null;

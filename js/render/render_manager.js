@@ -126,9 +126,9 @@ const GameRenderer = {
         const ctx = this.ctx;
         const canvas = this.canvas;
 
-        // 2페이즈 대형 패턴3 차원 방어전은 기존 월드 좌표/깊이 정렬과 완전히 분리된 전용 렌더를 사용한다.
-        if (gameState && gameState.specialMode === 'SPECIAL_MODE_OBJECT_DEFENSE' && typeof this.renderP2M3DimensionDefense === 'function') {
-            this.renderP2M3DimensionDefense(gameState);
+        // OBJECT_DEFENSE 스페셜 모드는 기존 월드 좌표/깊이 정렬과 분리된 전용 렌더를 사용한다.
+        if (gameState && gameState.specialMode === 'SPECIAL_MODE_OBJECT_DEFENSE' && typeof this.renderObjectDefenseDimensionDefense === 'function') {
+            this.renderObjectDefenseDimensionDefense(gameState);
             return;
         }
 
@@ -391,8 +391,8 @@ const GameRenderer = {
         if (typeof this.drawBossPhaseTransitionOverlay === 'function') {
             this.drawBossPhaseTransitionOverlay(ctx, canvas, gameState);
         }
-        if (typeof this.drawP2M3IntroOverlay === 'function') {
-            this.drawP2M3IntroOverlay(ctx, canvas, gameState);
+        if (typeof this.drawObjectDefenseIntroOverlay === 'function') {
+            this.drawObjectDefenseIntroOverlay(ctx, canvas, gameState);
         }
         if (typeof this.drawBossPatternDialogue === 'function') {
             this.drawBossPatternDialogue(ctx, canvas, gameState);

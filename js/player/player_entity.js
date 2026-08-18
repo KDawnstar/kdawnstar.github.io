@@ -3,14 +3,23 @@
 
 const PlayerManager = {
     init: function(playerData, actionData, gameState) {
-        let pd = (playerData && playerData.length > 0) ? playerData[0] : {}; 
+        const players = Array.isArray(playerData) ? playerData : [];
+        let pd = players.find(row => String(row && row.Dev_Name || '').trim() === 'Player_Adventurer') || players[0] || {};
+        gameState.DB_PLAYER = {};
+        for (const row of players) {
+            if (!row) continue;
+            const id = String(row.Character_ID || '').trim();
+            const dev = String(row.Dev_Name || '').trim();
+            if (id) gameState.DB_PLAYER[id] = row;
+            if (dev) gameState.DB_PLAYER[dev] = row;
+        } 
         
         gameState.player = {
             active: true, x: gameState.WORLD_WIDTH/2 || 1000, y: gameState.WORLD_DEPTH/2 || 150, z: 0, vz: 0, isGrounded: true, 
             name: pd.Character_Name || '용사', level: parseInt(pd.Level) || 1, exp: 0, baseNextExp: parseInt(pd.Base_Next_EXP) || 100, 
             lvlUpGainHp: parseFloat(pd.Level_Up_Gain_HP) || 20, lvlUpGainAtk: parseFloat(pd.Level_Up_Gain_ATK) || 2,
             hp: parseFloat(pd.HP)||500, maxHp: parseFloat(pd.HP)||500, atk: parseFloat(pd.ATK)||50, def: parseFloat(pd.DEF)||5, 
-            speed: parseFloat(pd.Move_Speed)||300, jumpPower: parseFloat(pd.Jump_Power) || 600,
+            speed: parseFloat(pd.Move_Speed)||300, jumpPower: 0, actionGravity: 0,
             bodyX: parseFloat(pd.Body_Size_X) || 50, bodyY: parseFloat(pd.Body_Size_Y) || 30, bodyZ: parseFloat(pd.Body_Size_Z) || 100, scale: parseFloat(pd.Model_Scale) || 1, renderType: pd.Model_Render_Type || null,
             renderColor: pd.Model_Render_Color || null,
             renderColorR: pd.Model_Color_R !== null && pd.Model_Color_R !== undefined && pd.Model_Color_R !== '' ? parseFloat(pd.Model_Color_R) : null,
@@ -50,14 +59,19 @@ const PlayerManager = {
             kasiyasOniMark: null, kasiyasTemperedBladeReady: false, kasiyasTemperedBladeFlashTimer: 0,
             skillCooldowns: {}, freezeTimer: 0, maxFreezeTimer: 0, mashReduced: 0
         };
-        gameState.actions = (actionData || []).map(a => ({
+        gameState.allPlayerActions = (actionData || []).map(a => ({
             ...a,
             Action_Name: typeof a.Action_Name === 'string' ? a.Action_Name.trim() : a.Action_Name
         }));
+        const primaryPlayerId = String(pd.Character_ID || '').trim();
+        gameState.actions = gameState.allPlayerActions.filter(a => {
+            const ref = a && a.Ref_Player;
+            return ref === null || ref === undefined || String(ref).trim() === '' || String(ref).trim() === primaryPlayerId;
+        });
         
-        // 🎯 [복구] 대쉬 쿨타임 및 키 설정 원본 데이터 로드
+        // 대쉬/점프 기본 키는 일반 플레이어 소유 Action에서 읽는다.
         for(let a of gameState.actions) {
-            if(a.Dev_Name === 'Player_Act_Jump') gameState.jumpKeyEngine = getEngineKeyCode(a.Input_Key);
+            if(String(a.Action_Type || '').trim().toUpperCase() === 'ACT_JUMP') gameState.jumpKeyEngine = getEngineKeyCode(a.Input_Key);
             if(a.Dev_Name === 'Player_Act_Dash') { gameState.dashKeyEngine = getEngineKeyCode(a.Input_Key); gameState.player.maxDashCd = parseFloat(a.Cooltime) || 1.0; }
         }
     },
@@ -759,13 +773,15 @@ update: function(deltaTime, keys, gameState) {
     let player = gameState.player;
     if (!player.active) return;
 
-    player.vz -= gameState.GRAVITY * deltaTime;
+    const appliedGravity = Math.max(0, parseFloat(player.actionGravity) || parseFloat(gameState.GRAVITY) || 0);
+    player.vz -= appliedGravity * deltaTime;
     player.z += player.vz * deltaTime;
 
     if (player.z <= 0) {
         player.z = 0;
         player.vz = 0;
         player.isGrounded = true;
+        player.actionGravity = 0;
     }
 
     if (typeof this.updateP3OniCurse === 'function') this.updateP3OniCurse(deltaTime, gameState);

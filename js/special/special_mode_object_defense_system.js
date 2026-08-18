@@ -1,22 +1,14 @@
-// [카시야스 보스전] 2페이즈 대형 패턴3 차원 방어전 전용 모드 시스템
+// [카시야스 보스전] OBJECT_DEFENSE 스페셜 모드 시스템
 // ==========================================
-// step203:
-// - P2_M3_Wave_info + P2_M3_Wave_Spawn_info 분리 구조 반영
-// - 한 웨이브 안에서 여러 검기 타입/라인/간격을 순차 스폰할 수 있도록 확장
+// - Special_Mode_info는 실행 규칙/Player 참조만 관리한다.
+// - Player/Player Action/Monster Pattern Object/Monster Pattern Action 공용 데이터를 사용한다.
+// - Wave/Group 엔티티 없이 Ref_Special_Mode가 일치하는 Pattern Action을 Action_Order 순으로 실행한다.
 // ==========================================
 
 const SpecialModeObjectDefenseSystem = {
     MODE: 'SPECIAL_MODE_OBJECT_DEFENSE',
     LANES: ['LEFT', 'CENTER', 'RIGHT'],
-    VIRTUAL: {
-        fieldW: 480,
-        fieldH: 760,
-        spawnY: 78,
-        warningTopY: 44,
-        playerGroundY: 690,
-        floorY: 720,
-        playerGravity: 1200
-    },
+    DEFAULT_VIRTUAL: { fieldW: 480, fieldH: 760, spawnY: 78, warningTopY: 44, playerGroundY: 690, floorY: 720 },
 
     num(value, fallback = 0) {
         const n = parseFloat(value);
@@ -52,35 +44,61 @@ const SpecialModeObjectDefenseSystem = {
         return (gameState.monsters || []).find(m => m && m.active && m.isStageBoss && m.boss) || null;
     },
 
-    buildSlashLookup(gameState) {
-        const lookup = {};
-        for (const row of (gameState.DB_SPECIAL_MODE_OBJECT || [])) {
-            const id = String(row && row.Slash_Type_ID || '').trim();
-            if (id) lookup[id] = row;
-        }
-        return lookup;
+    getActionKey(action) {
+        if (!action) return '';
+        if (typeof getEngineKeyCode === 'function') return getEngineKeyCode(action.Input_Key);
+        const raw = String(action.Input_Key || '').trim().toUpperCase();
+        if (raw === 'KEY_X') return 'KeyX';
+        if (raw === 'KEY_A') return 'KeyA';
+        if (raw === 'KEY_C') return 'KeyC';
+        if (raw === 'KEY_D') return 'KeyD';
+        return '';
     },
 
-    buildWaveSpawnLookup(gameState, specialModeId = null) {
-        const lookup = {};
-        const targetModeId = specialModeId === null || specialModeId === undefined ? '' : String(specialModeId).trim();
-        for (const row of (gameState.DB_SPECIAL_MODE_OBJECT_ACTION || [])) {
-            if (targetModeId && String(row && row.Ref_Special_Mode || '').trim() !== targetModeId) continue;
-            const waveId = String(row && row.Action_Group !== undefined ? row.Action_Group : row && row.Wave_ID || '').trim();
-            if (!waveId) continue;
-            if (!lookup[waveId]) lookup[waveId] = [];
-            lookup[waveId].push(row);
-        }
-        for (const waveId in lookup) {
-            lookup[waveId].sort((a, b) => this.num(a.Spawn_Order, 0) - this.num(b.Spawn_Order, 0));
-        }
-        return lookup;
+    isKeyPressed(rt, code, keys) {
+        return !!(keys && keys[code]) && !(rt.inputPrev && rt.inputPrev[code]);
+    },
+
+    actionFor(rt, actionType) {
+        const type = String(actionType || '').trim().toUpperCase();
+        return (rt.playerActions || []).find(a => String(a && a.Action_Type || '').trim().toUpperCase() === type) || null;
+    },
+
+    hasPlayerBuff(rt, buffKey) {
+        const key = String(buffKey || '').trim();
+        return !!(key && rt && rt.player && rt.player.buffs && rt.player.buffs[key]);
+    },
+
+    grantPlayerBuff(rt, buffKey) {
+        const key = String(buffKey || '').trim();
+        if (!key || !rt || !rt.player) return false;
+        if (!rt.player.buffs) rt.player.buffs = {};
+        rt.player.buffs[key] = true;
+        return true;
+    },
+
+    consumePlayerBuff(rt, buffKey) {
+        const key = String(buffKey || '').trim();
+        if (!key || !rt || !rt.player || !rt.player.buffs || !rt.player.buffs[key]) return false;
+        delete rt.player.buffs[key];
+        return true;
+    },
+
+    getInternalActions(gameState, sourcePatternId, specialModeId) {
+        const db = gameState && gameState.DB_BOSS_PATTERN_ACTION ? gameState.DB_BOSS_PATTERN_ACTION : {};
+        return Object.values(db)
+            .filter(action => {
+                if (!action) return false;
+                const samePattern = String(action.Pattern_ID || '') === String(sourcePatternId || '');
+                const sameMode = String(action.Ref_Special_Mode || '') === String(specialModeId || '');
+                const type = String(action.Action_Type || '').trim().toUpperCase();
+                return samePattern && sameMode && type !== 'SPECIAL_MODE_START';
+            })
+            .sort((a, b) => this.num(a.Action_Order, 0) - this.num(b.Action_Order, 0));
     },
 
     startFromPattern(gameState, boss, options = {}) {
-        if (!gameState) return false;
-        if (this.isActive(gameState)) return false;
-        // 이전 실행 종료 과정에서 특수 모드 플래그만 남은 경우, 다음 232008 진입을 막지 않도록 정리한다.
+        if (!gameState || this.isActive(gameState)) return false;
         if (gameState.specialMode === this.MODE && !(gameState.specialModeObjectDefenseRuntime && gameState.specialModeObjectDefenseRuntime.active)) {
             gameState.specialMode = null;
             gameState.specialModeObjectDefenseRuntime = null;
@@ -88,7 +106,6 @@ const SpecialModeObjectDefenseSystem = {
         if (gameState.specialMode && gameState.specialMode !== this.MODE) return false;
         const targetBoss = boss || this.getBoss(gameState);
         if (targetBoss && targetBoss.boss) {
-            // SPECIAL_MODE_START는 실행될 때마다 다시 진입 가능해야 한다.
             targetBoss.boss.specialModeStarted = false;
             targetBoss.boss.specialModeResult = null;
         }
@@ -96,27 +113,38 @@ const SpecialModeObjectDefenseSystem = {
             isTestMode: false,
             isPatternLinked: true,
             boss: targetBoss,
-            sourcePatternId: options.patternId || options.sourcePatternId || '232008',
-            sourceActionId: options.sourceActionId || '242073',
+            sourcePatternId: options.patternId || options.sourcePatternId || '',
+            sourceActionId: options.sourceActionId || '',
             specialModeId: options.specialModeId || options.refSpecialMode || null
         });
     },
 
+    getIntroActionKind(action) {
+        if (!action) return '';
+        const pose = String(action.Action_Pose_Type || '').trim().toUpperCase();
+        const vfx = String(action.VFX_Type || '').trim().toUpperCase();
+        const moveType = String(action.Action_Move_Type || '').trim().toUpperCase();
+        const moveDir = String(action.Action_Move_Direction || '').trim().toUpperCase();
+        if (vfx === 'EFT_P2_M3_GROUND_COLLAPSE_AND_FALL') return 'COLLAPSE_FALL';
+        if (pose === 'POSE_KASIYAS_P2_SWORD_HANDLE_ATK') return 'HANDLE_HIT';
+        if (moveType === 'MOVE_DASH' && moveDir === 'TO_PLAYER') return 'APPROACH';
+        return '';
+    },
+
     updatePatternIntroAction(m, action, deltaTime, gameState) {
         if (!m || !action || !gameState) return false;
-        const actionId = String(action.Action_ID || '').trim();
-        // P2_M3의 DIRECT_ACT 중 242070~242072만 전용 진입 연출 대상이다.
-        // 결과 액션(242074~242076)까지 여기서 처리하면 플레이어 상태/카메라가 다시 INTRO 규칙으로 덮인다.
-        if (!['242070', '242071', '242072'].includes(actionId)) return false;
+        const kind = this.getIntroActionKind(action);
+        if (!kind) return false;
         const p = gameState.player || null;
         const duration = Math.max(0.05, parseFloat(action.Action_Anim_Duration) || 1);
         const ratio = Math.max(0, Math.min(1, (parseFloat(m.timer) || 0) / duration));
         const ease = ratio * ratio * (3 - 2 * ratio);
-        const boss = m.boss || {};
         gameState.specialModeObjectDefenseIntroRuntime = gameState.specialModeObjectDefenseIntroRuntime || {};
         const intro = gameState.specialModeObjectDefenseIntroRuntime;
-        if (intro.actionId !== actionId) {
-            intro.actionId = actionId;
+        const actionKey = String(action.Action_ID || action.Dev_Name || kind);
+        if (intro.actionKey !== actionKey) {
+            intro.actionKey = actionKey;
+            intro.actionKind = kind;
             intro.active = true;
             intro.timer = 0;
             intro.duration = duration;
@@ -130,80 +158,46 @@ const SpecialModeObjectDefenseSystem = {
         }
         intro.timer = parseFloat(m.timer) || 0;
         if (p) {
-            p.kbVx = 0;
-            p.kbVy = 0;
-            p.vx = 0;
-            p.vy = 0;
-            p.atkTimer = 0;
-            p.guardTimer = 0;
-            p.state = actionId === '242071' || actionId === '242072' ? 'Hit' : 'Idle';
+            p.kbVx = 0; p.kbVy = 0; p.vx = 0; p.vy = 0; p.atkTimer = 0; p.guardTimer = 0;
+            p.state = (kind === 'HANDLE_HIT' || kind === 'COLLAPSE_FALL') ? 'Hit' : 'Idle';
         }
-
-        if (actionId === '242070' && p) {
+        if (kind === 'APPROACH' && p) {
             const dir = (p.x >= (intro.startBossX || m.x)) ? 1 : -1;
             const targetX = p.x - dir * 132;
-            const targetY = p.y;
             m.x = (intro.startBossX || m.x) + (targetX - (intro.startBossX || m.x)) * ease;
-            m.y = (intro.startBossY || m.y) + (targetY - (intro.startBossY || m.y)) * ease;
+            m.y = (intro.startBossY || m.y) + (p.y - (intro.startBossY || m.y)) * ease;
             m.faceDir = dir;
             intro.focusX = (m.x + p.x) * 0.5;
             intro.focusY = (typeof GameRenderer !== 'undefined' ? GameRenderer.GROUND_BASE_Y : 400) + ((m.y + p.y) * 0.5) - 110;
             intro.zoom = 1.22 + 0.10 * Math.sin(Math.PI * ratio);
             m.state = 'MOVE';
-        } else if (actionId === '242071' && p) {
+        } else if (kind === 'HANDLE_HIT' && p) {
             const dir = (p.x >= m.x) ? 1 : -1;
-            m.x = p.x - dir * 126;
-            m.y = p.y;
-            m.faceDir = dir;
-            m.state = 'ATK_MELEE';
+            m.x = p.x - dir * 126; m.y = p.y; m.faceDir = dir; m.state = 'ATK_MELEE';
             intro.focusX = (m.x + p.x) * 0.5;
             intro.focusY = (typeof GameRenderer !== 'undefined' ? GameRenderer.GROUND_BASE_Y : 400) + p.y - 115;
             intro.zoom = 1.34;
             if (!intro.hitFired && ratio >= 0.42) {
                 intro.hitFired = true;
-                if (gameState.screenShake) {
-                    gameState.screenShake.timer = 0.22;
-                    gameState.screenShake.maxTime = 0.22;
-                    gameState.screenShake.power = 10;
-                }
-                if (Array.isArray(gameState.effects)) {
-                    gameState.effects.push({ type: 'hitSpark', renderType: 'EFT_KASIYAS_P2_SWORD_HANDLE_ATK', x: p.x, y: p.y, z: (p.z || 0) + 88, life: 0.28, maxLife: 0.28, dir: dir });
-                }
-                if (Array.isArray(gameState.floatingTexts)) {
-                    gameState.floatingTexts.push({ x: p.x, y: p.y, z: (p.z || 0) + 150, text: '차원 타격', color: '#d7c7ff', size: '24px', timer: 0.75 });
-                }
+                if (gameState.screenShake) { gameState.screenShake.timer = 0.22; gameState.screenShake.maxTime = 0.22; gameState.screenShake.power = 10; }
+                if (Array.isArray(gameState.effects)) gameState.effects.push({ type:'hitSpark', renderType: action.VFX_Type || 'EFT_KASIYAS_P2_SWORD_HANDLE_ATK', x:p.x, y:p.y, z:(p.z||0)+88, life:0.28, maxLife:0.28, dir });
             }
-        } else if (actionId === '242072' && p) {
+        } else if (kind === 'COLLAPSE_FALL' && p) {
             const groundBase = (typeof GameRenderer !== 'undefined' ? GameRenderer.GROUND_BASE_Y : 400);
             intro.focusX = (m.x + p.x) * 0.5;
             intro.focusY = groundBase + p.y - 70 + 210 * ease;
             intro.zoom = 1.25 - 0.10 * ease;
-            m.state = 'IDLE';
-            p.state = 'Hit';
+            m.state = 'IDLE'; p.state = 'Hit';
             const fallZ = -220 * ease;
-            // 242072 중에는 아래로 추락해 사라지는 것처럼 보이되, 액션 종료 직전에는
-            // 다음 SPECIAL_MODE_START가 정상 스냅샷을 잡을 수 있도록 Z를 복구한다.
-            if (ratio < 0.96) {
-                m.z = fallZ * 0.72;
-                p.z = fallZ;
-            } else {
-                m.z = 0;
-                p.z = 0;
-            }
-            if (!intro.noticeFired) {
-                intro.noticeFired = true;
-            }
+            if (ratio < 0.96) { m.z = fallZ * 0.72; p.z = fallZ; } else { m.z = 0; p.z = 0; }
             if (gameState.screenShake) {
                 gameState.screenShake.timer = Math.max(gameState.screenShake.timer || 0, 0.08);
                 gameState.screenShake.maxTime = 0.12;
                 gameState.screenShake.power = Math.max(gameState.screenShake.power || 0, 3 + 8 * Math.sin(Math.PI * ratio));
             }
-            if (gameState.screenHitFlash && String(gameState.screenHitFlash.mode || '') !== 'white') {
-                gameState.screenHitFlash = null;
-            }
             if (ratio > 0.68 && !intro.fallFlashFired) {
                 intro.fallFlashFired = true;
-                gameState.screenHitFlash = { mode: 'white', life: 0.28, maxLife: 0.28, strength: 0.42 };
+                gameState.screenHitFlash = { mode:'white', life:0.28, maxLife:0.28, strength:0.42 };
             }
         }
         return true;
@@ -211,149 +205,97 @@ const SpecialModeObjectDefenseSystem = {
 
     start(gameState, options = {}) {
         if (!gameState) return false;
-        // 새 전용 모드 진입 시 이전 실패 피해 시퀀스가 남아 있으면 정리한다.
         gameState.specialModeObjectDefenseFailDamageRuntime = null;
         const boss = options.boss || this.getBoss(gameState);
         const sourcePatternId = String(options.sourcePatternId || options.patternId || '').trim();
-        let specialModeData = null;
         const requestedModeId = options.specialModeId !== null && options.specialModeId !== undefined ? String(options.specialModeId).trim() : '';
-        if (requestedModeId) {
-            specialModeData = (gameState.DB_SPECIAL_MODE || []).find(row => String(row && row.Special_Mode_ID || '').trim() === requestedModeId) || null;
-        }
-        if (!specialModeData && sourcePatternId) {
-            specialModeData = (gameState.DB_SPECIAL_MODE || []).find(row => String(row && row.Ref_Use_Content || '').trim() === sourcePatternId) || null;
-        }
-        if (!specialModeData) {
+        let specialModeData = null;
+        if (requestedModeId) specialModeData = (gameState.DB_SPECIAL_MODE || []).find(row => String(row && row.Special_Mode_ID || '').trim() === requestedModeId) || null;
+        if (!specialModeData) specialModeData = (gameState.DB_SPECIAL_MODE || []).find(row => String(row && row.Special_Mode_Type || '').trim().toUpperCase() === 'OBJECT_DEFENSE') || null;
+        if (!specialModeData || String(specialModeData.Special_Mode_Type || '').trim().toUpperCase() !== 'OBJECT_DEFENSE') {
             try { pushSystemNotice('실행할 스페셜 모드 데이터를 찾을 수 없습니다.', '#ffb8b8', 1.4); } catch (e) {}
             return false;
         }
-        if (String(specialModeData.Special_Mode_Type || '').trim().toUpperCase() !== 'OBJECT_DEFENSE') return false;
         const specialModeId = specialModeData.Special_Mode_ID;
         const playerRef = String(specialModeData.Ref_Player || '').trim();
-        const playerData = (gameState.DB_SPECIAL_MODE_PLAYER || []).find(row => String(row && row.Character_ID || '').trim() === playerRef) || (gameState.DB_SPECIAL_MODE_PLAYER || [])[0] || {};
-        const player = gameState.player || {};
-        // step213: 패턴 연결형 DIRECT_ACT 낙하 연출에서 남은 음수 Z/피격 상태가 스냅샷에 저장되면
-        // 종료 복귀나 재진입 때 배우가 화면 밖에 남을 수 있으므로 전용 모드 시작 직전에 기준 상태로 정리한다.
-        if (options.isPatternLinked) {
-            if (player) {
-                player.z = 0;
-                player.vz = 0;
-                player.kbVx = 0;
-                player.kbVy = 0;
-                player.vx = 0;
-                player.vy = 0;
-                player.isGrounded = true;
-                if (player.state === 'Hit' || player.state === 'HIT') player.state = 'Idle';
-            }
-            if (boss) {
-                boss.z = 0;
-                boss.kbVx = 0;
-                boss.kbVy = 0;
-                if (boss.state === 'Hit' || boss.state === 'HIT') boss.state = 'IDLE';
-            }
-        }
-        const startLane = this.laneIndex(playerData.Player_Start_Position_Value || playerData.Player_Start_Lane, 1);
-        const waveSpawnLookup = this.buildWaveSpawnLookup(gameState, specialModeId);
-        const waves = Object.keys(waveSpawnLookup)
-            .map(groupKey => {
-                const rows = (waveSpawnLookup[groupKey] || []).slice().sort((a, b) => this.num(a.Action_Order || a.Spawn_Order, 0) - this.num(b.Action_Order || b.Spawn_Order, 0));
-                const first = rows[0] || {};
-                const last = rows[rows.length - 1] || {};
-                const group = this.num(first.Action_Group !== undefined ? first.Action_Group : groupKey, 0);
-                return {
-                    Wave_ID: String(group),
-                    Wave_Order: group,
-                    Wave_Name: first.Action_Group_Name || `그룹 ${String(group).padStart(2, '0')}`,
-                    Wave_Start_Delay: this.num(first.Group_Start_Delay, 0.5),
-                    Next_Wave_Delay: this.num(last.Next_Group_Delay, 1),
-                    Group_End_Condition_Type: last.Group_End_Condition_Type || 'GROUP_OBJECT_CLEAR'
-                };
-            })
-            .sort((a, b) => this.num(a.Wave_Order, 0) - this.num(b.Wave_Order, 0));
-
-        if (!waves.length) {
-            try { pushSystemNotice('스페셜 모드 오브젝트 액션 데이터를 찾을 수 없습니다.', '#ffb8b8', 1.4); } catch (e) {}
+        const playerData = (gameState.DB_PLAYER && (gameState.DB_PLAYER[playerRef] || gameState.DB_PLAYER[String(playerRef)])) || null;
+        if (!playerData) {
+            try { pushSystemNotice('스페셜 모드 플레이어 데이터를 찾을 수 없습니다.', '#ffb8b8', 1.4); } catch (e) {}
             return false;
         }
-
-        const guardMax = Math.max(1, this.num(playerData.Guard_Gauge_Max, 100));
-        const hpMax = Math.max(1, this.num(playerData.HP, 10));
-        if (gameState) gameState.screenHitFlash = null;
+        const playerActions = (gameState.allPlayerActions || []).filter(action => String(action && action.Ref_Player || '').trim() === String(playerData.Character_ID || '').trim());
+        const sequenceActions = this.getInternalActions(gameState, sourcePatternId, specialModeId);
+        if (!sequenceActions.length) {
+            try { pushSystemNotice('스페셜 모드 내부 패턴 액션을 찾을 수 없습니다.', '#ffb8b8', 1.4); } catch (e) {}
+            return false;
+        }
+        // 최종 대응에 필요한 버프 키도 Object 상호작용 데이터에서 찾는다.
+        // HUD/렌더러가 특정 버프명을 코드에 직접 박지 않도록 Runtime에 전달한다.
+        let requiredResponseBuffKey = '';
+        for (const internalAction of sequenceActions) {
+            const objectId = String(internalAction && (internalAction.Spawn_Object_ID || internalAction.Object_Spawn) || '').trim();
+            if (!objectId) continue;
+            const objectData = gameState.DB_BOSS_PATTERN_OBJECT && gameState.DB_BOSS_PATTERN_OBJECT[objectId];
+            if (!objectData) continue;
+            if (String(objectData.Object_Interact_Cond || '').trim().toUpperCase() !== 'PLAYER_HAS_BUFF') continue;
+            requiredResponseBuffKey = String(objectData.Object_Interact_Cond_Value || '').trim();
+            if (requiredResponseBuffKey) break;
+        }
+        const originalPlayer = gameState.player || {};
+        if (options.isPatternLinked) {
+            if (originalPlayer) {
+                originalPlayer.z = 0; originalPlayer.vz = 0; originalPlayer.kbVx = 0; originalPlayer.kbVy = 0; originalPlayer.vx = 0; originalPlayer.vy = 0; originalPlayer.isGrounded = true;
+                if (String(originalPlayer.state || '').toUpperCase() === 'HIT') originalPlayer.state = 'Idle';
+            }
+            if (boss) { boss.z = 0; boss.kbVx = 0; boss.kbVy = 0; if (String(boss.state || '').toUpperCase() === 'HIT') boss.state = 'IDLE'; }
+        }
+        const v = {
+            fieldW: this.DEFAULT_VIRTUAL.fieldW,
+            fieldH: this.DEFAULT_VIRTUAL.fieldH,
+            spawnY: this.num(specialModeData.Object_Spawn_Y, this.DEFAULT_VIRTUAL.spawnY),
+            warningTopY: this.num(specialModeData.Object_Spawn_Y, this.DEFAULT_VIRTUAL.spawnY) - 34,
+            playerGroundY: this.num(specialModeData.Player_Ground_Y, this.DEFAULT_VIRTUAL.playerGroundY),
+            floorY: this.num(specialModeData.Floor_Y, this.DEFAULT_VIRTUAL.floorY)
+        };
+        const startLane = this.laneIndex(specialModeData.Player_Start_Position_Value, 1);
+        const introDuration = Math.max(0, this.num(specialModeData.Intro_Duration, options.isPatternLinked ? 1.25 : 0.65));
         const rt = {
             active: true,
             isTestMode: !!options.isTestMode,
             isPatternLinked: !!options.isPatternLinked,
-            sourcePatternId: options.sourcePatternId || '',
-            sourceActionId: options.sourceActionId || '',
-            phase: 'INTRO',
-            timer: 0,
-            introMaxTime: options.isPatternLinked ? 1.25 : 0.65,
-            introTime: options.isPatternLinked ? 1.25 : 0.65,
-            introVisualPhase: options.isPatternLinked ? 'SIMPLE_FALL' : 'TEST_READY',
-            endingTimer: 0,
-            result: null,
-            resultReason: '',
-            boss: boss || null,
-            virtual: { ...this.VIRTUAL, playerGravity: Math.max(0, this.num(playerData.Player_Gravity, this.VIRTUAL.playerGravity)) },
-            specialModeData,
-            specialModeId,
-            playerData,
-            waves,
-            slashLookup: this.buildSlashLookup(gameState),
-            waveSpawnLookup,
-            waveIndex: -1,
-            waveState: null,
-            activeSlashes: [],
-            skillWaves: [],
-            effects: [],
-            slashSeq: 1,
-            skillWaveSeq: 1,
-            lanes: this.LANES,
+            sourcePatternId,
+            sourceActionId: String(options.sourceActionId || ''),
+            phase: 'INTRO', timer: 0,
+            introMaxTime: introDuration, introTime: introDuration,
+            introType: String(specialModeData.Intro_Type || '').trim().toUpperCase(), introVisualPhase: '',
+            endingTimer: 0, result: null, resultReason: '',
+            boss: boss || null, virtual: v,
+            specialModeData, specialModeId, playerData, playerActions, sequenceActions, requiredResponseBuffKey,
+            sequenceIndex: 0, sequenceTimer: 0, sequenceActionStarted: false, sequenceConditionMet: false, sequenceComplete: false, unresolvedTimer: 0,
+            usedLanes: [], activeSlashes: [], skillWaves: [], effects: [], slashSeq: 1, skillWaveSeq: 1, lanes: this.LANES,
+            attackAction: null, guardAction: null, skillAction: null, moveAction: null, jumpAction: null,
             player: {
-                lane: startLane,
-                visualLane: startLane,
-                moveTimer: 0,
-                moveFromLane: startLane,
-                moveToLane: startLane,
-                y: this.VIRTUAL.playerGroundY,
-                vy: 0,
-                grounded: true,
-                jumpFlashTimer: 0,
-                maxHp: hpMax,
-                hp: hpMax,
-                atk: Math.max(1, this.num(playerData.ATK, 1)),
-                attackCooldown: 0,
-                attackFlashTimer: 0,
-                guardGauge: guardMax,
-                guardGaugeMax: guardMax,
-                guardRegenDelayTimer: 0,
-                isGuarding: false,
-                guardContactTimer: 0,
-                guardFlashTimer: 0,
-                skillCooldown: 0,
-                skillFlashTimer: 0,
-                skillCastTimer: 0,
-                skillCastMax: 0,
-                skillCastPending: false,
-                hasTemperedWill: false,
-                damageFlashTimer: 0
+                lane:startLane, visualLane:startLane, moveTimer:0, moveFromLane:startLane, moveToLane:startLane,
+                y:v.playerGroundY, vy:0, gravity:0, grounded:true, jumpFlashTimer:0,
+                maxHp:Math.max(1,this.num(playerData.HP,10)), hp:Math.max(1,this.num(playerData.HP,10)), atk:Math.max(1,this.num(playerData.ATK,1)),
+                attackCooldown:0, attackFlashTimer:0,
+                isGuarding:false, guardTimer:0, guardMaxTimer:0, guardCooldownTimer:0, guardCooldownMax:0, guardContactTimer:0, guardFlashTimer:0,
+                skillCooldown:0, skillCooldownMax:0, skillFlashTimer:0, skillCastTimer:0, skillCastMax:0, skillCastPending:false,
+                buffs:{}, damageFlashTimer:0
             },
-            inputPrev: {},
-            snapshot: {
-                playerX: this.num(player.x, 300),
-                playerY: this.num(player.y, 150),
-                playerZ: this.num(player.z, 0),
-                playerState: player.state || 'Idle',
-                bossX: this.num(boss && boss.x, 1000),
-                bossY: this.num(boss && boss.y, 150),
-                bossZ: this.num(boss && boss.z, 0),
-                bossState: boss && boss.state || 'IDLE'
+            inputPrev:{},
+            snapshot:{
+                playerX:this.num(originalPlayer.x,300), playerY:this.num(originalPlayer.y,150), playerZ:this.num(originalPlayer.z,0), playerState:originalPlayer.state||'Idle',
+                bossX:this.num(boss&&boss.x,1000), bossY:this.num(boss&&boss.y,150), bossZ:this.num(boss&&boss.z,0), bossState:boss&&boss.state||'IDLE'
             },
-            message: '',
-            messageTimer: 0,
-            resultMessage: false
+            message:'', messageTimer:0, resultMessage:false
         };
-
+        rt.moveAction = this.actionFor(rt, 'ACT_MOVE');
+        rt.jumpAction = this.actionFor(rt, 'ACT_JUMP');
+        rt.attackAction = this.actionFor(rt, 'ATK_MELEE');
+        rt.guardAction = this.actionFor(rt, 'ACT_GUARD');
+        rt.skillAction = this.actionFor(rt, 'ATK_PROJECTILE');
+        rt.player.skillCooldownMax = Math.max(0, this.num(rt.skillAction && rt.skillAction.Cooltime, 0));
         gameState.specialMode = this.MODE;
         gameState.specialModeObjectDefenseRuntime = rt;
         this.pauseExistingCombat(gameState);
@@ -363,1136 +305,325 @@ const SpecialModeObjectDefenseSystem = {
 
     pauseExistingCombat(gameState) {
         if (!gameState) return;
-        gameState.hitboxes = [];
-        gameState.projectiles = [];
-        gameState.auras = [];
-        gameState.bossAttackObjects = [];
-        if (Array.isArray(gameState.effects)) {
-            gameState.effects = gameState.effects.filter(e => e && (e.type === 'hitSpark' || e.type === 'guard'));
-        }
+        gameState.hitboxes = []; gameState.projectiles = []; gameState.auras = []; gameState.bossAttackObjects = [];
+        if (Array.isArray(gameState.effects)) gameState.effects = gameState.effects.filter(e => e && (e.type === 'hitSpark' || e.type === 'guard'));
         const boss = this.getBoss(gameState);
         if (boss && boss.boss) {
-            // 패턴 액션(242073)에서 연결 실행된 P2_M3은 전용 모드 종료 후
-            // 242074~242076 결과 액션으로 복귀해야 하므로 현재 패턴 진행 위치를 보존한다.
-            // 비연결 테스트 실행만 기존처럼 보스 패턴 진행 상태를 초기화한다.
             const rt = gameState.specialModeObjectDefenseRuntime || null;
-            const preservePatternFlow = !!(rt && rt.isPatternLinked);
-            if (!preservePatternFlow) {
-                boss.boss.activePattern = null;
-                boss.boss.currentActionIndex = -1;
-                boss.boss.action = null;
-                boss.boss.noPatternWaitTimer = Math.max(boss.boss.noPatternWaitTimer || 0, 0.5);
-            }
-            boss.boss.actionMove = null;
-            boss.boss.previewDashPath = null;
-            boss.boss.currentDashPath = null;
-            boss.state = 'IDLE';
-            boss.timer = 0;
-            boss.kbVx = 0;
-            boss.kbVy = 0;
+            if (!(rt && rt.isPatternLinked)) { boss.boss.activePattern = null; boss.boss.currentActionIndex = -1; boss.boss.action = null; boss.boss.noPatternWaitTimer = Math.max(boss.boss.noPatternWaitTimer || 0, 0.5); }
+            boss.boss.actionMove = null; boss.boss.previewDashPath = null; boss.boss.currentDashPath = null;
+            boss.state = 'IDLE'; boss.timer = 0; boss.kbVx = 0; boss.kbVy = 0;
         }
         const p = gameState.player || null;
-        if (p) {
-            p.state = 'Idle';
-            p.prevState = 'Idle';
-            p.atkTimer = 0;
-            p.kbVx = 0;
-            p.kbVy = 0;
-            p.vz = 0;
-            p.z = 0;
-            p.isGrounded = true;
-            p.guardTimer = 0;
-            p.isRunning = false;
-        }
-    },
-
-    isKeyPressed(rt, code, keys) {
-        return !!(keys && keys[code]) && !rt.inputPrev[code];
-    },
-
-    isJumpPressed(rt, keys, gameState) {
-        const jumpKey = gameState && gameState.jumpKeyEngine ? gameState.jumpKeyEngine : 'KeyC';
-        return this.isKeyPressed(rt, jumpKey, keys) || this.isKeyPressed(rt, 'Space', keys) || this.isKeyPressed(rt, 'ArrowUp', keys);
-    },
-
-    handleInput(gameState, rt, dt) {
-        const keys = gameState.keys || {};
-        const p = rt.player;
-        const playerData = rt.playerData || {};
-        const laneMoveTime = Math.max(0.01, this.num(playerData.Lane_Move_Time, 0.1));
-
-        if (this.isKeyPressed(rt, 'ArrowLeft', keys)) {
-            this.moveLane(rt, Math.max(0, p.lane - 1), laneMoveTime);
-        }
-        if (this.isKeyPressed(rt, 'ArrowRight', keys)) {
-            this.moveLane(rt, Math.min(2, p.lane + 1), laneMoveTime);
-        }
-        if (this.isJumpPressed(rt, keys, gameState) && p.grounded) {
-            p.vy = -Math.max(100, this.num(playerData.Jump_Power, 500));
-            p.grounded = false;
-            p.jumpFlashTimer = 0.18;
-        }
-
-        p.attackCooldown = Math.max(0, p.attackCooldown - dt);
-        p.skillCooldown = Math.max(0, p.skillCooldown - dt);
-        p.skillCastTimer = Math.max(0, (p.skillCastTimer || 0) - dt);
-        if (p.skillCastPending && p.skillCastTimer <= 0) {
-            p.skillCastPending = false;
-            this.playerSkill(gameState, rt);
-        }
-        p.attackFlashTimer = Math.max(0, p.attackFlashTimer - dt);
-        p.guardFlashTimer = Math.max(0, p.guardFlashTimer - dt);
-        p.guardContactTimer = Math.max(0, p.guardContactTimer - dt);
-        p.skillFlashTimer = Math.max(0, p.skillFlashTimer - dt);
-        p.damageFlashTimer = Math.max(0, p.damageFlashTimer - dt);
-        p.jumpFlashTimer = Math.max(0, p.jumpFlashTimer - dt);
-
-        if (p.moveTimer > 0) {
-            p.moveTimer = Math.max(0, p.moveTimer - dt);
-            const t = 1 - p.moveTimer / laneMoveTime;
-            const eased = t * t * (3 - 2 * t);
-            p.visualLane = p.moveFromLane + (p.moveToLane - p.moveFromLane) * eased;
-        } else {
-            p.visualLane = p.lane;
-        }
-
-        this.updatePlayerJump(rt, dt);
-
-        const guardHeld = !!keys.KeyD;
-        if (guardHeld && p.guardGauge > 0) {
-            p.isGuarding = true;
-            const holdCost = Math.max(0, this.num(playerData.Guard_Gauge_Hold_Cost_Per_Sec, this.num(playerData.Guard_Cost_Per_Sec, 10))) * dt;
-            p.guardGauge = Math.max(0, p.guardGauge - holdCost);
-            p.guardRegenDelayTimer = Math.max(p.guardRegenDelayTimer, this.num(playerData.Guard_Regen_Delay, 0.2));
-            p.guardFlashTimer = Math.max(p.guardFlashTimer, 0.06);
-        } else {
-            p.isGuarding = false;
-            p.guardRegenDelayTimer = Math.max(0, p.guardRegenDelayTimer - dt);
-            if (p.guardRegenDelayTimer <= 0) {
-                p.guardGauge = Math.min(p.guardGaugeMax, p.guardGauge + Math.max(0, this.num(playerData.Guard_Gauge_Regen_Per_Sec, 20)) * dt);
-            }
-        }
-
-        if (keys.KeyX && p.attackCooldown <= 0) {
-            this.executePlayerAttack(gameState, rt);
-            p.attackCooldown = Math.max(0.03, this.num(playerData.ATK_Delay, 0.15));
-            p.attackFlashTimer = 0.12;
-        }
-
-        if (this.isKeyPressed(rt, 'KeyA', keys) && p.skillCooldown <= 0 && !p.skillCastPending) {
-            const castTime = Math.max(0, this.num(playerData.Skill_Cast_Time, 0.1));
-            p.skillCooldown = Math.max(0.1, this.num(playerData.Skill_Cooldown, 8));
-            p.skillFlashTimer = Math.max(0.16, castTime);
-            p.skillCastMax = castTime;
-            if (castTime > 0) {
-                p.skillCastPending = true;
-                p.skillCastTimer = castTime;
-            } else {
-                this.playerSkill(gameState, rt);
-            }
-        }
-
-        rt.inputPrev = { ...keys };
-    },
-
-    updatePlayerJump(rt, dt) {
-        const p = rt.player;
-        if (!p) return;
-        const v = rt.virtual || this.VIRTUAL;
-        if (!p.grounded || Math.abs(p.vy || 0) > 0.01) {
-            p.vy += v.playerGravity * dt;
-            p.y += p.vy * dt;
-            if (p.y >= v.playerGroundY) {
-                p.y = v.playerGroundY;
-                p.vy = 0;
-                p.grounded = true;
-            } else {
-                p.grounded = false;
-            }
-        } else {
-            p.y = v.playerGroundY;
-            p.vy = 0;
-            p.grounded = true;
-        }
+        if (p) { p.state='Idle'; p.prevState='Idle'; p.atkTimer=0; p.kbVx=0; p.kbVy=0; p.vz=0; p.z=0; p.isGrounded=true; p.guardTimer=0; p.isRunning=false; }
     },
 
     moveLane(rt, lane, moveTime) {
         const p = rt.player;
         if (!p || lane === p.lane) return;
         p.moveFromLane = Number.isFinite(parseFloat(p.visualLane)) ? parseFloat(p.visualLane) : p.lane;
-        p.moveToLane = lane;
-        p.lane = lane;
-        p.moveTimer = moveTime;
+        p.moveToLane = lane; p.lane = lane; p.moveTimer = moveTime;
     },
 
-    pickLanesForWave(rt, wave) {
-        const type = String(wave && wave.Lane_Select_Type || 'RANDOM_SINGLE').trim().toUpperCase();
-        const value = String(wave && wave.Lane_Value || '').trim().toUpperCase();
-        if (type === 'ALL') return [0, 1, 2];
-        if (type === 'PLAYER_LANE') return [rt.player.lane];
-        if (type === 'FIXED' && value) return this.parseLaneValue(value);
-        if (type === 'SEQUENCE' && value) {
-            const seq = value.split('>').map(v => this.laneIndex(v, 1));
-            const idx = rt.waveState ? Math.max(0, (rt.waveState.spawnDone || 0) % Math.max(1, seq.length)) : 0;
-            return [seq[idx]];
-        }
-
-        const isRandom = type === 'RANDOM_SINGLE' || type === 'RANDOM_DOUBLE_ADJACENT' || type === 'RANDOM_DOUBLE_ANY';
-        const ws = rt && rt.waveState ? rt.waveState : null;
-        const allowUsedLane = this.bool(wave && wave.Use_Same_Lane);
-        const used = new Set(ws && Array.isArray(ws.usedLanes) ? ws.usedLanes : []);
-        const allSingle = [0, 1, 2];
-        const resetUsed = () => {
-            if (ws) ws.usedLanes = [];
-            used.clear();
-        };
-        const record = (lanes) => {
-            if (isRandom && ws) {
-                const merged = new Set(Array.isArray(ws.usedLanes) ? ws.usedLanes : []);
-                (lanes || []).forEach(lane => merged.add(lane));
-                ws.usedLanes = [...merged];
-            }
-            return lanes;
-        };
-
-        if (type === 'RANDOM_DOUBLE_ADJACENT' || type === 'RANDOM_DOUBLE_ANY') {
-            const allCombos = type === 'RANDOM_DOUBLE_ADJACENT'
-                ? [[0, 1], [1, 2]]
-                : [[0, 1], [1, 2], [0, 2]];
-            let candidates = allowUsedLane ? allCombos : allCombos.filter(combo => combo.every(lane => !used.has(lane)));
-            if (!candidates.length) {
-                resetUsed();
-                candidates = allCombos;
-            }
-            return record((candidates[Math.floor(Math.random() * candidates.length)] || allCombos[0]).slice());
-        }
-
-        let candidates = allowUsedLane ? allSingle : allSingle.filter(lane => !used.has(lane));
-        if (!candidates.length) {
-            resetUsed();
-            candidates = allSingle;
-        }
-        return record([candidates[Math.floor(Math.random() * candidates.length)] ?? 1]);
+    updatePlayerJump(rt, dt) {
+        const p = rt.player; if (!p || p.grounded) return;
+        const v = rt.virtual || this.DEFAULT_VIRTUAL;
+        p.vy += Math.max(0, this.num(p.gravity, 1200)) * dt;
+        p.y += p.vy * dt;
+        if (p.y >= v.playerGroundY) { p.y = v.playerGroundY; p.vy = 0; p.grounded = true; p.gravity = 0; }
     },
 
-    parseLaneValue(value) {
-        const raw = String(value || '').trim();
-        if (!raw) return [1];
-        const sep = raw.indexOf('>') >= 0 ? '>' : ',';
-        const lanes = raw.split(sep).map(v => this.laneIndex(v, 1));
-        return [...new Set(lanes)].filter(v => v >= 0 && v <= 2);
+    handleInput(gameState, rt, dt) {
+        const keys = gameState.keys || {}; const p = rt.player;
+        const move = rt.moveAction; const jump = rt.jumpAction; const attack = rt.attackAction; const guard = rt.guardAction; const skill = rt.skillAction;
+        const moveTime = Math.max(0.01, this.num(move && move.Action_Anim_Duration, 0.1));
+        if (move && String(move.Move_Type || '').trim().toUpperCase() === 'THREE_LINE') {
+            if (this.isKeyPressed(rt,'ArrowLeft',keys)) this.moveLane(rt,Math.max(0,p.lane-1),moveTime);
+            if (this.isKeyPressed(rt,'ArrowRight',keys)) this.moveLane(rt,Math.min(2,p.lane+1),moveTime);
+        }
+        const jumpKey = this.getActionKey(jump);
+        if (jump && jumpKey && this.isKeyPressed(rt,jumpKey,keys) && p.grounded) {
+            p.vy = -Math.max(100,this.num(jump.Jump_Power,500)); p.gravity = Math.max(0,this.num(jump.Action_Gravity,1200)); p.grounded=false; p.jumpFlashTimer=0.18;
+        }
+        p.attackCooldown=Math.max(0,p.attackCooldown-dt); p.skillCooldown=Math.max(0,p.skillCooldown-dt); p.skillCastTimer=Math.max(0,(p.skillCastTimer||0)-dt);
+        p.guardCooldownTimer=Math.max(0,(p.guardCooldownTimer||0)-dt);
+        if (p.skillCastPending && p.skillCastTimer<=0) { p.skillCastPending=false; this.playerSkill(gameState,rt); }
+        p.attackFlashTimer=Math.max(0,p.attackFlashTimer-dt); p.guardFlashTimer=Math.max(0,p.guardFlashTimer-dt); p.guardContactTimer=Math.max(0,p.guardContactTimer-dt); p.skillFlashTimer=Math.max(0,p.skillFlashTimer-dt); p.damageFlashTimer=Math.max(0,p.damageFlashTimer-dt); p.jumpFlashTimer=Math.max(0,p.jumpFlashTimer-dt);
+        if (p.moveTimer>0) { p.moveTimer=Math.max(0,p.moveTimer-dt); const t=1-p.moveTimer/moveTime; const eased=t*t*(3-2*t); p.visualLane=p.moveFromLane+(p.moveToLane-p.moveFromLane)*eased; } else p.visualLane=p.lane;
+        this.updatePlayerJump(rt,dt);
+
+        const guardKey=this.getActionKey(guard); const guardHeld=!!(guardKey&&keys[guardKey]);
+        if (p.isGuarding && !guardHeld) { p.isGuarding=false; p.guardTimer=0; }
+        if (guard && guardHeld && !p.isGuarding && p.guardCooldownTimer<=0) {
+            p.isGuarding=true; p.guardMaxTimer=Math.max(0.15,this.num(guard.Guard_Max_Hold_Time,1.5)); p.guardTimer=p.guardMaxTimer; p.guardCooldownMax=Math.max(0,this.num(guard.Guard_Recover_Time,1)); p.guardFlashTimer=0.08;
+        }
+        if (p.isGuarding && guardHeld) {
+            p.guardTimer=Math.max(0,p.guardTimer-dt); p.guardFlashTimer=Math.max(p.guardFlashTimer,0.06);
+            if (p.guardTimer<=0) { p.isGuarding=false; p.guardCooldownTimer=p.guardCooldownMax; }
+        }
+
+        const attackKey=this.getActionKey(attack); const attackHeld=!!(attackKey&&keys[attackKey]);
+        if (attack && attackHeld && p.attackCooldown<=0) {
+            this.playerAttack(gameState,rt); p.attackCooldown=Math.max(0.03,this.num(attack.Cooltime,0.15)); p.attackFlashTimer=0.14;
+        }
+        const skillKey=this.getActionKey(skill); const skillTriggered=skillKey && (String(skill&&skill.Input_Trigger_Type||'').trim().toUpperCase()==='KEY_HOLD' ? !!keys[skillKey] : this.isKeyPressed(rt,skillKey,keys));
+        if (skill && skillTriggered && p.skillCooldown<=0 && !p.skillCastPending) {
+            p.skillCooldown=Math.max(0,this.num(skill.Cooltime,8)); p.skillCooldownMax=Math.max(0.01,p.skillCooldown||this.num(skill.Cooltime,8));
+            const cast=Math.max(0,this.num(skill.Action_Anim_Duration,0.1)); p.skillFlashTimer=0.18;
+            if (cast>0) { p.skillCastPending=true; p.skillCastTimer=cast; p.skillCastMax=cast; } else this.playerSkill(gameState,rt);
+        }
+        rt.inputPrev={...keys};
     },
 
-    startNextWave(rt) {
-        rt.waveIndex += 1;
-        if (rt.waveIndex >= rt.waves.length) {
-            rt.phase = 'COMPLETE';
-            rt.endingTimer = 0.5;
-            return;
-        }
-        const wave = rt.waves[rt.waveIndex];
-        const waveId = String(wave && wave.Wave_ID || '').trim();
-        const spawnList = (rt.waveSpawnLookup && rt.waveSpawnLookup[waveId] ? rt.waveSpawnLookup[waveId] : []).slice();
-
-        if (spawnList.length > 0) {
-            rt.waveState = {
-                wave,
-                spawnList,
-                spawnIndex: 0,
-                spawnRepeatDone: 0,
-                spawnDone: 0,
-                spawnTimer: 0,
-                timer: Math.max(0, this.num(wave.Wave_Start_Delay, this.num(wave.Start_Delay, 0.5))),
-                nextDelay: Math.max(0, this.num(wave.Next_Wave_Delay, 0.8)),
-                savedLanesBySpawn: {},
-                usedLanes: [],
-                phase: 'START_DELAY'
-            };
-        } else {
-            // 구버전/누락 데이터 fallback: Wave_info 1행을 직접 스폰 정보로 사용한다.
-            const sameLane = this.bool(wave.Use_Same_Lane);
-            rt.waveState = {
-                wave,
-                spawnList: null,
-                timer: Math.max(0, this.num(wave.Wave_Start_Delay, this.num(wave.Start_Delay, 0.5))),
-                spawnTimer: 0,
-                spawnDone: 0,
-                spawnCount: Math.max(1, Math.floor(this.num(wave.Spawn_Count, 1))),
-                interval: Math.max(0.05, this.num(wave.Spawn_Interval, 0.6)),
-                nextDelay: Math.max(0, this.num(wave.Next_Wave_Delay, 0.8)),
-                savedLanes: sameLane ? this.pickLanesForWave(rt, wave) : null,
-                phase: 'START_DELAY'
-            };
-        }
-        // step216: 웨이브 알림 텍스트는 제거하고, 하단 HUD의 Wave 표시만 사용한다.
-        rt.message = '';
-        rt.messageTimer = 0;
-        rt.resultMessage = false;
+    lanesFromPositionGroup(group) {
+        const raw=String(group||'').trim().toUpperCase();
+        if (raw==='THREE_LINE_CENTER') return [1];
+        if (raw==='THREE_LINE_CENTER_RIGHT') return [1,2];
+        if (raw==='THREE_LINE_LEFT_CENTER') return [0,1];
+        if (raw==='THREE_LINE_ALL') return [0,1,2];
+        return [1];
     },
 
-    updateWave(gameState, rt, dt) {
-        if (!rt.waveState) this.startNextWave(rt);
-        const ws = rt.waveState;
-        if (!ws) return;
-
-        if (ws.phase === 'START_DELAY') {
-            ws.timer -= dt;
-            if (ws.timer <= 0) {
-                ws.phase = 'SPAWNING';
-                ws.spawnTimer = 0;
-            }
-            return;
+    pickLanesForAction(rt, action) {
+        const placement=String(action&&action.Action_Position_Placement_Type||'FIXED').trim().toUpperCase();
+        const base=this.lanesFromPositionGroup(action&&action.Action_Position_Group);
+        if (placement==='FIXED') return base.slice();
+        const allowRepeat=this.bool(action&&action.Allow_Repeat_Position);
+        const used=new Set(Array.isArray(rt.usedLanes)?rt.usedLanes:[]);
+        const record=(lanes)=>{ if (!allowRepeat) { const merged=new Set(rt.usedLanes||[]); lanes.forEach(v=>merged.add(v)); rt.usedLanes=[...merged]; } return lanes; };
+        if (placement==='RANDOM_DOUBLE_ADJACENT') {
+            const combos=[[0,1],[1,2]].filter(c=>c.every(v=>base.includes(v)));
+            let candidates=allowRepeat?combos:combos.filter(c=>c.every(v=>!used.has(v)));
+            if (!candidates.length) { rt.usedLanes=[]; candidates=combos; }
+            return record((candidates[Math.floor(Math.random()*Math.max(1,candidates.length))]||combos[0]||[0,1]).slice());
         }
-
-        if (ws.phase === 'SPAWNING') {
-            ws.spawnTimer -= dt;
-            if (ws.spawnList && ws.spawnList.length > 0) {
-                if (ws.spawnIndex < ws.spawnList.length && ws.spawnTimer <= 0) {
-                    const spawn = ws.spawnList[ws.spawnIndex];
-                    const repeatCount = Math.max(1, Math.floor(this.num(spawn.Spawn_Count, 1)));
-                    const lanes = this.pickLanesForWave(rt, spawn);
-                    this.spawnSlashForWave(rt, { ...ws.wave, ...spawn, Wave_ID: ws.wave.Wave_ID, Wave_Order: ws.wave.Wave_Order, Wave_Name: ws.wave.Wave_Name }, lanes);
-                    ws.spawnDone += 1;
-                    ws.spawnRepeatDone += 1;
-                    if (ws.spawnRepeatDone < repeatCount) {
-                        ws.spawnTimer = Math.max(0.02, this.num(spawn.Spawn_Interval, this.num(spawn.Next_Spawn_Delay, 0.5)));
-                    } else {
-                        const nextDelay = this.num(spawn.Next_Spawn_Delay, 0);
-                        ws.spawnRepeatDone = 0;
-                        ws.spawnIndex += 1;
-                        ws.spawnTimer = Math.max(0, nextDelay);
-                    }
-                }
-                if (ws.spawnIndex >= ws.spawnList.length && !rt.activeSlashes.some(s => s && s.active)) {
-                    ws.phase = 'NEXT_DELAY';
-                    ws.timer = ws.nextDelay;
-                }
-                return;
-            }
-
-            // 구버전 fallback
-            if (ws.spawnDone < ws.spawnCount && ws.spawnTimer <= 0) {
-                this.spawnSlashForWave(rt, ws.wave, ws.savedLanes || this.pickLanesForWave(rt, ws.wave));
-                ws.spawnDone += 1;
-                ws.spawnTimer = ws.interval;
-            }
-            if (ws.spawnDone >= ws.spawnCount && !rt.activeSlashes.some(s => s && s.active)) {
-                ws.phase = 'NEXT_DELAY';
-                ws.timer = ws.nextDelay;
-            }
-            return;
+        if (placement==='RANDOM_SELECT_ONE') {
+            let candidates=allowRepeat?base:base.filter(v=>!used.has(v));
+            if (!candidates.length) { rt.usedLanes=[]; candidates=base; }
+            return record([candidates[Math.floor(Math.random()*Math.max(1,candidates.length))] ?? 1]);
         }
-
-        if (ws.phase === 'NEXT_DELAY') {
-            ws.timer -= dt;
-            if (ws.timer <= 0) {
-                rt.waveState = null;
-                this.startNextWave(rt);
-            }
-        }
+        return base.slice();
     },
 
-    getSlashVisualHeight(data, lanes, isGiant, isFinal) {
-        const dataHeight = this.num(data && data.Object_Hitbox_Size_Y, 0);
-        if (dataHeight > 0) return dataHeight;
-        if (isFinal) return 118;
-        if (isGiant) return 150;
-        if ((lanes || []).length >= 2) return 112;
-        const type = String(data && data.Slash_Render_Type || '').toUpperCase();
-        if (type.indexOf('X_SLASH') >= 0) return 94;
-        return 78;
-    },
-
-    spawnSlashForWave(rt, wave, lanes) {
-        const slashId = String(wave.Slash_Type_ID || '').trim();
-        const data = rt.slashLookup[slashId];
-        if (!data) return;
-        const laneList = Array.isArray(lanes) && lanes.length ? lanes.slice() : [1];
-        const laneSize = Math.max(1, Math.min(3, Math.floor(this.num(data.Lane_Size, laneList.length || 1))));
-        let finalLanes = laneList;
-        if (laneSize === 3) finalLanes = [0, 1, 2];
-        else if (laneSize === 2 && finalLanes.length < 2) finalLanes = finalLanes[0] <= 0 ? [0, 1] : [1, 2];
-        finalLanes = [...new Set(finalLanes)].sort((a, b) => a - b);
-
-        const cond = String(data.Destroy_Condition_Type || '').trim().toUpperCase();
-        const laneHp = {};
-        if (cond === 'PER_LANE_HIT_COUNT' || cond === 'PER_PART_HIT_COUNT') {
-            const perLane = Math.max(1, Math.floor(this.num(data.HP_Per_Lane, 1)));
-            finalLanes.forEach(lane => { laneHp[lane] = perLane; });
+    spawnObjectFromAction(gameState, rt, action) {
+        const objectId=String(action&&action.Spawn_Object_ID||action&&action.Object_Spawn||'').trim();
+        const data=(gameState.DB_BOSS_PATTERN_OBJECT&&gameState.DB_BOSS_PATTERN_OBJECT[objectId])||null;
+        if (!data) return false;
+        const lanes=this.pickLanesForAction(rt,action); const type=String(data.Object_Type||'').trim().toUpperCase();
+        const isFinal=type==='SPECIAL_MODE_FINAL_ATTACK'; const isGiant=type==='GIANT_SWORD_WAVE'; const isMulti=type==='MULTI_PART_ATTACK_OBJECT';
+        const rate=Math.max(0.01,this.num(action.Action_Move_Speed_Rate,1));
+        const objectMoveType=String(data.Object_Move_Type||'').trim().toUpperCase();
+        const initSpeed=Math.max(10,this.num(data.Object_Move_Speed,150)*rate);
+        const gravity=objectMoveType==='GRAVITY'?Math.max(0,this.num(data.Object_Gravity,0)*rate):0;
+        const maxSpeed=Math.max(initSpeed,this.num(data.Object_Move_Max_Speed,initSpeed+gravity*2)*rate);
+        const totalHp=Math.max(1,Math.floor(this.num(data.Object_HP,1)));
+        const laneHp={};
+        if (isMulti) {
+            const count=Math.max(1,lanes.length); const base=Math.floor(totalHp/count); let rem=totalHp-base*count;
+            lanes.forEach(l=>{ laneHp[l]=base+(rem>0?1:0); if(rem>0) rem--; });
         }
-
-        const speedRate = 1 / Math.max(0.1, this.num(wave.Fall_Time_Rate, 1));
-        const renderType = String(data.Slash_Render_Type || '').trim().toUpperCase();
-        // Special Mode 공용 데이터에서는 최종 입력 대응 오브젝트를 INPUT_RESPONSE로 정의한다.
-        // 구버전 FINAL_COUNTER도 호환하여 기존 데이터/테스트 경로를 안전하게 유지한다.
-        const isFinal = cond === 'FINAL_COUNTER' || cond === 'INPUT_RESPONSE';
-        const isGiant = renderType.indexOf('GIANT') >= 0 || String(wave.Wave_Type || '').toUpperCase().indexOf('GIANT') >= 0;
-        const height = this.getSlashVisualHeight(data, finalLanes, isGiant, isFinal);
-        const initSpeed = Math.max(10, this.num(wave.Initial_Fall_Speed, this.num(data.Initial_Fall_Speed, (this.VIRTUAL.floorY - this.VIRTUAL.spawnY) / Math.max(0.3, this.num(data.Fall_Time, 2))))) * speedRate;
-        const gravity = Math.max(0, this.num(wave.Gravity, this.num(data.Gravity, 0))) * speedRate;
-        const maxSpeed = Math.max(initSpeed, this.num(wave.Max_Fall_Speed, this.num(data.Max_Fall_Speed, initSpeed + gravity * 2))) * speedRate;
-
+        const height=Math.max(40,this.num(data.Hitbox_Size_Y,isFinal?118:(isGiant?150:(lanes.length>=2?112:80))));
         rt.activeSlashes.push({
-            uid: rt.slashSeq++,
-            active: true,
-            waveId: wave.Wave_ID,
-            waveOrder: wave.Wave_Order,
-            spawnOrder: wave.Spawn_Order,
-            waveSpawnName: wave.Wave_Spawn_Name || '',
-            waveType: String(wave.Wave_Type || '').trim().toUpperCase(),
-            slashId,
-            data,
-            lanes: finalLanes,
-            state: 'WARNING',
-            warningRenderType: String(data.Warning_Render_Type || '').trim().toUpperCase(),
-            warningTimer: Math.max(0.05, this.num(wave.Warning_Time, 1)),
-            warningMax: Math.max(0.05, this.num(wave.Warning_Time, 1)),
-            y: this.VIRTUAL.spawnY,
-            vy: initSpeed,
-            gravity,
-            maxFallSpeed: maxSpeed,
-            height,
-            hp: Math.max(1, Math.floor(this.num(data.Slash_HP, 1))),
-            maxHp: Math.max(1, Math.floor(this.num(data.Slash_HP, 1))),
-            laneHp,
-            hitFlashTimer: 0,
-            breakFlashTimer: 0,
-            guardCooldown: 0,
-            guardFlashTimer: 0,
-            isFinal,
-            isGiant
+            uid:rt.slashSeq++, active:true, data, action, lanes, state:'WARNING', y:(rt.virtual||this.DEFAULT_VIRTUAL).spawnY,
+            height, warningTimer:Math.max(0.05,this.num(data.Warning_Duration,1)), warningMax:Math.max(0.05,this.num(data.Warning_Duration,1)), warningRenderType:data.Warning_Render_Type||'',
+            vy:initSpeed, gravity, maxFallSpeed:maxSpeed, hp:totalHp, maxHp:totalHp, laneHp, isMulti, isGiant, isFinal,
+            hitFlashTimer:0, breakFlashTimer:0, guardCooldown:0, guardFlashTimer:0, stackContactTimer:0, runtimeBoss:rt.boss||null
         });
+        return true;
     },
 
-    updateSlashes(gameState, rt, dt) {
-        const p = rt.player;
-        const v = rt.virtual || this.VIRTUAL;
-        for (const slash of rt.activeSlashes) {
-            if (!slash || !slash.active) continue;
-            slash.hitFlashTimer = Math.max(0, (slash.hitFlashTimer || 0) - dt);
-            slash.breakFlashTimer = Math.max(0, (slash.breakFlashTimer || 0) - dt);
-            slash.guardCooldown = Math.max(0, (slash.guardCooldown || 0) - dt);
-            slash.guardFlashTimer = Math.max(0, (slash.guardFlashTimer || 0) - dt);
-            slash.stackContactTimer = Math.max(0, (slash.stackContactTimer || 0) - dt);
-            if (slash.state === 'WARNING') {
-                slash.warningTimer -= dt;
-                if (slash.warningTimer <= 0) slash.state = 'FALLING';
-                continue;
-            }
-
-            slash.vy = Math.min(Math.max(10, slash.maxFallSpeed || 999), (slash.vy || 0) + (slash.gravity || 0) * dt);
-            slash.y += slash.vy * dt;
-            if ((slash.y || 0) < v.spawnY) {
-                slash.y = v.spawnY;
-                slash.vy = Math.max(0, slash.vy || 0);
-            }
-
-            this.tryGuardSlash(rt, slash);
-
-            if (slash.isFinal && this.matchesFinalResponseCondition(rt, 'GUARD') && this.isSlashInPlayerRange(rt, slash, p.lane, 'guard') && p.isGuarding) {
-                this.finish(gameState, String(slash.data.Guard_Result_Type || 'MODE_GUARD_SUCCESS').trim().toUpperCase(), '최종 낙하 공격 가드 성공');
-                return;
-            }
-        }
-
-        this.resolveSlashStack(rt);
-
-        for (const slash of rt.activeSlashes) {
-            if (!slash || !slash.active || slash.state !== 'FALLING') continue;
-            const bottom = (slash.y || 0) + (slash.height || 0);
-            if (bottom >= v.floorY) {
-                this.resolveSlashImpact(gameState, rt, slash);
-                if (!this.isActive(gameState)) return;
-            }
-        }
-        rt.activeSlashes = rt.activeSlashes.filter(s => s && s.active);
+    advanceSequence(rt) {
+        rt.sequenceIndex += 1; rt.sequenceTimer=0; rt.sequenceActionStarted=false; rt.sequenceConditionMet=false;
+        if (rt.sequenceIndex>=rt.sequenceActions.length) { rt.sequenceComplete=true; }
     },
 
-    resolveSlashStack(rt) {
-        const falling = (rt.activeSlashes || [])
-            .filter(s => s && s.active && s.state === 'FALLING')
-            .sort((a, b) => ((b.y || 0) + (b.height || 0)) - ((a.y || 0) + (a.height || 0)));
-        const stackTopByLane = [null, null, null];
-        const gap = 3;
-        for (const slash of falling) {
-            const lanes = slash.lanes && slash.lanes.length ? slash.lanes : [1];
-            const supports = lanes
-                .map(l => stackTopByLane[l])
-                .filter(v => Number.isFinite(v));
-            if (supports.length > 0) {
-                const supportTop = Math.min.apply(null, supports);
-                const desiredBottom = supportTop - gap;
-                const currentBottom = (slash.y || 0) + (slash.height || 0);
-                if (currentBottom > desiredBottom) {
-                    slash.y = desiredBottom - (slash.height || 0);
-                    slash.vy = Math.min(slash.vy || 0, 18);
-                    slash.stackContactTimer = 0.12;
+    updateSequence(gameState, rt, dt) {
+        if (rt.sequenceComplete) {
+            if (!(rt.activeSlashes||[]).some(o=>o&&o.active)) {
+                rt.unresolvedTimer += dt;
+                if (rt.unresolvedTimer>=0.5 && !rt.result) this.finish(gameState,'FAIL','스페셜 모드 결과 미확정');
+            } else rt.unresolvedTimer=0;
+            return;
+        }
+        let loop=0;
+        while (loop++<12 && !rt.sequenceComplete) {
+            const action=rt.sequenceActions[rt.sequenceIndex]; if(!action){this.advanceSequence(rt);continue;}
+            const type=String(action.Action_Type||'').trim().toUpperCase(); const cond=String(action.Action_Condition_Type||'NONE').trim().toUpperCase();
+            if (type==='WAIT') {
+                if (cond==='ACTIVE_OBJECT_CLEAR' && !rt.sequenceConditionMet) {
+                    if ((rt.activeSlashes||[]).some(o=>o&&o.active)) return;
+                    rt.sequenceConditionMet=true; rt.usedLanes=[]; rt.sequenceTimer=Math.max(0,this.num(action.Action_Anim_Duration,0));
+                } else if (!rt.sequenceActionStarted && cond!=='ACTIVE_OBJECT_CLEAR') {
+                    rt.sequenceActionStarted=true; rt.sequenceTimer=Math.max(0,this.num(action.Action_Anim_Duration,0));
                 }
+                rt.sequenceTimer=Math.max(0,rt.sequenceTimer-dt);
+                if (rt.sequenceTimer>0) return;
+                this.advanceSequence(rt); continue;
             }
-            for (const lane of lanes) {
-                if (lane >= 0 && lane <= 2) {
-                    stackTopByLane[lane] = Math.min(stackTopByLane[lane] ?? Infinity, slash.y || 0);
-                }
+            if (type==='CAST_SPAWN_OBJECT') {
+                if (!rt.sequenceActionStarted) { rt.sequenceActionStarted=true; this.spawnObjectFromAction(gameState,rt,action); rt.sequenceTimer=Math.max(0,this.num(action.Action_Anim_Duration,0)); }
+                rt.sequenceTimer=Math.max(0,rt.sequenceTimer-dt);
+                if (rt.sequenceTimer>0) return;
+                this.advanceSequence(rt); continue;
             }
+            this.advanceSequence(rt);
         }
-    },
-
-    updateP2M3Effects(rt, dt) {
-        if (!rt) return;
-        rt.effects = (rt.effects || []).filter(e => {
-            if (!e) return false;
-            e.timer = Math.max(0, (e.timer || 0) - dt);
-            return e.timer > 0;
-        });
-    },
-
-    pushP2M3Effect(rt, type, x, y, options = {}) {
-        if (!rt) return;
-        if (!Array.isArray(rt.effects)) rt.effects = [];
-        rt.effects.push({
-            type,
-            effectType: options.effectType || '',
-            x: Number.isFinite(parseFloat(x)) ? parseFloat(x) : 0,
-            y: Number.isFinite(parseFloat(y)) ? parseFloat(y) : 0,
-            lane: options.lane,
-            lanes: options.lanes ? options.lanes.slice() : null,
-            size: options.size || 1,
-            color: options.color || '',
-            timer: options.timer || 0.28,
-            maxTimer: options.timer || 0.28,
-            isGiant: !!options.isGiant
-        });
     },
 
     getSlashCenterInfo(slash) {
-        const lanes = slash && slash.lanes && slash.lanes.length ? slash.lanes : [1];
-        const lane = lanes.reduce((sum, v) => sum + v, 0) / Math.max(1, lanes.length);
-        return {
-            lane,
-            y: (slash && slash.y || 0) + (slash && slash.height || 0) * 0.58,
-            lanes
-        };
+        const lanes=slash&&slash.lanes&&slash.lanes.length?slash.lanes:[1];
+        return { lane:lanes.reduce((s,v)=>s+v,0)/Math.max(1,lanes.length), y:(slash&&slash.y||0)+(slash&&slash.height||0)*0.58, lanes };
     },
 
-    tryGuardSlash(rt, slash) {
-        const p = rt.player;
-        if (!p || !p.isGuarding || !slash || !slash.active || slash.state !== 'FALLING') return false;
-        if (!this.bool(slash.data.Can_Guard_Push)) return false;
-        if (!this.isSlashInPlayerRange(rt, slash, p.lane, 'guard')) return false;
-        const costRate = Math.max(0, this.num(slash.data.Guard_Gauge_Cost_Rate, 1));
-        const hitCost = Math.max(0, this.num(rt.playerData.Guard_Gauge_Hit_Cost, 20)) * costRate;
-        if ((slash.guardCooldown || 0) > 0) return true;
-        if (p.guardGauge < hitCost) return false;
-        p.guardGauge = Math.max(0, p.guardGauge - hitCost);
-        p.guardRegenDelayTimer = Math.max(p.guardRegenDelayTimer, this.num(rt.playerData.Guard_Regen_Delay, 0.2));
-        const reboundSpeed = Math.max(0, this.num(slash.data.Guard_Rebound_Speed, 180));
-        const reboundDistance = Math.max(0, this.num(slash.data.Guard_Rebound_Distance, 24));
-        slash.vy = -reboundSpeed;
-        slash.y = Math.max((rt.virtual || this.VIRTUAL).spawnY, (slash.y || 0) - reboundDistance);
-        slash.guardCooldown = 0.16;
-        slash.guardFlashTimer = 0.22;
-        p.guardContactTimer = 0.18;
-        p.guardFlashTimer = Math.max(p.guardFlashTimer, 0.20);
-        const guardInfo = this.getSlashCenterInfo(slash);
-        this.pushP2M3Effect(rt, 'guardRebound', guardInfo.lane, (slash.y || 0) + (slash.height || 0), {
-            effectType: slash.data && slash.data.Hit_Effect_Type,
-            lanes: guardInfo.lanes,
-            size: slash.isGiant ? 1.45 : ((slash.lanes || []).length >= 2 ? 1.18 : 1),
-            timer: 0.30,
-            isGiant: slash.isGiant
-        });
-        // step216: 가드 반동 알림 텍스트 제거. 이펙트만 표시한다.
+    updateEffects(rt,dt) {
+        if (!rt) return;
+        rt.effects=(rt.effects||[]).filter(e=>{ if(!e)return false; e.timer=Math.max(0,(e.timer||0)-dt); return e.timer>0; });
+    },
+
+    pushEffect(rt,type,x,y,options={}) {
+        if(!rt)return; if(!Array.isArray(rt.effects))rt.effects=[];
+        rt.effects.push({type,effectType:options.effectType||'',x:Number.isFinite(parseFloat(x))?parseFloat(x):0,y:Number.isFinite(parseFloat(y))?parseFloat(y):0,lane:options.lane,lanes:options.lanes?options.lanes.slice():null,size:options.size||1,color:options.color||'',timer:options.timer||0.28,maxTimer:options.timer||0.28,isGiant:!!options.isGiant});
+    },
+
+    playerRangeInfo(rt,kind) {
+        const p=rt.player; const action=kind==='attack'?rt.attackAction:null;
+        const laneRange=kind==='attack'?Math.max(1,Math.floor(this.num(action&&action.ATK_Hitbox_Size_X,1))):1;
+        const yRange=kind==='attack'?Math.max(20,this.num(action&&action.ATK_Hitbox_Size_Y,150)):Math.max(80,this.num(rt.playerData&&rt.playerData.Body_Size_Z,120)*1.25);
+        const y=p&&p.y!==undefined?p.y:(rt.virtual||this.DEFAULT_VIRTUAL).playerGroundY;
+        return {laneRange,yRange,bottomY:y+22,topY:y-yRange};
+    },
+
+    laneInRange(playerLane,targetLane,tileRange){const radius=Math.max(0,Math.floor((Math.max(1,tileRange)-1)/2));return Math.abs((parseInt(targetLane)||0)-(parseInt(playerLane)||0))<=radius;},
+    isSlashInPlayerRange(rt,slash,lane,kind){if(!slash||!slash.active||slash.state!=='FALLING')return false;const range=this.playerRangeInfo(rt,kind);if(!slash.lanes||!slash.lanes.some(l=>this.laneInRange(lane,l,range.laneRange)))return false;const top=slash.y||0,bottom=top+(slash.height||0);return bottom>=range.topY&&top<=range.bottomY;},
+    findTargetSlash(rt,lane,kind='attack'){return (rt.activeSlashes||[]).filter(s=>s&&s.active&&s.state==='FALLING'&&this.isSlashInPlayerRange(rt,s,lane,kind)).sort((a,b)=>((b.y||0)+(b.height||0))-((a.y||0)+(a.height||0)))[0]||null;},
+
+    matchesFinalResponseCondition(rt, slash) {
+        const cond=String(slash&&slash.data&&slash.data.Object_Interact_Cond||'').trim().toUpperCase();
+        if (!cond || cond==='NONE') return true;
+        if (cond==='PLAYER_HAS_BUFF') return this.hasPlayerBuff(rt,slash.data.Object_Interact_Cond_Value);
+        return false;
+    },
+
+    canResolveSpecialModeResult(slash) {
+        return String(slash&&slash.data&&slash.data.Object_Interact_Result_Type||'').trim().toUpperCase()==='SPECIAL_MODE_RESULT';
+    },
+
+    playerAttack(gameState,rt) {
+        const target=this.findTargetSlash(rt,rt.player.lane,'attack'); if(!target)return false;
+        this.pushEffect(rt,'attackArc',rt.player.lane,rt.player.y||this.DEFAULT_VIRTUAL.playerGroundY,{timer:0.16,size:1});
+        if(target.isFinal){if(this.canResolveSpecialModeResult(target)&&this.matchesFinalResponseCondition(rt,target)){const buffKey=String(target.data&&target.data.Object_Interact_Cond_Value||'').trim();if(buffKey)this.consumePlayerBuff(rt,buffKey);this.finish(gameState,'MODE_ATK_SUCCESS','최종 공격 받아치기 성공');return true;}return false;}
+        this.damageSlash(gameState,rt,target,rt.player.lane,Math.max(1,this.num(rt.player.atk,1)),'ATTACK'); return true;
+    },
+
+    playerSkill(gameState,rt) {
+        if(!rt||!rt.player||!rt.skillAction)return false; if(!Array.isArray(rt.skillWaves))rt.skillWaves=[];
+        const p=rt.player,a=rt.skillAction; const range=Math.max(1,Math.floor(this.num(a.ATK_Projectile_Hitbox_Size_X,3))); const height=Math.max(80,this.num(a.ATK_Projectile_Hitbox_Size_Y,150)); const speed=Math.max(100,this.num(a.ATK_Projectile_Speed,1380));
+        let lanes=[]; if(range>=3)lanes=[0,1,2]; else if(range===2)lanes=p.lane===0?[0,1]:[p.lane-1,p.lane]; else lanes=[p.lane];
+        rt.skillWaves.push({uid:rt.skillWaveSeq++,active:true,lanes,y:(p.y||rt.virtual.playerGroundY)-32,prevY:(p.y||rt.virtual.playerGroundY)-32,vy:-speed,height,life:Math.max(0.1,this.num(a.ATK_Projectile_Duration,0.62)),maxLife:Math.max(0.1,this.num(a.ATK_Projectile_Duration,0.62)),hitMap:{},renderType:a.ATK_Projectile_Render_Type||''});
         return true;
     },
 
-    resolveSlashImpact(gameState, rt, slash) {
-        if (!slash || !slash.active) return;
-        if (slash.isFinal) {
-            this.finish(gameState, 'FAIL', rt.player.hasTemperedWill ? '최종 낙하 공격 대응 실패' : '연단된 칼날의 의지 없음');
-            return;
-        }
-        const rawDamage = Math.max(1, this.num(slash.data.Object_Damage, this.num(slash.data.Slash_Damage, 1)));
-        const damage = (typeof PlayerManager !== 'undefined' && PlayerManager.applyPresentationDamageRate)
-            ? PlayerManager.applyPresentationDamageRate(gameState, rawDamage)
-            : rawDamage;
-        const hpInvincible = !!(typeof PlayerManager !== 'undefined' && PlayerManager.isPracticeModeHpInvincible && PlayerManager.isPracticeModeHpInvincible(gameState));
-        if (!hpInvincible) rt.player.hp = Math.max(0, rt.player.hp - damage);
-        rt.player.damageFlashTimer = hpInvincible ? 0 : 0.28;
-        const impactInfo = this.getSlashCenterInfo(slash);
-        this.pushP2M3Effect(rt, 'floorImpact', impactInfo.lane, (rt.virtual || this.VIRTUAL).floorY, {
-            effectType: slash.data && slash.data.Break_Effect_Type,
-            lanes: impactInfo.lanes,
-            size: slash.isGiant ? 1.55 : ((slash.lanes || []).length >= 2 ? 1.2 : 1),
-            timer: 0.34,
-            isGiant: slash.isGiant
-        });
-        slash.active = false;
-        // step216: 방어 실패 과정 텍스트 제거. 바닥 충격/피해 이펙트만 표시한다.
-        if (rt.player.hp <= 0) {
-            this.finish(gameState, 'FAIL', '차원 방어전 HP 0');
-        }
-    },
-
-    playerRangeInfo(rt, kind) {
-        const p = rt.player;
-        const data = rt.playerData || {};
-        const tileKey = kind === 'guard' ? 'Guard_Range_Tile' : 'ATK_Range_Tile';
-        const yKey = kind === 'guard' ? 'Guard_Range_Y' : 'ATK_Range_Y';
-        return {
-            laneRange: Math.max(1, Math.floor(this.num(data[tileKey], 1))),
-            yRange: Math.max(20, this.num(data[yKey], 100)),
-            bottomY: (p && p.y !== undefined ? p.y : this.VIRTUAL.playerGroundY) + 22,
-            topY: (p && p.y !== undefined ? p.y : this.VIRTUAL.playerGroundY) - Math.max(20, this.num(data[yKey], 100))
-        };
-    },
-
-    laneInRange(playerLane, targetLane, tileRange) {
-        const radius = Math.max(0, Math.floor((Math.max(1, tileRange) - 1) / 2));
-        return Math.abs((parseInt(targetLane) || 0) - (parseInt(playerLane) || 0)) <= radius;
-    },
-
-    isSlashInPlayerRange(rt, slash, lane, kind) {
-        if (!slash || !slash.active || slash.state !== 'FALLING') return false;
-        if (!slash.lanes || !slash.lanes.some(l => this.laneInRange(lane, l, this.playerRangeInfo(rt, kind).laneRange))) return false;
-        const range = this.playerRangeInfo(rt, kind);
-        const top = slash.y || 0;
-        const bottom = top + (slash.height || 0);
-        return bottom >= range.topY && top <= range.bottomY;
-    },
-
-    findTargetSlash(rt, lane, kind = 'attack') {
-        const candidates = rt.activeSlashes
-            .filter(s => s && s.active && s.state === 'FALLING' && this.isSlashInPlayerRange(rt, s, lane, kind))
-            .sort((a, b) => ((b.y || 0) + (b.height || 0)) - ((a.y || 0) + (a.height || 0)));
-        return candidates[0] || null;
-    },
-
-    matchesFinalResponseCondition(rt, responseType) {
-        const response = String(responseType || '').trim().toUpperCase();
-        const hasEnergy = !!(rt && rt.player && rt.player.hasTemperedWill);
-        // 최종 검기는 사도의 기운을 보유한 상태에서 공격하면 완전 파훼,
-        // 가드하면 일반 파훼가 되는 P2_M3 고유 규칙이다.
-        return hasEnergy && (response === 'ATTACK' || response === 'GUARD');
-    },
-
-    executePlayerAttack(gameState, rt) {
-        const attackType = String(rt && rt.playerData && rt.playerData.ATK_Type || '').trim().toUpperCase();
-        switch (attackType) {
-            case 'MELEE':
-            case 'P2M3_MELEE_ATK':
-            case '':
-                return this.playerAttack(gameState, rt);
-            default:
-                // 미지원 타입은 기존 근접 공격을 fallback으로 사용해 전용 모드 진행이 막히지 않도록 한다.
-                return this.playerAttack(gameState, rt);
-        }
-    },
-
-    playerAttack(gameState, rt) {
-        const target = this.findTargetSlash(rt, rt.player.lane, 'attack');
-        if (!target) return false;
-        this.pushP2M3Effect(rt, 'attackArc', rt.player.lane, rt.player.y || this.VIRTUAL.playerGroundY, { timer: 0.16, size: 1 });
-        if (target.isFinal) {
-            if (this.matchesFinalResponseCondition(rt, 'ATTACK')) {
-                this.finish(gameState, String(target.data.ATK_Result_Type || 'MODE_ATK_SUCCESS').trim().toUpperCase(), '최종 낙하 공격 받아치기 성공');
-                return true;
+    updateSkillWaves(gameState,rt,dt) {
+        if(!rt||!Array.isArray(rt.skillWaves))return;
+        for(const wave of rt.skillWaves){if(!wave||!wave.active)continue;wave.life-=dt;wave.prevY=wave.y;wave.y+=(wave.vy||0)*dt;const waveTop=Math.min(wave.y,wave.prevY)-(wave.height||120),waveBottom=Math.max(wave.y,wave.prevY)+24;
+            for(const slash of(rt.activeSlashes||[])){if(!slash||!slash.active||slash.isFinal||slash.state==='WARNING')continue;if(wave.hitMap&&wave.hitMap[slash.uid])continue;if(!(slash.lanes||[1]).some(l=>(wave.lanes||[]).includes(l)))continue;const st=slash.y||0,sb=st+(slash.height||0);if(sb<waveTop||st>waveBottom)continue;if(wave.hitMap)wave.hitMap[slash.uid]=true;
+                const interact=String(slash.data.Object_Interact_Type||'').trim().toUpperCase(); const required=String(slash.data.Object_Interact_Value||'').trim(); const skillId=String(rt.skillAction.Action_ID||'').trim(); if(interact!=='PLAYER_ACTION_HIT'||(required&&required!==skillId))continue;
+                const info=this.getSlashCenterInfo(slash);this.pushEffect(rt,'skillWaveHit',info.lane,info.y,{effectType:slash.data.Hit_Effect_Type,lanes:info.lanes,size:slash.isGiant?1.25:((slash.lanes||[]).length>=2?1.1:1),timer:0.24,isGiant:slash.isGiant});
+                const effect=String(slash.data.Object_Interact_Effect||'').trim().toUpperCase(); if(effect==='OBJECT_REMOVE')this.destroySlash(gameState,rt,slash,'SKILL');else if(effect==='OBJECT_DAMAGE'){const dmg=Math.max(0,this.num(slash.data.Object_Interact_Effect_Value,1));if(dmg>0)this.damageSlash(gameState,rt,slash,rt.player.lane,dmg,'SKILL');}
             }
-            return false;
+            if(wave.life<=0||wave.y+(wave.height||120)<(rt.virtual||this.DEFAULT_VIRTUAL).warningTopY)wave.active=false;
         }
-        if (!this.bool(target.data.Can_Attack_Destroy)) return false;
-        this.damageSlash(gameState, rt, target, rt.player.lane, Math.max(1, this.num(rt.playerData.ATK, 1)), 'ATTACK');
-        return true;
+        rt.skillWaves=rt.skillWaves.filter(w=>w&&w.active);
     },
 
-    playerSkill(gameState, rt) {
-        if (!rt || !rt.player) return false;
-        if (!Array.isArray(rt.skillWaves)) rt.skillWaves = [];
-        const p = rt.player;
-        const data = rt.playerData || {};
-        const range = Math.max(1, Math.floor(this.num(data.Skill_Range_Tile, 3)));
-        const height = Math.max(120, this.num(data.Skill_Wave_Height, 150));
-        const speed = Math.max(700, this.num(data.Skill_Wave_Speed, 1380));
-        rt.skillWaves.push({
-            uid: rt.skillWaveSeq++,
-            active: true,
-            lanes: range >= 3 ? [0, 1, 2] : [p.lane],
-            y: (p.y || this.VIRTUAL.playerGroundY) - 18,
-            prevY: (p.y || this.VIRTUAL.playerGroundY) - 18,
-            vy: -speed,
-            height,
-            widthTile: range,
-            life: Math.max(0.28, this.num(data.Skill_Wave_Life, 0.62)),
-            maxLife: Math.max(0.28, this.num(data.Skill_Wave_Life, 0.62)),
-            hitMap: {},
-            castLane: p.lane
-        });
-        // step216: A스킬 사용 알림 텍스트 제거. 진행형 웨이브 이펙트만 표시한다.
-        return true;
+    tryGuardSlash(rt,slash,gameState) {
+        const p=rt.player;if(!p||!p.isGuarding||!slash||!slash.active||slash.state!=='FALLING')return false;
+        const guardDirection=String(rt.guardAction&&rt.guardAction.Guard_Direction||'').trim().toUpperCase();
+        if(guardDirection&&guardDirection!=='CASTER_UP')return false;
+        if(!this.isSlashInPlayerRange(rt,slash,p.lane,'guard'))return false;
+        const guardFlag=slash.data&&slash.data.ATK_Can_Guard;
+        if(guardFlag!==null&&guardFlag!==undefined&&String(guardFlag).trim()!==''&&!this.bool(guardFlag))return false;
+        if(slash.isFinal){if(this.canResolveSpecialModeResult(slash)&&this.matchesFinalResponseCondition(rt,slash)){const buffKey=String(slash.data&&slash.data.Object_Interact_Cond_Value||'').trim();if(buffKey)this.consumePlayerBuff(rt,buffKey);this.finish(gameState,'MODE_GUARD_SUCCESS','최종 공격 가드 성공');return true;}return false;}
+        if((slash.guardCooldown||0)>0)return true;
+        const baseSpeed=Math.max(0,this.num(rt.guardAction&&rt.guardAction.Guard_Push_Speed,200));const baseDist=Math.max(0,this.num(rt.guardAction&&rt.guardAction.Guard_Push_Distance,70));const speedRate=Math.max(0,this.num(slash.data.Guard_Push_Speed_Rate,1));const distRate=Math.max(0,this.num(slash.data.Guard_Push_Distance_Rate,1));
+        slash.vy=-baseSpeed*speedRate;slash.y=Math.max((rt.virtual||this.DEFAULT_VIRTUAL).spawnY,(slash.y||0)-baseDist*distRate);slash.guardCooldown=0.16;slash.guardFlashTimer=0.22;p.guardContactTimer=0.16;p.guardFlashTimer=0.20;
+        const info=this.getSlashCenterInfo(slash);this.pushEffect(rt,'guardRebound',info.lane,(slash.y||0)+(slash.height||0),{effectType:slash.data.Hit_Effect_Type,lanes:info.lanes,size:slash.isGiant?1.45:((slash.lanes||[]).length>=2?1.18:1),timer:0.26,isGiant:slash.isGiant});return true;
     },
 
-    updateSkillWaves(gameState, rt, dt) {
-        if (!rt || !Array.isArray(rt.skillWaves)) return;
-        for (const wave of rt.skillWaves) {
-            if (!wave || !wave.active) continue;
-            wave.life -= dt;
-            wave.prevY = wave.y;
-            wave.y += (wave.vy || 0) * dt;
-            const waveTop = Math.min(wave.y, wave.prevY) - (wave.height || 120);
-            const waveBottom = Math.max(wave.y, wave.prevY) + 24;
-            for (const slash of (rt.activeSlashes || [])) {
-                if (!slash || !slash.active || slash.isFinal || slash.state === 'WARNING') continue;
-                if (wave.hitMap && wave.hitMap[slash.uid]) continue;
-                const lanes = slash.lanes || [1];
-                const laneHit = lanes.some(l => (wave.lanes || []).includes(l));
-                if (!laneHit) continue;
-                const slashTop = slash.y || 0;
-                const slashBottom = slashTop + (slash.height || 0);
-                if (slashBottom < waveTop || slashTop > waveBottom) continue;
-                if (wave.hitMap) wave.hitMap[slash.uid] = true;
-                const resultType = String(slash.data.Skill_Result_Type || '').trim().toUpperCase();
-                const canHit = this.bool(slash.data.Can_Skill_Hit) || resultType === 'DAMAGE';
-                if (!canHit) continue;
-                const info = this.getSlashCenterInfo(slash);
-                this.pushP2M3Effect(rt, 'skillWaveHit', info.lane, info.y, {
-                    effectType: slash.data && slash.data.Hit_Effect_Type,
-                    lanes: info.lanes,
-                    size: slash.isGiant ? 1.25 : ((slash.lanes || []).length >= 2 ? 1.10 : 1),
-                    timer: 0.22,
-                    isGiant: slash.isGiant
-                });
-                if (resultType === 'DESTROY') {
-                    this.destroySlash(gameState, rt, slash, 'SKILL');
-                } else if (resultType === 'DAMAGE') {
-                    const dmg = Math.max(0, this.num(slash.data.From_Skill_Damage, 1));
-                    if (dmg > 0) this.damageSlash(gameState, rt, slash, rt.player.lane, dmg, 'SKILL');
-                }
-            }
-            if (wave.life <= 0 || wave.y + (wave.height || 120) < (rt.virtual || this.VIRTUAL).warningTopY) {
-                wave.active = false;
-            }
-        }
-        rt.skillWaves = rt.skillWaves.filter(w => w && w.active);
+    resolveSlashStack(rt) {
+        const falling=(rt.activeSlashes||[]).filter(s=>s&&s.active&&s.state==='FALLING').sort((a,b)=>(b.y||0)-(a.y||0));const stackTopByLane={};
+        for(const slash of falling){const lanes=slash.lanes&&slash.lanes.length?slash.lanes:[1];let desiredBottom=null;for(const lane of lanes){const top=stackTopByLane[lane];if(Number.isFinite(top))desiredBottom=desiredBottom===null?top:Math.min(desiredBottom,top);}if(desiredBottom!==null){const currentBottom=(slash.y||0)+(slash.height||0);if(currentBottom>desiredBottom-5){slash.y=desiredBottom-(slash.height||0);slash.vy=Math.min(slash.vy||0,18);slash.stackContactTimer=0.12;}}for(const lane of lanes)stackTopByLane[lane]=Math.min(stackTopByLane[lane]??Infinity,slash.y||0);}
     },
 
-    damageSlash(gameState, rt, slash, lane, amount, source) {
-        if (!slash || !slash.active) return;
-        const cond = String(slash.data.Destroy_Condition_Type || '').trim().toUpperCase();
-        const dmg = Math.max(0, amount || 0);
-        slash.hitFlashTimer = 0.12;
-        const hitInfo = this.getSlashCenterInfo(slash);
-        this.pushP2M3Effect(rt, 'slashHit', hitInfo.lane, hitInfo.y, {
-            effectType: slash.data && slash.data.Hit_Effect_Type,
-            lanes: hitInfo.lanes,
-            size: slash.isGiant ? 1.35 : ((slash.lanes || []).length >= 2 ? 1.12 : 1),
-            timer: 0.24,
-            isGiant: slash.isGiant
-        });
-        if (cond === 'PER_LANE_HIT_COUNT' || cond === 'PER_PART_HIT_COUNT') {
-            const laneTargets = (source === 'SKILL') ? (slash.lanes || []) : [lane];
-            for (const targetLane of laneTargets) {
-                if (slash.laneHp && slash.laneHp[targetLane] !== undefined) {
-                    slash.laneHp[targetLane] = Math.max(0, (parseFloat(slash.laneHp[targetLane]) || 0) - dmg);
-                }
-            }
-            const remain = Object.values(slash.laneHp || {}).reduce((sum, v) => sum + Math.max(0, parseFloat(v) || 0), 0);
-            if (remain <= 0) this.destroySlash(gameState, rt, slash, source);
-            return;
-        }
-        slash.hp = Math.max(0, (parseFloat(slash.hp) || 0) - dmg);
-        if (slash.hp <= 0) this.destroySlash(gameState, rt, slash, source);
+    updateSlashes(gameState,rt,dt) {
+        const v=rt.virtual||this.DEFAULT_VIRTUAL,p=rt.player;
+        for(const slash of rt.activeSlashes){if(!slash||!slash.active)continue;slash.hitFlashTimer=Math.max(0,(slash.hitFlashTimer||0)-dt);slash.breakFlashTimer=Math.max(0,(slash.breakFlashTimer||0)-dt);slash.guardCooldown=Math.max(0,(slash.guardCooldown||0)-dt);slash.guardFlashTimer=Math.max(0,(slash.guardFlashTimer||0)-dt);slash.stackContactTimer=Math.max(0,(slash.stackContactTimer||0)-dt);if(slash.state==='WARNING'){slash.warningTimer-=dt;if(slash.warningTimer<=0)slash.state='FALLING';continue;}slash.vy=Math.min(Math.max(10,slash.maxFallSpeed||999),(slash.vy||0)+(slash.gravity||0)*dt);slash.y+=(slash.vy||0)*dt;if((slash.y||0)<v.spawnY){slash.y=v.spawnY;slash.vy=Math.max(0,slash.vy||0);}this.tryGuardSlash(rt,slash,gameState);if(!this.isActive(gameState))return;}
+        this.resolveSlashStack(rt);
+        for(const slash of rt.activeSlashes){if(!slash||!slash.active||slash.state!=='FALLING')continue;const bottom=(slash.y||0)+(slash.height||0);if(bottom>=v.floorY)this.resolveSlashImpact(gameState,rt,slash);if(!this.isActive(gameState))return;}
+        rt.activeSlashes=rt.activeSlashes.filter(s=>s&&s.active);
     },
 
-    destroySlash(gameState, rt, slash, source) {
-        if (!slash || !slash.active) return;
-        const breakInfo = this.getSlashCenterInfo(slash);
-        this.pushP2M3Effect(rt, 'slashBreak', breakInfo.lane, breakInfo.y, {
-            effectType: slash.data && slash.data.Break_Effect_Type,
-            lanes: breakInfo.lanes,
-            size: slash.isGiant ? 1.8 : ((slash.lanes || []).length >= 2 ? 1.3 : 1),
-            timer: slash.isGiant ? 0.55 : 0.34,
-            isGiant: slash.isGiant
-        });
-        slash.active = false;
-        slash.breakFlashTimer = 0.2;
-        const destroyEffectType = String(slash.data.Object_Destroy_Result_Type || slash.data.Slash_Destroy_Effect_Type || '').trim().toUpperCase();
-        if (destroyEffectType === 'PLAYER_BUFF' || destroyEffectType === 'PLAYER_GET_SPECIAL_ENERGY') {
-            rt.player.hasTemperedWill = true;
-            // step216: 연단 상태는 플레이어 이펙트와 하단 HUD로 표시한다.
-            rt.message = '';
-            rt.messageTimer = 0;
-        } else if (destroyEffectType === 'PATTERN_END' && slash.isFinal) {
-            const result = String(source || '').toUpperCase() === 'GUARD' ? 'MODE_GUARD_SUCCESS' : 'MODE_ATK_SUCCESS';
-            this.finish(gameState, result, '최종 검기 파괴 결과');
-        } else {
-            // DEFAULT 및 미지원 값은 기존의 일반 파괴 처리만 수행한다.
-        }
+    resolveSlashImpact(gameState,rt,slash) {
+        if(!slash||!slash.active)return;if(slash.isFinal){this.finish(gameState,'FAIL',this.matchesFinalResponseCondition(rt,slash)?'최종 공격 대응 실패':'필요 버프 없음');return;}
+        const rawDamage=Math.max(1,this.num(slash.data.Object_Fixed_Damage,1));const damage=(typeof PlayerManager!=='undefined'&&PlayerManager.applyPresentationDamageRate)?PlayerManager.applyPresentationDamageRate(gameState,rawDamage):rawDamage;const inv=!!(typeof PlayerManager!=='undefined'&&PlayerManager.isPracticeModeHpInvincible&&PlayerManager.isPracticeModeHpInvincible(gameState));if(!inv)rt.player.hp=Math.max(0,rt.player.hp-damage);rt.player.damageFlashTimer=inv?0:0.28;const info=this.getSlashCenterInfo(slash);this.pushEffect(rt,'floorImpact',info.lane,(rt.virtual||this.DEFAULT_VIRTUAL).floorY,{effectType:slash.data.Break_Effect_Type,lanes:info.lanes,size:slash.isGiant?1.55:((slash.lanes||[]).length>=2?1.2:1),timer:0.34,isGiant:slash.isGiant});slash.active=false;if(rt.player.hp<=0)this.finish(gameState,'FAIL','차원 방어전 HP 0');
     },
 
-    update(gameState, dt) {
-        const rt = gameState && gameState.specialModeObjectDefenseRuntime;
-        if (!rt || !rt.active) return;
-        // 전용 모드 안에서는 기존 플레이어 피격 전체 화면 플래시가 HUD와 화면을 덮지 않도록 차단한다.
-        if (gameState) gameState.screenHitFlash = null;
-        rt.timer += dt;
-        rt.messageTimer = Math.max(0, (rt.messageTimer || 0) - dt);
-        if (rt.phase === 'INTRO') {
-            rt.introTime -= dt;
-            const introMax = Math.max(0.01, parseFloat(rt.introMaxTime) || 0.65);
-            const introRatio = Math.max(0, Math.min(1, 1 - (rt.introTime / introMax)));
-            const p = rt.player || {};
-            p.isGuarding = false;
-            p.attackCooldown = 0;
-            p.attackFlashTimer = 0;
-            p.guardFlashTimer = 0;
-            p.guardContactTimer = 0;
-            p.skillFlashTimer = 0;
-            if (rt.isPatternLinked) {
-                const v = rt.virtual || this.VIRTUAL;
-                const ease = (x) => Math.max(0, Math.min(1, x)) * Math.max(0, Math.min(1, x)) * (3 - 2 * Math.max(0, Math.min(1, x)));
-                // step215: 잘 동작하던 안정 흐름으로 단순화한다.
-                // 전용 모드 진입 직후 짧은 낙하/착지/기상만 보여주고, UI/경계선/차원문/검기는 렌더러에서 숨긴다.
-                if (introRatio < 0.62) {
-                    const r = ease(introRatio / 0.62);
-                    p.y = (v.spawnY - 205) + (v.playerGroundY - (v.spawnY - 205)) * r;
-                    p.vy = 0;
-                    p.grounded = false;
-                    p.introPose = 'FIELD_FALL';
-                    rt.introVisualPhase = 'SIMPLE_FALL';
-                } else if (introRatio < 0.82) {
-                    p.y = v.playerGroundY;
-                    p.vy = 0;
-                    p.grounded = true;
-                    p.introPose = 'DOWN';
-                    p.damageFlashTimer = Math.max(p.damageFlashTimer || 0, 0.08);
-                    rt.introVisualPhase = 'LAND_DOWN';
-                    if (!rt.introLandEffectFired) {
-                        rt.introLandEffectFired = true;
-                        this.pushP2M3Effect(rt, 'floorImpact', p.lane, v.floorY, { timer: 0.28, size: 1.08 });
-                    }
-                } else {
-                    p.y = v.playerGroundY;
-                    p.vy = 0;
-                    p.grounded = true;
-                    p.introPose = 'STAND_UP';
-                    rt.introVisualPhase = 'STAND_UP';
-                }
-                // step216: 인트로 과정 텍스트 제거. 낙하/착지/기상 애니메이션만 표시한다.
-            }
-            this.updateP2M3Effects(rt, dt);
-            if (rt.introTime <= 0) {
-                p.y = (rt.virtual || this.VIRTUAL).playerGroundY;
-                p.vy = 0;
-                p.grounded = true;
-                p.introPose = null;
-                rt.phase = 'WAVE';
-                rt.waveIndex = -1;
-                rt.waveState = null;
-                this.startNextWave(rt);
-            }
-            rt.inputPrev = { ...(gameState.keys || {}) };
-            return;
-        }
-        if (rt.phase === 'ENDING') {
-            rt.endingTimer -= dt;
-            if (rt.endingTimer <= 0) this.completeEnd(gameState);
-            return;
-        }
-        if (rt.phase === 'COMPLETE') {
-            // 마지막 Action Group이 끝났는데 입력 성공/실패 결과가 확정되지 않은 경우
-            // 전용 모드가 영구 정지하지 않도록 안전하게 실패 종료한다.
-            rt.endingTimer = Math.max(0, (parseFloat(rt.endingTimer) || 0) - dt);
-            if (rt.endingTimer <= 0) this.finish(gameState, 'FAIL', '스페셜 모드 결과 미확정');
-            return;
-        }
-
-        this.handleInput(gameState, rt, dt);
-        this.updateSkillWaves(gameState, rt, dt);
-        this.updateSlashes(gameState, rt, dt);
-        this.updateP2M3Effects(rt, dt);
-        if (!this.isActive(gameState)) return;
-        this.updateWave(gameState, rt, dt);
+    damageSlash(gameState,rt,slash,lane,amount,source) {
+        if(!slash||!slash.active||slash.isFinal)return;const dmg=Math.max(0,amount||0);slash.hitFlashTimer=0.12;const info=this.getSlashCenterInfo(slash);this.pushEffect(rt,'slashHit',info.lane,info.y,{effectType:slash.data.Hit_Effect_Type,lanes:info.lanes,size:slash.isGiant?1.35:((slash.lanes||[]).length>=2?1.12:1),timer:0.24,isGiant:slash.isGiant});
+        if(slash.isMulti){const targets=source==='SKILL'?(slash.lanes||[]):[lane];for(const l of targets){if(slash.laneHp&&slash.laneHp[l]!==undefined)slash.laneHp[l]=Math.max(0,(parseFloat(slash.laneHp[l])||0)-dmg);}const remain=Object.values(slash.laneHp||{}).reduce((s,v)=>s+Math.max(0,parseFloat(v)||0),0);slash.hp=remain;if(remain<=0)this.destroySlash(gameState,rt,slash,source);return;}
+        slash.hp=Math.max(0,(parseFloat(slash.hp)||0)-dmg);if(slash.hp<=0)this.destroySlash(gameState,rt,slash,source);
     },
 
-    finish(gameState, result, reason) {
-        const rt = gameState && gameState.specialModeObjectDefenseRuntime;
-        if (!rt || !rt.active || rt.phase === 'ENDING') return;
-        rt.phase = 'ENDING';
-        rt.result = result;
-        rt.resultReason = reason || '';
-        // 결과 확정 직후 바로 복귀하지 않고, 차원 붕괴/복귀 연출 시간을 둔다.
-        rt.endingTimer = result === 'MODE_ATK_SUCCESS' ? 2.15 : (result === 'MODE_GUARD_SUCCESS' ? 1.75 : 1.45);
-        rt.outroMaxTime = rt.endingTimer;
-        rt.outroFlashFired = false;
-        rt.activeSlashes = [];
-        rt.skillWaves = [];
-        rt.message = ''; // 결과 텍스트는 표시하지 않고 그로기/게이지로만 전달
-        rt.messageTimer = 1.0;
-        rt.resultMessage = true;
+    destroySlash(gameState,rt,slash,source) {
+        if(!slash||!slash.active)return;const info=this.getSlashCenterInfo(slash);this.pushEffect(rt,'slashBreak',info.lane,info.y,{effectType:slash.data.Break_Effect_Type,lanes:info.lanes,size:slash.isGiant?1.8:((slash.lanes||[]).length>=2?1.3:1),timer:slash.isGiant?0.55:0.34,isGiant:slash.isGiant});slash.active=false;slash.breakFlashTimer=0.2;
+        const resultType=String(slash.data.Object_Destroy_Result_Type||'').trim().toUpperCase();if(resultType==='PLAYER_BUFF'){this.grantPlayerBuff(rt,slash.data.Object_Destroy_Result_Value);rt.message='';rt.messageTimer=0;}
     },
 
-    forceEnd(gameState, reason = 'CANCEL') {
-        const rt = gameState && gameState.specialModeObjectDefenseRuntime;
-        if (!rt) return false;
-        rt.result = reason;
-        rt.resultReason = '테스트 강제 종료';
-        this.restoreSnapshots(gameState, rt);
-        gameState.specialMode = null;
-        gameState.specialModeObjectDefenseRuntime = null;
-        gameState.specialModeObjectDefenseIntroRuntime = null;
-        gameState.specialModeObjectDefenseFailDamageRuntime = null;
-        const linkedBoss = rt && rt.boss ? rt.boss : this.getBoss(gameState);
-        if (linkedBoss && linkedBoss.boss) {
-            linkedBoss.boss.specialModeStarted = false;
-            linkedBoss.boss.specialModeResult = null;
+    update(gameState,dt) {
+        const rt=gameState&&gameState.specialModeObjectDefenseRuntime;if(!rt||!rt.active)return;if(gameState)gameState.screenHitFlash=null;rt.timer+=dt;rt.messageTimer=Math.max(0,(rt.messageTimer||0)-dt);
+        if(rt.phase==='INTRO'){
+            rt.introTime-=dt;const max=Math.max(0.01,rt.introMaxTime||0.65),ratio=Math.max(0,Math.min(1,1-rt.introTime/max)),p=rt.player,v=rt.virtual||this.DEFAULT_VIRTUAL;p.isGuarding=false;p.attackCooldown=0;p.attackFlashTimer=0;p.guardFlashTimer=0;p.guardContactTimer=0;p.skillFlashTimer=0;
+            if(rt.isPatternLinked&&String(rt.introType||'').toUpperCase()==='FALL_LAND_STAND'){const ease=x=>{x=Math.max(0,Math.min(1,x));return x*x*(3-2*x);};if(ratio<0.62){const r=ease(ratio/0.62);p.y=(v.spawnY-205)+(v.playerGroundY-(v.spawnY-205))*r;p.vy=0;p.grounded=false;p.introPose='FIELD_FALL';rt.introVisualPhase='SIMPLE_FALL';}else if(ratio<0.82){p.y=v.playerGroundY;p.vy=0;p.grounded=true;p.introPose='DOWN';p.damageFlashTimer=Math.max(p.damageFlashTimer||0,0.08);rt.introVisualPhase='LAND_DOWN';if(!rt.introLandEffectFired){rt.introLandEffectFired=true;this.pushEffect(rt,'floorImpact',p.lane,v.floorY,{timer:0.28,size:1.08});}}else{p.y=v.playerGroundY;p.vy=0;p.grounded=true;p.introPose='STAND_UP';rt.introVisualPhase='STAND_UP';}}
+            this.updateEffects(rt,dt);if(rt.introTime<=0){p.y=v.playerGroundY;p.vy=0;p.grounded=true;p.introPose=null;rt.phase='ACTIVE';rt.sequenceIndex=0;rt.sequenceTimer=0;rt.sequenceActionStarted=false;rt.sequenceConditionMet=false;}rt.inputPrev={...(gameState.keys||{})};return;
         }
-        try { pushSystemNotice('차원 방어전 테스트 종료', '#bbbbbb', 1.0); } catch (e) {}
-        return true;
+        if(rt.phase==='ENDING'){rt.endingTimer-=dt;if(rt.endingTimer<=0)this.completeEnd(gameState);return;}
+        this.handleInput(gameState,rt,dt);this.updateSkillWaves(gameState,rt,dt);this.updateSlashes(gameState,rt,dt);this.updateEffects(rt,dt);if(!this.isActive(gameState))return;this.updateSequence(gameState,rt,dt);
+    },
+
+    finish(gameState,result,reason) {
+        const rt=gameState&&gameState.specialModeObjectDefenseRuntime;if(!rt||!rt.active||rt.phase==='ENDING')return;rt.phase='ENDING';rt.result=result;rt.resultReason=reason||'';const sm=rt.specialModeData||{};const key=String(result||'').toUpperCase()==='MODE_ATK_SUCCESS'?'Result_End_Delay_ATK':(String(result||'').toUpperCase()==='MODE_GUARD_SUCCESS'?'Result_End_Delay_GUARD':'Result_End_Delay_FAIL');rt.endingTimer=Math.max(0.1,this.num(sm[key],result==='MODE_ATK_SUCCESS'?2.15:(result==='MODE_GUARD_SUCCESS'?1.75:1.45)));rt.outroMaxTime=rt.endingTimer;rt.outroFlashFired=false;rt.activeSlashes=[];rt.skillWaves=[];rt.message='';rt.messageTimer=1;rt.resultMessage=true;
+    },
+
+    forceEnd(gameState,reason='CANCEL') {
+        const rt=gameState&&gameState.specialModeObjectDefenseRuntime;if(!rt)return false;rt.result=reason;rt.resultReason='테스트 강제 종료';this.restoreSnapshots(gameState,rt);gameState.specialMode=null;gameState.specialModeObjectDefenseRuntime=null;gameState.specialModeObjectDefenseIntroRuntime=null;gameState.specialModeObjectDefenseFailDamageRuntime=null;const boss=rt.boss||this.getBoss(gameState);if(boss&&boss.boss){boss.boss.specialModeStarted=false;boss.boss.specialModeResult=null;}return true;
     },
 
     completeEnd(gameState) {
-        const rt = gameState && gameState.specialModeObjectDefenseRuntime;
-        if (!rt) return;
-        const result = String(rt.result || '').toUpperCase();
-        const linkedBoss = rt && rt.boss ? rt.boss : this.getBoss(gameState);
-        const preservePatternFlow = !!(rt && rt.isPatternLinked && linkedBoss && linkedBoss.boss);
-        this.restoreSnapshots(gameState, rt, { preservePatternFlow });
-        gameState.specialMode = null;
-        gameState.specialModeObjectDefenseRuntime = null;
-        gameState.specialModeObjectDefenseIntroRuntime = null;
-
-        if (preservePatternFlow) {
-            // 242073은 그대로 유지하고 결과만 전달한다.
-            // 다음 일반 업데이트에서 boss_state_flow_system이 결과를 감지해 242074~242076으로 진행한다.
-            linkedBoss.boss.specialModeResult = result;
-            linkedBoss.boss.specialModeStarted = false;
-            return;
-        }
-
-        // 비연결 테스트 실행의 안전 fallback. 결과 데이터는 Player 시트가 아니라
-        // Monster_Pattern_Action_info의 SPECIAL_MODE_RESULT 액션을 사용한다.
-        const resultAction = this.getResultBossAction(gameState, result);
-        if ((result === 'MODE_ATK_SUCCESS' || result === 'MODE_GUARD_SUCCESS') && resultAction) {
-            const perfect = result === 'MODE_ATK_SUCCESS';
-            this.applyBossGroggy(
-                gameState,
-                resultAction.Groggy_Time,
-                perfect,
-                resultAction.Groggy_Hit_DMG_Rate,
-                resultAction.Groggy_Pose_Type
-            );
-        } else if (result === 'FAIL' && resultAction) {
-            this.startFailDamageFromBossAction(gameState, linkedBoss, resultAction);
-        }
+        const rt=gameState&&gameState.specialModeObjectDefenseRuntime;if(!rt)return;const result=String(rt.result||'').toUpperCase();const boss=rt.boss||this.getBoss(gameState);const preserve=!!(rt.isPatternLinked&&boss&&boss.boss);this.restoreSnapshots(gameState,rt,{preservePatternFlow:preserve});gameState.specialMode=null;gameState.specialModeObjectDefenseRuntime=null;gameState.specialModeObjectDefenseIntroRuntime=null;
+        if(preserve){boss.boss.specialModeResult=result;boss.boss.specialModeStarted=false;return;}
+        const action=this.getResultBossAction(gameState,result,rt.sourcePatternId);if((result==='MODE_ATK_SUCCESS'||result==='MODE_GUARD_SUCCESS')&&action)this.applyBossGroggy(gameState,action.Groggy_Time,result==='MODE_ATK_SUCCESS',action.Groggy_Hit_DMG_Rate,action.Groggy_Pose_Type);else if(result==='FAIL'&&action)this.startFailDamageFromBossAction(gameState,boss,action);
     },
 
-    getResultBossAction(gameState, result) {
-        const expected = String(result || '').trim().toUpperCase();
-        const db = gameState && gameState.DB_BOSS_PATTERN_ACTION ? gameState.DB_BOSS_PATTERN_ACTION : {};
-        for (const key of Object.keys(db || {})) {
-            const action = db[key] || {};
-            if (String(action.Action_Condition_Type || '').trim().toUpperCase() !== 'SPECIAL_MODE_RESULT') continue;
-            if (String(action.Action_Condition_Value || '').trim().toUpperCase() === expected) return action;
-        }
-        return null;
+    getResultBossAction(gameState,result,patternId='') {
+        const expected=String(result||'').trim().toUpperCase(),expectedPattern=String(patternId||'').trim(),db=gameState&&gameState.DB_BOSS_PATTERN_ACTION?gameState.DB_BOSS_PATTERN_ACTION:{};for(const key of Object.keys(db||{})){const a=db[key]||{};if(String(a.Action_Condition_Type||'').trim().toUpperCase()!=='SPECIAL_MODE_RESULT')continue;if(expectedPattern&&String(a.Pattern_ID||'').trim()!==expectedPattern)continue;if(String(a.Action_Condition_Value||'').trim().toUpperCase()===expected)return a;}return null;
     },
 
-    restoreSnapshots(gameState, rt, options = {}) {
-        const preservePatternFlow = !!(options && options.preservePatternFlow);
-        const p = gameState && gameState.player;
-        if (p && rt && rt.snapshot) {
-            p.x = rt.snapshot.playerX;
-            p.y = rt.snapshot.playerY;
-            p.z = 0;
-            p.vz = 0;
-            p.state = rt.snapshot.playerState === 'Die' ? 'Idle' : (rt.snapshot.playerState || 'Idle');
-            p.prevState = 'Idle';
-            p.isGrounded = true;
-            p.kbVx = 0;
-            p.kbVy = 0;
-            p.atkTimer = 0;
-            p.guardTimer = 0;
-        }
-        const boss = rt && rt.boss ? rt.boss : this.getBoss(gameState);
-        if (boss && rt && rt.snapshot) {
-            boss.x = rt.snapshot.bossX;
-            boss.y = rt.snapshot.bossY;
-            boss.z = 0;
-            boss.kbVx = 0;
-            boss.kbVy = 0;
-            boss.vz = 0;
-            boss.state = 'IDLE';
-            boss.timer = 0;
-            boss.active = true;
-            if (boss.boss) {
-                boss.boss.specialModeStarted = false;
-                if (!preservePatternFlow) {
-                    boss.boss.activePattern = null;
-                    boss.boss.action = null;
-                    boss.boss.currentActionIndex = -1;
-                    boss.boss.noPatternWaitTimer = Math.max(boss.boss.noPatternWaitTimer || 0, 0.6);
-                }
-            }
-        }
+    restoreSnapshots(gameState,rt,options={}) {
+        const preserve=!!options.preservePatternFlow,p=gameState&&gameState.player;if(p&&rt&&rt.snapshot){p.x=rt.snapshot.playerX;p.y=rt.snapshot.playerY;p.z=0;p.vz=0;p.state=rt.snapshot.playerState==='Die'?'Idle':(rt.snapshot.playerState||'Idle');p.prevState='Idle';p.isGrounded=true;p.kbVx=0;p.kbVy=0;p.atkTimer=0;p.guardTimer=0;}
+        const boss=rt&&rt.boss?rt.boss:this.getBoss(gameState);if(boss&&rt&&rt.snapshot){boss.x=rt.snapshot.bossX;boss.y=rt.snapshot.bossY;boss.z=0;boss.kbVx=0;boss.kbVy=0;boss.vz=0;boss.state='IDLE';boss.timer=0;boss.active=true;if(boss.boss){boss.boss.specialModeStarted=false;if(!preserve){boss.boss.activePattern=null;boss.boss.action=null;boss.boss.currentActionIndex=-1;boss.boss.noPatternWaitTimer=Math.max(boss.boss.noPatternWaitTimer||0,0.6);}}}
     },
 
-    applyBossGroggy(gameState, groggyTime, perfect, groggyDmgRate = 1.5, groggyPoseType = 'POSE_KASIYAS_P2_GROGGY') {
-        const boss = this.getBoss(gameState);
-        if (!boss || !boss.boss) return false;
-        const baseTime = Math.max(0.2, this.num(groggyTime, perfect ? 15 : 10));
-        const time = (typeof GameModeSystem !== 'undefined' && GameModeSystem.adjustGroggyTime)
-            ? GameModeSystem.adjustGroggyTime(gameState, baseTime)
-            : baseTime;
-        boss.state = 'GROGGY';
-        boss.timer = 0;
-        boss.hasFired = false;
-        boss.kbVx = 0;
-        boss.kbVy = 0;
-        boss.boss.activePattern = null;
-        boss.boss.action = null;
-        boss.boss.currentActionIndex = -1;
-        boss.boss.groggyTimer = time;
-        boss.boss.groggyMaxTime = time;
-        boss.boss.groggyPoseType = String(groggyPoseType || 'POSE_KASIYAS_P2_GROGGY').trim() || 'POSE_KASIYAS_P2_GROGGY';
-        boss.boss.groggyHitDmgRate = Math.max(0, this.num(groggyDmgRate, 1.2));
-        boss.boss.noPatternWaitTimer = Math.max(boss.boss.noPatternWaitTimer || 0, time);
-        if (Array.isArray(gameState.floatingTexts)) {
-            const bodyZ = ((boss.d && boss.d.bodyZ) || 170) * (boss.scale || 1);
-        }
-        
-        return true;
+    applyBossGroggy(gameState,groggyTime,perfect,groggyDmgRate=1.5,groggyPoseType='POSE_KASIYAS_P2_GROGGY') {
+        const boss=this.getBoss(gameState);if(!boss||!boss.boss)return false;const base=Math.max(0.2,this.num(groggyTime,perfect?15:10));const time=(typeof GameModeSystem!=='undefined'&&GameModeSystem.adjustGroggyTime)?GameModeSystem.adjustGroggyTime(gameState,base):base;boss.state='GROGGY';boss.timer=0;boss.hasFired=false;boss.kbVx=0;boss.kbVy=0;boss.boss.activePattern=null;boss.boss.action=null;boss.boss.currentActionIndex=-1;boss.boss.groggyTimer=time;boss.boss.groggyMaxTime=time;boss.boss.groggyPoseType=String(groggyPoseType||'POSE_KASIYAS_P2_GROGGY').trim()||'POSE_KASIYAS_P2_GROGGY';boss.boss.groggyHitDmgRate=Math.max(0,this.num(groggyDmgRate,1.2));boss.boss.noPatternWaitTimer=Math.max(boss.boss.noPatternWaitTimer||0,time);return true;
     },
 
-    startFailDamageFromBossAction(gameState, boss, action) {
-        const p = gameState && gameState.player;
-        if (!gameState || !p || p.hp <= 0 || !action) return false;
-        boss = boss || this.getBoss(gameState);
-
-        const bossData = boss && boss.d
-            ? boss.d
-            : ((gameState.DB_MONSTER || {})['202001'] || {});
-        const baseAtk = Math.max(1, this.num(
-            bossData.atk !== undefined ? bossData.atk : bossData.ATK,
-            2500
-        ));
-        const damageRate = Math.max(0, this.num(action.ATK_Damage_Rate, 1.4));
-        const hitCount = Math.max(1, Math.floor(this.num(action.ATK_Hit_Count, 3)));
-        const cycle = Math.max(0.03, this.num(action.ATK_Cycle, 0.3));
-        const hitStart = Math.max(0, this.num(action.Hitbox_Start_Time, cycle));
-        const hitEndData = parseFloat(action.Hitbox_End_Time);
-        const hitEnd = !isNaN(hitEndData) && hitEndData >= hitStart
-            ? hitEndData
-            : hitStart + cycle * Math.max(0, hitCount - 1);
-        const bossLevel = Math.max(1, this.num(
-            bossData.level !== undefined ? bossData.level : bossData.Level,
-            1
-        ));
-        const vfxType = String(action.VFX_Type || 'EFT_PLAYER_HIT').trim() || 'EFT_PLAYER_HIT';
-        const attackType = String(action.Action_Attack_Type || 'ATK_SPECIAL').trim() || 'ATK_SPECIAL';
-        const sourceActionId = String(action.Action_ID || '242076').trim() || '242076';
-
-        gameState.specialModeObjectDefenseFailDamageRuntime = {
-            active: true,
-            elapsed: 0,
-            nextHitTime: hitStart,
-            hitIndex: 0,
-            hitCount,
-            cycle,
-            hitStart,
-            hitEnd,
-            baseAtk,
-            damageRate,
-            rawDamage: baseAtk * damageRate,
-            bossLevel,
-            srcX: boss ? boss.x : p.x,
-            srcY: boss ? boss.y : p.y,
-            sourcePatternId: String(action.Pattern_ID || '232008'),
-            sourceActionId,
-            attackType,
-            vfxType,
-            canGuard: this.bool(action.ATK_Can_Guard),
-            makeHitAction: this.bool(action.ATK_Make_Hit_Action),
-            makeKnockback: this.bool(action.ATK_Make_Knockback),
-            knockbackCanGuard: this.bool(action.Knockback_Can_Guard),
-            knockbackDistance: Math.max(0, this.num(action.Knockback_Distance, 0))
-        };
-        try { pushSystemNotice('차원 방어전 실패', '#ff8d8d', 1.2); } catch (e) {}
-        return true;
+    startFailDamageFromBossAction(gameState,boss,action) {
+        const p=gameState&&gameState.player;if(!gameState||!p||p.hp<=0||!action)return false;boss=boss||this.getBoss(gameState);const bossData=boss&&boss.d?boss.d:{};const baseAtk=Math.max(1,this.num(bossData.atk!==undefined?bossData.atk:bossData.ATK,2500));const rate=Math.max(0,this.num(action.ATK_Damage_Rate,1.4));const hitCount=Math.max(1,Math.floor(this.num(action.ATK_Hit_Count,3)));const cycle=Math.max(0.03,this.num(action.ATK_Cycle,0.3));const hitStart=Math.max(0,this.num(action.Hitbox_Start_Time,cycle));const hitEndData=parseFloat(action.Hitbox_End_Time);const hitEnd=!isNaN(hitEndData)&&hitEndData>=hitStart?hitEndData:hitStart+cycle*Math.max(0,hitCount-1);const bossLevel=Math.max(1,this.num(bossData.level!==undefined?bossData.level:bossData.Level,1));
+        gameState.specialModeObjectDefenseFailDamageRuntime={active:true,elapsed:0,nextHitTime:hitStart,hitIndex:0,hitCount,cycle,hitStart,hitEnd,baseAtk,damageRate:rate,rawDamage:baseAtk*rate,bossLevel,srcX:boss?boss.x:p.x,srcY:boss?boss.y:p.y,sourcePatternId:String(action.Pattern_ID||''),sourceActionId:String(action.Action_ID||''),attackType:String(action.Action_Attack_Type||'ATK_SPECIAL'),vfxType:String(action.VFX_Type||'EFT_PLAYER_HIT'),canGuard:this.bool(action.ATK_Can_Guard),makeHitAction:this.bool(action.ATK_Make_Hit_Action),makeKnockback:this.bool(action.ATK_Make_Knockback),knockbackCanGuard:this.bool(action.Knockback_Can_Guard),knockbackDistance:Math.max(0,this.num(action.Knockback_Distance,0))};return true;
     },
 
-    updateFailDamageSequence(gameState, dt) {
-        const seq = gameState && gameState.specialModeObjectDefenseFailDamageRuntime;
-        if (!seq || !seq.active) return false;
-        const p = gameState && gameState.player;
-        if (!p || p.hp <= 0 || p.state === 'Die') {
-            gameState.specialModeObjectDefenseFailDamageRuntime = null;
-            return false;
-        }
-
-        seq.elapsed += Math.max(0, this.num(dt, 0));
-        while (seq.hitIndex < seq.hitCount && seq.elapsed + 1e-9 >= seq.nextHitTime) {
-            const rawDamage = Math.max(0, this.num(seq.rawDamage, seq.baseAtk * seq.damageRate));
-            const scaledDamage = typeof calcScaledDamage === 'function'
-                ? calcScaledDamage(seq.bossLevel, p.level || 1, rawDamage)
-                : rawDamage;
-
-            if (typeof PlayerManager !== 'undefined' && PlayerManager && typeof PlayerManager.takeDamage === 'function') {
-                PlayerManager.takeDamage(
-                    gameState,
-                    scaledDamage,
-                    seq.srcX,
-                    seq.srcY,
-                    null,
-                    0,
-                    0,
-                    {
-                        canGuard: !!seq.canGuard,
-                        guardResult: '',
-                        attackType: seq.attackType || 'ATK_SPECIAL',
-                        sourcePatternId: seq.sourcePatternId,
-                        sourceActionId: seq.sourceActionId || '242076',
-                        makeKnockback: !!seq.makeKnockback,
-                        knockbackCanGuard: !!seq.knockbackCanGuard,
-                        knockbackDistance: Math.max(0, this.num(seq.knockbackDistance, 0)),
-                        makeHitAction: !!seq.makeHitAction
-                    }
-                );
-            } else {
-                const rawActualDamage = Math.max(1, scaledDamage - (parseFloat(p.def) || 0));
-                const actualDamage = (typeof PlayerManager !== 'undefined' && PlayerManager.applyPresentationDamageRate)
-                    ? PlayerManager.applyPresentationDamageRate(gameState, rawActualDamage)
-                    : rawActualDamage;
-                p.hp = Math.max(0, (parseFloat(p.hp) || 0) - actualDamage);
-            }
-
-            if (gameState.screenHitFlash !== undefined) {
-                gameState.screenHitFlash = { life: 0.16, maxLife: 0.16, strength: 0.72, mode: 'red' };
-            }
-            if (Array.isArray(gameState.effects)) {
-                gameState.effects.push({
-                    type: 'hitSpark',
-                    renderType: seq.vfxType || 'EFT_PLAYER_HIT',
-                    x: p.x,
-                    y: p.y,
-                    z: (p.z || 0) + ((p.bodyZ || 120) * 0.5),
-                    dir: p.x >= (Number.isFinite(parseFloat(seq.srcX)) ? parseFloat(seq.srcX) : p.x) ? 1 : -1,
-                    w: Math.max(150, (p.bodyX || 60) * (p.scale || 1) * 2.8),
-                    h: Math.max(170, (p.bodyZ || 120) * (p.scale || 1) * 1.45),
-                    life: 0.24,
-                    maxLife: 0.24,
-                    burstScale: 1.25
-                });
-            }
-
-            seq.hitIndex += 1;
-            seq.nextHitTime = seq.hitStart + seq.cycle * seq.hitIndex;
-            if (p.hp <= 0 || p.state === 'Die') break;
-        }
-
-        if (seq.hitIndex >= seq.hitCount || p.hp <= 0 || p.state === 'Die') {
-            seq.active = false;
-            gameState.specialModeObjectDefenseFailDamageRuntime = null;
-        }
-        return true;
+    updateFailDamageSequence(gameState,dt) {
+        const seq=gameState&&gameState.specialModeObjectDefenseFailDamageRuntime;if(!seq||!seq.active)return false;const p=gameState&&gameState.player;if(!p||p.hp<=0||p.state==='Die'){gameState.specialModeObjectDefenseFailDamageRuntime=null;return false;}seq.elapsed+=Math.max(0,this.num(dt,0));while(seq.hitIndex<seq.hitCount&&seq.elapsed+1e-9>=seq.nextHitTime){const raw=Math.max(0,this.num(seq.rawDamage,seq.baseAtk*seq.damageRate));const scaled=typeof calcScaledDamage==='function'?calcScaledDamage(seq.bossLevel,p.level||1,raw):raw;if(typeof PlayerManager!=='undefined'&&PlayerManager.takeDamage)PlayerManager.takeDamage(gameState,scaled,seq.srcX,seq.srcY,null,0,0,{canGuard:!!seq.canGuard,guardResult:'',attackType:seq.attackType||'ATK_SPECIAL',sourcePatternId:seq.sourcePatternId,sourceActionId:seq.sourceActionId,makeKnockback:!!seq.makeKnockback,knockbackCanGuard:!!seq.knockbackCanGuard,knockbackDistance:Math.max(0,this.num(seq.knockbackDistance,0)),makeHitAction:!!seq.makeHitAction});else p.hp=Math.max(0,(parseFloat(p.hp)||0)-scaled);if(gameState.screenHitFlash!==undefined)gameState.screenHitFlash={life:0.16,maxLife:0.16,strength:0.72,mode:'red'};seq.hitIndex+=1;seq.nextHitTime=seq.hitStart+seq.cycle*seq.hitIndex;if(p.hp<=0||p.state==='Die')break;}if(seq.hitIndex>=seq.hitCount||p.hp<=0||p.state==='Die'){seq.active=false;gameState.specialModeObjectDefenseFailDamageRuntime=null;}return true;
     }
 };
 

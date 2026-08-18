@@ -837,9 +837,9 @@ const BossPatternSystem = {
             const patternActionSourceId = typeof this.getBossPatternActionSourceId === 'function'
                 ? this.getBossPatternActionSourceId(pattern)
                 : patternId;
-            if (patternId === '232008' || patternActionSourceId === '232008') {
-                // P2_M3 결과 액션(242074~242076)이 모두 끝난 뒤에는
-                // 다음 실행에 이전 결과가 섞이지 않도록 전용 결과 상태를 초기화한다.
+            const hasSpecialModeStart = Array.isArray(pattern.Runtime_Actions) && pattern.Runtime_Actions.some(action => String(action && action.Action_Type || '').trim().toUpperCase() === 'SPECIAL_MODE_START');
+            if (hasSpecialModeStart) {
+                // 스페셜 모드 결과 액션까지 끝난 뒤에는 다음 실행에 이전 결과가 섞이지 않도록 초기화한다.
                 boss.specialModeResult = null;
                 boss.specialModeStarted = false;
             }

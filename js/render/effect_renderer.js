@@ -6175,7 +6175,7 @@ GameRenderer.drawFloatingTexts = function(ctx, floatingTexts) {
         let ft = floatingTexts[i];
         let drawY = this.GROUND_BASE_Y + ft.y - ft.z;
         ctx.globalAlpha = ft.timer;
-        ctx.font = `900 ${ft.size} Arial`;
+        ctx.font = `900 ${ft.size} "DNF Forged Blade", Arial, sans-serif`;
         ctx.textAlign = "center";
 
         if (ft.isBubble) {

@@ -9,7 +9,7 @@ GameRenderer.drawTargetUI = function(ctx, canvas, targetUI, gameState = null) {
     const monsterGrade = String(d.grade || d.monsterType || d.Monster_Type || '').trim().toUpperCase();
     const isBoss = monsterGrade.includes('BOSS') || String(tm.id || '').startsWith('B') || !!tm.isStageBoss || !!tm.boss;
     const alpha = Math.min(1.0, Math.max(0.0, parseFloat(targetUI.timer) || 0));
-    const uiFont = '"Malgun Gothic", "Segoe UI", Arial, sans-serif';
+    const uiFont = '"DNF Forged Blade", "Malgun Gothic", "Segoe UI", Arial, sans-serif';
     const makeFont = function(weight, size) { return `${weight} ${size}px ${uiFont}`; };
 
     const readNumber = function() {
@@ -823,7 +823,7 @@ GameRenderer.drawBossPatternDialogue = function(ctx, canvas, gameState) {
     const cx = canvas.width / 2;
     const cy = Math.max(138, canvas.height * 0.24);
     const text = String(dlg.text || '');
-    const uiFont = '"Malgun Gothic", "Segoe UI", Arial, sans-serif';
+    const uiFont = '"DNF Forged Blade", "Malgun Gothic", "Segoe UI", Arial, sans-serif';
     const boxW = Math.min(canvas.width * 0.72, Math.max(420, text.length * 31));
     const boxH = 54;
     const pulse = Math.sin((1 - ratio) * Math.PI * 4) * 0.5 + 0.5;
@@ -898,7 +898,7 @@ GameRenderer.drawBossPhaseTransitionOverlay = function(ctx, canvas, gameState) {
     const alpha = Math.max(0, Math.min(1, fadeIn, fadeOut));
     const w = canvas.width;
     const h = canvas.height;
-    const uiFont = '"Malgun Gothic", "Segoe UI", Arial, sans-serif';
+    const uiFont = '"DNF Forged Blade", "Malgun Gothic", "Segoe UI", Arial, sans-serif';
     const smooth = (v) => {
         v = Math.max(0, Math.min(1, v));
         return v * v * (3 - 2 * v);
@@ -1206,7 +1206,7 @@ GameRenderer.drawKasiyasP2ToP3TransitionOverlay = function(ctx, canvas, gameStat
     const timer = Math.max(0, Math.min(duration, parseFloat(tr.timer) || 0));
     const w = canvas.width;
     const h = canvas.height;
-    const uiFont = '"Malgun Gothic", "Segoe UI", Arial, sans-serif';
+    const uiFont = '"DNF Forged Blade", "Malgun Gothic", "Segoe UI", Arial, sans-serif';
     const smooth = (v) => {
         v = Math.max(0, Math.min(1, v));
         return v * v * (3 - 2 * v);
