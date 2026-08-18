@@ -922,8 +922,6 @@ function gameLoop(timestamp) {
         lastTime = timestamp;
         if (deltaTime > 0.1) deltaTime = 0.016;
 
-        updateBossBattleLayoutScale();
-
         if (!gameState.presentationStarted) {
             GameRenderer.render(gameState);
             updateHUD();
@@ -2731,6 +2729,53 @@ function renderBossPatternLogPanel(gameState) {
     }).join('');
 }
 
+// HUD DOM references are static after game initialization.
+// Cache them so the 60fps HUD update does not repeatedly traverse the DOM tree.
+const hudDomCache = { byId: Object.create(null), bySelector: Object.create(null), bySelectorAll: Object.create(null) };
+const hudSkillSlotPartCache = new WeakMap();
+
+function getHudDomById(id) {
+    let el = hudDomCache.byId[id];
+    if (!el || !el.isConnected) {
+        el = document.getElementById(id);
+        hudDomCache.byId[id] = el || null;
+    }
+    return el || null;
+}
+
+function getHudDomBySelector(key, selector) {
+    let el = hudDomCache.bySelector[key];
+    if (!el || !el.isConnected) {
+        el = document.querySelector(selector);
+        hudDomCache.bySelector[key] = el || null;
+    }
+    return el || null;
+}
+
+function getHudDomAll(key, selector) {
+    let list = hudDomCache.bySelectorAll[key];
+    if (!list || list.some(el => !el || !el.isConnected)) {
+        list = Array.from(document.querySelectorAll(selector));
+        hudDomCache.bySelectorAll[key] = list;
+    }
+    return list;
+}
+
+function getHudSkillSlotParts(slot) {
+    if (!slot) return null;
+    let parts = hudSkillSlotPartCache.get(slot);
+    if (!parts) {
+        parts = {
+            keyEl: slot.querySelector('.skill-key'),
+            lockEl: slot.querySelector('.skill-lock'),
+            maskEl: slot.querySelector('.skill-cd-mask'),
+            cooldownEl: slot.querySelector('.skill-cooldown-number')
+        };
+        hudSkillSlotPartCache.set(slot, parts);
+    }
+    return parts;
+}
+
 function updateHUD() {
     let p = gameState.player;
     if (!p || !p.active) return;
@@ -2741,7 +2786,7 @@ function updateHUD() {
 
     try {
         const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-        const getEl = (id) => document.getElementById(id);
+        const getEl = getHudDomById;
 
         const hudPlayerName = getEl('hudPlayerName');
         const hudPrimaryStatus = getEl('hudPrimaryStatus');
@@ -2760,8 +2805,8 @@ function updateHUD() {
             hudPlayerName.innerText = `Lv.${p.level} ${p.name}`;
         }
 
-        const meleeChip = document.querySelector('.hud-mode-chip.melee');
-        const rangeChip = document.querySelector('.hud-mode-chip.range');
+        const meleeChip = getHudDomBySelector('meleeChip', '.hud-mode-chip.melee');
+        const rangeChip = getHudDomBySelector('rangeChip', '.hud-mode-chip.range');
         const isMeleeMode = p.stance === 'Mode_Melee';
         const isRangeMode = p.stance === 'Mode_Range';
         if (hudPrimaryLabel) hudPrimaryLabel.innerText = '공격 모드';
@@ -2809,7 +2854,7 @@ function updateHUD() {
         if (hudHpText) {
             hudHpText.innerText = `${safeHp.toFixed(0)} / ${safeMaxHp.toFixed(0)}\n${hpRatio.toFixed(1)}%`;
         }
-        const hudHpOrb = hudHpFill ? hudHpFill.closest('.hud-orb.hp') : document.querySelector('.hud-orb.hp');
+        const hudHpOrb = getHudDomBySelector('hudHpOrb', '.hud-orb.hp');
         if (hudHpOrb) {
             const oniCurseActive = !!(p.p3OniCurse && p.p3OniCurse.active !== false);
             const oniCurseFlash = oniCurseActive && (parseFloat(p.p3OniCurseHpFlashTimer) || 0) > 0;
@@ -2866,7 +2911,8 @@ function updateHUD() {
             const lockEl = getEl(lockId);
             const maskEl = getEl(maskId);
             const slotEl = maskEl ? maskEl.closest('.skill-slot') : null;
-            const cooldownEl = slotEl ? slotEl.querySelector('.skill-cooldown-number') : null;
+            const slotParts = getHudSkillSlotParts(slotEl);
+            const cooldownEl = slotParts ? slotParts.cooldownEl : null;
             const remain = Math.max(0, parseFloat(remaining) || 0);
 
             if (lockEl) lockEl.style.display = isUnlocked ? 'none' : 'flex';
@@ -2901,9 +2947,9 @@ function updateHUD() {
             const dp = objectDefenseRt.player;
             const requiredBuffKey = String(objectDefenseRt.requiredResponseBuffKey || '').trim();
             const hasRequiredResponseBuff = !!(requiredBuffKey && dp.buffs && dp.buffs[requiredBuffKey]);
-            const spiritLabel = document.querySelector('.spirit-panel .hud-orb-label');
-            const skillTitleEl = document.querySelector('.hud-skill-title');
-            const skillSlots = Array.from(document.querySelectorAll('#hudSkills .skill-slot'));
+            const spiritLabel = getHudDomBySelector('spiritLabel', '.spirit-panel .hud-orb-label');
+            const skillTitleEl = getHudDomBySelector('skillTitleEl', '.hud-skill-title');
+            const skillSlots = getHudDomAll('skillSlots', '#hudSkills .skill-slot');
             if (hudPlayerName) hudPlayerName.innerText = `Lv.${p.level} ${p.name}`;
             // 하단 HUD는 플레이어 정보만 유지한다. P2M3의 보스/패턴 상태 문구는 노출하지 않는다.
             if (hudPrimaryStatus) hudPrimaryStatus.style.display = 'none';
@@ -2942,15 +2988,15 @@ function updateHUD() {
                 {slot:getEl('maskWave')?getEl('maskWave').closest('.skill-slot'):null,key:keyFor(objectDefenseRt.skillAction,'A'),skill:true}
             ];
             skillSlots.forEach(slot=>{if(slot){slot.style.display='none';slot.style.order='';}});
-            p2SpecialSlots.forEach((entry,index)=>{const slot=entry.slot;if(!slot)return;slot.style.display='';slot.style.order=String(index+1);const keyEl=slot.querySelector('.skill-key'),lockEl=slot.querySelector('.skill-lock'),maskEl=slot.querySelector('.skill-cd-mask'),cooldownEl=slot.querySelector('.skill-cooldown-number');if(keyEl)keyEl.innerText=entry.key;if(lockEl)lockEl.style.display='none';if(maskEl){if(entry.skill&&skillCooldown>0){const maxCd=Math.max(0.01,parseFloat(dp.skillCooldownMax)||skillCooldown||1);maskEl.style.height=clamp((skillCooldown/maxCd)*100,0,100)+'%';}else maskEl.style.height='0%';}if(cooldownEl)cooldownEl.innerText=(entry.skill&&skillCooldown>0.04)?(skillCooldown>=10?String(Math.ceil(skillCooldown)):skillCooldown.toFixed(1)):'';});
+            p2SpecialSlots.forEach((entry,index)=>{const slot=entry.slot;if(!slot)return;slot.style.display='';slot.style.order=String(index+1);const parts=getHudSkillSlotParts(slot)||{};const keyEl=parts.keyEl,lockEl=parts.lockEl,maskEl=parts.maskEl,cooldownEl=parts.cooldownEl;if(keyEl)keyEl.innerText=entry.key;if(lockEl)lockEl.style.display='none';if(maskEl){if(entry.skill&&skillCooldown>0){const maxCd=Math.max(0.01,parseFloat(dp.skillCooldownMax)||skillCooldown||1);maskEl.style.height=clamp((skillCooldown/maxCd)*100,0,100)+'%';}else maskEl.style.height='0%';}if(cooldownEl)cooldownEl.innerText=(entry.skill&&skillCooldown>0.04)?(skillCooldown>=10?String(Math.ceil(skillCooldown)):skillCooldown.toFixed(1)):'';});
             const bossGroggyGauge=getEl('bossGroggyGauge'),bossCastGauge=getEl('bossCastGauge'),bossGroggyGaugeFill=getEl('bossGroggyGaugeFill'),bossCastGaugeFill=getEl('bossCastGaugeFill');if(bossGroggyGauge)bossGroggyGauge.classList.add('hidden');if(bossCastGauge)bossCastGauge.classList.add('hidden');if(bossGroggyGaugeFill)bossGroggyGaugeFill.style.width='0%';if(bossCastGaugeFill)bossCastGaugeFill.style.width='0%';
             return;
         }
 
         // 특수 모드가 아닐 때는 기존 HUD 텍스트/슬롯 구성을 원래대로 복구한다.
-        const spiritLabel = document.querySelector('.spirit-panel .hud-orb-label');
-        const skillTitleEl = document.querySelector('.hud-skill-title');
-        const skillSlots = Array.from(document.querySelectorAll('#hudSkills .skill-slot'));
+        const spiritLabel = getHudDomBySelector('spiritLabel', '.spirit-panel .hud-orb-label');
+        const skillTitleEl = getHudDomBySelector('skillTitleEl', '.hud-skill-title');
+        const skillSlots = getHudDomAll('skillSlots', '#hudSkills .skill-slot');
         if (hudPrimaryStatus) hudPrimaryStatus.style.display = '';
         if (spiritLabel) spiritLabel.innerText = '투기';
         if (skillTitleEl) skillTitleEl.innerText = '스킬 슬롯';
@@ -2960,8 +3006,9 @@ function updateHUD() {
             if (!slot) return;
             slot.style.display = '';
             slot.style.order = '';
-            const keyEl = slot.querySelector('.skill-key');
-            const lockEl = slot.querySelector('.skill-lock');
+            const parts = getHudSkillSlotParts(slot) || {};
+            const keyEl = parts.keyEl;
+            const lockEl = parts.lockEl;
             if (keyEl) keyEl.innerText = key;
             if (lockEl) lockEl.style.display = '';
         });
@@ -3409,8 +3456,9 @@ function updateHUD() {
             : 0;
         setLockAndMask('lockCannon', 'maskCannon', p.level >= cannonReq, cannonRatio, (cannonAct && p.skillCooldowns[cannonAct.Action_Name]) || 0);
 
+        const isDeveloperPresentation = String(gameState.presentationMode || '').toUpperCase() === 'DEVELOPER';
         let debugPanel = getEl('hudDebug');
-        if (debugPanel) {
+        if (debugPanel && isDeveloperPresentation) {
             const bossTarget = gameState.targetUI && gameState.targetUI.monster && gameState.targetUI.monster.active
                 ? gameState.targetUI.monster
                 : null;
@@ -3443,12 +3491,17 @@ function updateHUD() {
             debugPanel.innerHTML = html;
         }
 
-        renderBossAIPanel(gameState);
-        renderBossPatternLogPanel(gameState);
+        if (isDeveloperPresentation) {
+            renderBossAIPanel(gameState);
+            renderBossPatternLogPanel(gameState);
+        }
 
         const systemNoticeUI = getEl('systemNoticeUI');
         if (systemNoticeUI) {
-            systemNoticeUI.innerHTML = '';
+            if (gameState.systemNotices.length <= 0) {
+                if (systemNoticeUI.childElementCount > 0) systemNoticeUI.replaceChildren();
+            } else {
+                systemNoticeUI.innerHTML = '';
 
             for (let i = 0; i < gameState.systemNotices.length; i++) {
                 const notice = gameState.systemNotices[i];
@@ -3472,6 +3525,7 @@ function updateHUD() {
                 item.innerText = notice.text || '';
 
                 systemNoticeUI.appendChild(item);
+            }
             }
         }
     } catch (e) {

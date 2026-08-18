@@ -169,11 +169,8 @@
 
 
     
-    GameRenderer.drawObjectDefenseBackground = function(ctx, canvas, layout, rt) {
-        const t = rt.timer || 0;
-        const introOnlyBackground = !!(rt && rt.phase === 'INTRO' && rt.isPatternLinked);
-        ctx.save();
-        // step206: 완전히 다른 차원 배경이 아니라 기존 카시야스 결투장 맵을 기반으로 한 전용 필드.
+    GameRenderer._drawObjectDefenseStaticBackgroundBase = function(ctx, canvas, layout, introOnlyBackground) {
+        // 정적 결투장 기반 배경. 시간에 따라 변하는 균열/프레임은 캐시에 포함하지 않는다.
         const arena = (this.themePresets && this.themePresets.RENDER_KASIYAS_ARENA) || {
             skyTop: '#321d27', skyBottom: '#8b4a3d', groundTop: '#8b5f54', groundBottom: '#4c3538', mountain: '#5e3b40'
         };
@@ -184,7 +181,6 @@
         ctx.fillStyle = skyGrad;
         ctx.fillRect(0, 0, canvas.width, horizonY);
 
-        // 기존 결투장 느낌의 원경 폐허/지형 실루엣.
         ctx.fillStyle = 'rgba(73,45,48,0.70)';
         ctx.strokeStyle = 'rgba(30,18,22,0.72)';
         ctx.lineWidth = 2 * layout.scale;
@@ -212,7 +208,6 @@
         ctx.fillStyle = groundGrad;
         ctx.fillRect(0, horizonY, canvas.width, canvas.height - horizonY);
 
-        // 기존 카시야스 결투장 바닥의 각진 판석 선. 전체 화면에도 동일하게 깔아 별개 게임 느낌을 줄인다.
         ctx.save();
         ctx.strokeStyle = 'rgba(35,22,24,0.34)';
         ctx.lineWidth = 1.35 * layout.scale;
@@ -234,44 +229,67 @@
         ctx.restore();
 
         if (!introOnlyBackground) {
-        // 차원 방어전용 영역은 기존 맵 위에 차원 장막을 얹은 느낌. 내부를 과하게 흐리게 덮지 않는다.
-        ctx.save();
-        ctx.fillStyle = 'rgba(45,18,35,0.16)';
-        this.roundRect(ctx, layout.left, layout.top, layout.fieldW, layout.fieldH, 14 * layout.scale);
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(255,188,150,0.34)';
-        ctx.lineWidth = 2.0 * layout.scale;
-        this.roundRect(ctx, layout.left, layout.top, layout.fieldW, layout.fieldH, 14 * layout.scale);
-        ctx.stroke();
+            ctx.save();
+            ctx.fillStyle = 'rgba(45,18,35,0.16)';
+            this.roundRect(ctx, layout.left, layout.top, layout.fieldW, layout.fieldH, 14 * layout.scale);
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255,188,150,0.34)';
+            ctx.lineWidth = 2.0 * layout.scale;
+            this.roundRect(ctx, layout.left, layout.top, layout.fieldW, layout.fieldH, 14 * layout.scale);
+            ctx.stroke();
 
-        // 필드 하단 지면/라인은 기존 맵 판석보다 더 선명하게 표시한다.
-        const floorTop = layout.floorY - 78 * layout.scale;
-        const floorGrad = ctx.createLinearGradient(layout.left, floorTop, layout.left, layout.bottom);
-        floorGrad.addColorStop(0, 'rgba(105,73,68,0.84)');
-        floorGrad.addColorStop(0.42, 'rgba(75,54,55,0.92)');
-        floorGrad.addColorStop(1, 'rgba(30,22,27,0.96)');
-        ctx.fillStyle = floorGrad;
-        this.roundRect(ctx, layout.left + 10 * layout.scale, floorTop, layout.fieldW - 20 * layout.scale, layout.bottom - floorTop - 10 * layout.scale, 10 * layout.scale);
-        ctx.fill();
-        this.drawObjectDefenseHexTiles(ctx, layout.left + 10 * layout.scale, floorTop, layout.fieldW - 20 * layout.scale, layout.bottom - floorTop - 10 * layout.scale, layout.scale, 0.42);
+            const floorTop = layout.floorY - 78 * layout.scale;
+            const floorGrad = ctx.createLinearGradient(layout.left, floorTop, layout.left, layout.bottom);
+            floorGrad.addColorStop(0, 'rgba(105,73,68,0.84)');
+            floorGrad.addColorStop(0.42, 'rgba(75,54,55,0.92)');
+            floorGrad.addColorStop(1, 'rgba(30,22,27,0.96)');
+            ctx.fillStyle = floorGrad;
+            this.roundRect(ctx, layout.left + 10 * layout.scale, floorTop, layout.fieldW - 20 * layout.scale, layout.bottom - floorTop - 10 * layout.scale, 10 * layout.scale);
+            ctx.fill();
+            this.drawObjectDefenseHexTiles(ctx, layout.left + 10 * layout.scale, floorTop, layout.fieldW - 20 * layout.scale, layout.bottom - floorTop - 10 * layout.scale, layout.scale, 0.42);
 
-        ctx.strokeStyle = 'rgba(20,14,18,0.78)';
-        ctx.lineWidth = 3 * layout.scale;
-        ctx.beginPath(); ctx.moveTo(layout.left + 12 * layout.scale, layout.floorY); ctx.lineTo(layout.left + layout.fieldW - 12 * layout.scale, layout.floorY); ctx.stroke();
-        ctx.strokeStyle = 'rgba(255,214,155,0.22)';
-        ctx.lineWidth = 1.6 * layout.scale;
-        ctx.beginPath(); ctx.moveTo(layout.left + 12 * layout.scale, layout.floorY - 4 * layout.scale); ctx.lineTo(layout.left + layout.fieldW - 12 * layout.scale, layout.floorY - 4 * layout.scale); ctx.stroke();
+            ctx.strokeStyle = 'rgba(20,14,18,0.78)';
+            ctx.lineWidth = 3 * layout.scale;
+            ctx.beginPath(); ctx.moveTo(layout.left + 12 * layout.scale, layout.floorY); ctx.lineTo(layout.left + layout.fieldW - 12 * layout.scale, layout.floorY); ctx.stroke();
+            ctx.strokeStyle = 'rgba(255,214,155,0.22)';
+            ctx.lineWidth = 1.6 * layout.scale;
+            ctx.beginPath(); ctx.moveTo(layout.left + 12 * layout.scale, layout.floorY - 4 * layout.scale); ctx.lineTo(layout.left + layout.fieldW - 12 * layout.scale, layout.floorY - 4 * layout.scale); ctx.stroke();
+            ctx.restore();
+        }
+    };
 
-        // 중앙 필드의 차원 균열/입자는 절제해서, 기존 맵이 보이도록 한다.
-        this.drawObjectDefenseRiftStreaks(ctx, layout.left + 18 * layout.scale, layout.top + 16 * layout.scale, layout.fieldW - 36 * layout.scale, layout.fieldH - 110 * layout.scale, t, 16, 0.24);
-        ctx.restore();
+    GameRenderer.drawObjectDefenseBackground = function(ctx, canvas, layout, rt) {
+        const t = rt.timer || 0;
+        const introOnlyBackground = !!(rt && rt.phase === 'INTRO' && rt.isPatternLinked);
+        const arena = (this.themePresets && this.themePresets.RENDER_KASIYAS_ARENA) || {};
+        const key = [
+            canvas.width, canvas.height, introOnlyBackground ? 1 : 0,
+            layout.left, layout.top, layout.fieldW, layout.fieldH, layout.floorY, layout.bottom, layout.scale,
+            arena.skyTop || '', arena.skyBottom || '', arena.groundTop || '', arena.groundBottom || ''
+        ].join('|');
+
+        let cache = this._objectDefenseBackgroundCache;
+        if (!cache || cache.key !== key || !cache.canvas) {
+            const offscreen = document.createElement('canvas');
+            offscreen.width = canvas.width;
+            offscreen.height = canvas.height;
+            const offctx = offscreen.getContext('2d');
+            this._drawObjectDefenseStaticBackgroundBase(offctx, offscreen, layout, introOnlyBackground);
+            cache = this._objectDefenseBackgroundCache = { key, canvas: offscreen };
         }
 
-        // step207: 현재 결투장 기반 배경 구조는 유지하고, 색상 반전 + 어두운 차원 틴트만 얹어
-        // '같은 맵이 다른 차원에서 뒤집힌' 느낌을 만든다.
         ctx.save();
-        // step208: 단순 보라 틴트가 아니라 실제 색상 반전에 가깝게 처리한다.
-        // 완전한 1.0 반전은 캐릭터/검기 판독을 해칠 수 있으므로 배경 레이어에만 강하게 적용하고 어둡게 눌러준다.
+        ctx.drawImage(cache.canvas, 0, 0);
+
+        if (!introOnlyBackground) {
+            // 시간에 따라 움직이는 균열/입자만 실시간으로 그린다.
+            ctx.save();
+            this.drawObjectDefenseRiftStreaks(ctx, layout.left + 18 * layout.scale, layout.top + 16 * layout.scale, layout.fieldW - 36 * layout.scale, layout.fieldH - 110 * layout.scale, t, 16, 0.24);
+            ctx.restore();
+        }
+
+        // 기존과 동일하게 정적 배경 + 동적 균열 전체에 색상 반전/차원 틴트를 적용한다.
+        ctx.save();
         ctx.globalCompositeOperation = 'difference';
         ctx.fillStyle = 'rgba(255,255,255,0.72)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);

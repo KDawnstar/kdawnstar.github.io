@@ -3223,87 +3223,15 @@ GameRenderer.drawKasiyasPathDelayedSlashObject = function(ctx, obj) {
 
 
 
-GameRenderer.drawKasiyasP3M2GiantSwordDropObject = function(ctx, obj) {
-    if (!ctx || !obj) return;
-    const data = obj.data || {};
-    const x = parseFloat(obj.x) || 0;
-    const groundY = this.GROUND_BASE_Y + (parseFloat(obj.y) || 0);
-    const timer = parseFloat(obj.timer) || 0;
-    const warning = Math.max(0.08, parseFloat(obj.warningDuration) || parseFloat(data.Warning_Duration) || 1.0);
-    const delay = Math.max(0, parseFloat(obj.delayTime) || parseFloat(data.Hitbox_Delay_Time) || 0);
-    const impactStart = warning + delay;
-    const w = Math.max(80, parseFloat(obj.w) || parseFloat(data.Hitbox_Size_X) || 250);
-    const d = Math.max(50, parseFloat(obj.d) || parseFloat(data.Hitbox_Size_Y) || 130);
-    const pre = Math.max(0, Math.min(1, timer / Math.max(impactStart, 0.001)));
-    const impactRate = timer < impactStart ? 0 : Math.max(0, Math.min(1, (timer - impactStart) / 0.18));
-    const flash = 0.5 + 0.5 * Math.sin(Date.now() / 75 + (obj.seed || 0));
+// P3M2 낙하 거대 검은 위치/투명도만 프레임마다 바뀌고 검 본체의 도형은 고정이다.
+// 본체만 오프스크린 캔버스에 캐시하고, 전조/낙하 잔상/착지 충격은 기존처럼 실시간으로 그린다.
+GameRenderer._p3M2GiantSwordBodyCache = GameRenderer._p3M2GiantSwordBodyCache || new Map();
 
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.18 + 0.16 * flash;
-    const beamGrad = ctx.createLinearGradient(x, groundY - 420, x, groundY + 12);
-    beamGrad.addColorStop(0, 'rgba(170,90,255,0)');
-    beamGrad.addColorStop(0.18, 'rgba(160,84,255,0.18)');
-    beamGrad.addColorStop(0.42, 'rgba(255,82,76,0.24)');
-    beamGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = beamGrad;
-    ctx.beginPath();
-    ctx.ellipse(x, groundY - 180, w * 0.16, 260, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    ctx.save();
-    ctx.globalAlpha = 0.20 + 0.22 * flash;
-    ctx.strokeStyle = 'rgba(255,76,76,0.98)';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.ellipse(x, groundY, w * (0.45 + pre * 0.05), d * (0.42 + pre * 0.05), 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.globalAlpha = 0.12 + 0.10 * pre;
-    ctx.fillStyle = 'rgba(80,0,18,0.92)';
-    ctx.beginPath();
-    ctx.ellipse(x, groundY, w * 0.50, d * 0.46, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 0.38;
-    ctx.strokeStyle = 'rgba(30,0,50,0.96)';
-    ctx.lineWidth = 2;
-    for (let i = 0; i < 8; i++) {
-        const a = Math.PI * 2 * i / 8 + pre * 0.8;
-        ctx.beginPath();
-        ctx.moveTo(x + Math.cos(a) * w * 0.12, groundY + Math.sin(a) * d * 0.09);
-        ctx.lineTo(x + Math.cos(a) * w * 0.48, groundY + Math.sin(a) * d * 0.36);
-        ctx.stroke();
-    }
-    ctx.restore();
-
-    const startHeight = 380;
-    const endHeight = 20;
-    const fallEase = Math.pow(pre, 0.58);
-    const swordY = groundY - (startHeight * (1 - fallEase) + endHeight * fallEase) + impactRate * 10;
-    const swordLen = Math.max(205, w * 1.00);
+GameRenderer.drawKasiyasP3M2GiantSwordStaticBody = function(ctx, swordLen, bladeW) {
+    if (!ctx) return;
     const bladeLen = swordLen * 0.82;
-    const bladeW = Math.max(22, w * 0.072);
-
-    ctx.save();
-    ctx.globalAlpha = timer < impactStart ? (0.88 + 0.10 * pre) : Math.max(0.18, 1 - impactRate * 0.86);
-    ctx.translate(x, swordY);
     ctx.shadowBlur = 22;
     ctx.shadowColor = 'rgba(255,60,60,0.52)';
-
-    // motion streaks
-    if (timer < impactStart) {
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.strokeStyle = 'rgba(255,84,74,0.25)';
-        ctx.lineWidth = Math.max(3, bladeW * 0.18);
-        for (let i = 0; i < 4; i++) {
-            const ox = (i - 1.5) * bladeW * 0.35;
-            ctx.beginPath();
-            ctx.moveTo(ox, -swordLen * 0.22);
-            ctx.lineTo(ox, -swordLen * 0.72 - pre * 70);
-            ctx.stroke();
-        }
-        ctx.globalCompositeOperation = 'source-over';
-    }
 
     // hilt / guard
     ctx.fillStyle = 'rgba(40,22,50,0.98)';
@@ -3366,6 +3294,123 @@ GameRenderer.drawKasiyasP3M2GiantSwordDropObject = function(ctx, obj) {
     ctx.moveTo(-bladeW * 0.12, -swordLen * 0.12);
     ctx.quadraticCurveTo(-bladeW * 0.24, bladeLen * 0.20, -bladeW * 0.06, bladeLen * 0.56);
     ctx.stroke();
+};
+
+GameRenderer.getKasiyasP3M2GiantSwordBodySprite = function(swordLen, bladeW) {
+    const key = `${Math.round(swordLen * 10) / 10}|${Math.round(bladeW * 10) / 10}`;
+    const cache = this._p3M2GiantSwordBodyCache || (this._p3M2GiantSwordBodyCache = new Map());
+    if (cache.has(key)) return cache.get(key);
+
+    let canvas = null;
+    if (typeof OffscreenCanvas !== 'undefined') {
+        canvas = new OffscreenCanvas(1, 1);
+    } else if (typeof document !== 'undefined' && document.createElement) {
+        canvas = document.createElement('canvas');
+    }
+    if (!canvas || typeof canvas.getContext !== 'function') return null;
+
+    const pad = 36;
+    const halfW = Math.max(64, bladeW * 2.8 + pad);
+    const top = swordLen * 0.62 + pad;
+    const bottom = swordLen * 0.76 + pad;
+    canvas.width = Math.ceil(halfW * 2);
+    canvas.height = Math.ceil(top + bottom);
+    const spriteCtx = canvas.getContext('2d');
+    if (!spriteCtx) return null;
+    spriteCtx.translate(halfW, top);
+    this.drawKasiyasP3M2GiantSwordStaticBody(spriteCtx, swordLen, bladeW);
+    const sprite = { canvas, originX: halfW, originY: top };
+    cache.set(key, sprite);
+    return sprite;
+};
+
+
+GameRenderer.drawKasiyasP3M2GiantSwordDropObject = function(ctx, obj) {
+    if (!ctx || !obj) return;
+    const data = obj.data || {};
+    const x = parseFloat(obj.x) || 0;
+    const groundY = this.GROUND_BASE_Y + (parseFloat(obj.y) || 0);
+    const timer = parseFloat(obj.timer) || 0;
+    const warning = Math.max(0.08, parseFloat(obj.warningDuration) || parseFloat(data.Warning_Duration) || 1.0);
+    const delay = Math.max(0, parseFloat(obj.delayTime) || parseFloat(data.Hitbox_Delay_Time) || 0);
+    const impactStart = warning + delay;
+    const w = Math.max(80, parseFloat(obj.w) || parseFloat(data.Hitbox_Size_X) || 250);
+    const d = Math.max(50, parseFloat(obj.d) || parseFloat(data.Hitbox_Size_Y) || 130);
+    const pre = Math.max(0, Math.min(1, timer / Math.max(impactStart, 0.001)));
+    const impactRate = timer < impactStart ? 0 : Math.max(0, Math.min(1, (timer - impactStart) / 0.18));
+    const flash = 0.5 + 0.5 * Math.sin(Date.now() / 75 + (obj.seed || 0));
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.18 + 0.16 * flash;
+    const beamGrad = ctx.createLinearGradient(x, groundY - 420, x, groundY + 12);
+    beamGrad.addColorStop(0, 'rgba(170,90,255,0)');
+    beamGrad.addColorStop(0.18, 'rgba(160,84,255,0.18)');
+    beamGrad.addColorStop(0.42, 'rgba(255,82,76,0.24)');
+    beamGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = beamGrad;
+    ctx.beginPath();
+    ctx.ellipse(x, groundY - 180, w * 0.16, 260, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = 0.20 + 0.22 * flash;
+    ctx.strokeStyle = 'rgba(255,76,76,0.98)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.ellipse(x, groundY, w * (0.45 + pre * 0.05), d * (0.42 + pre * 0.05), 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 0.12 + 0.10 * pre;
+    ctx.fillStyle = 'rgba(80,0,18,0.92)';
+    ctx.beginPath();
+    ctx.ellipse(x, groundY, w * 0.50, d * 0.46, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.38;
+    ctx.strokeStyle = 'rgba(30,0,50,0.96)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 8; i++) {
+        const a = Math.PI * 2 * i / 8 + pre * 0.8;
+        ctx.beginPath();
+        ctx.moveTo(x + Math.cos(a) * w * 0.12, groundY + Math.sin(a) * d * 0.09);
+        ctx.lineTo(x + Math.cos(a) * w * 0.48, groundY + Math.sin(a) * d * 0.36);
+        ctx.stroke();
+    }
+    ctx.restore();
+
+    const startHeight = 380;
+    const endHeight = 20;
+    const fallEase = Math.pow(pre, 0.58);
+    const swordY = groundY - (startHeight * (1 - fallEase) + endHeight * fallEase) + impactRate * 10;
+    const swordLen = Math.max(205, w * 1.00);
+    const bladeW = Math.max(22, w * 0.072);
+
+    ctx.save();
+    ctx.globalAlpha = timer < impactStart ? (0.88 + 0.10 * pre) : Math.max(0.18, 1 - impactRate * 0.86);
+    ctx.translate(x, swordY);
+
+    // motion streaks
+    if (timer < impactStart) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = 'rgba(255,84,74,0.25)';
+        ctx.lineWidth = Math.max(3, bladeW * 0.18);
+        for (let i = 0; i < 4; i++) {
+            const ox = (i - 1.5) * bladeW * 0.35;
+            ctx.beginPath();
+            ctx.moveTo(ox, -swordLen * 0.22);
+            ctx.lineTo(ox, -swordLen * 0.72 - pre * 70);
+            ctx.stroke();
+        }
+        ctx.globalCompositeOperation = 'source-over';
+    }
+
+    const swordSprite = this.getKasiyasP3M2GiantSwordBodySprite ? this.getKasiyasP3M2GiantSwordBodySprite(swordLen, bladeW) : null;
+    if (swordSprite && swordSprite.canvas) {
+        ctx.drawImage(swordSprite.canvas, -swordSprite.originX, -swordSprite.originY);
+    } else if (typeof this.drawKasiyasP3M2GiantSwordStaticBody === 'function') {
+        // OffscreenCanvas/DOM Canvas를 만들 수 없는 환경에서는 기존 벡터 렌더를 그대로 사용한다.
+        this.drawKasiyasP3M2GiantSwordStaticBody(ctx, swordLen, bladeW);
+    }
     ctx.restore();
 
     if (timer >= impactStart) {

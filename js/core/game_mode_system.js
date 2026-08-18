@@ -380,12 +380,21 @@ const GameModeSystem = {
                 slot.appendChild(tip);
             }
         });
-        this.updateHudTooltips(null);
+        this.updateHudTooltips(null, true);
     },
 
-    updateHudTooltips(gameState) {
+    updateHudTooltips(gameState, force = false) {
         const p2 = !!(gameState && gameState.specialMode === 'SPECIAL_MODE_OBJECT_DEFENSE' && gameState.specialModeObjectDefenseRuntime && gameState.specialModeObjectDefenseRuntime.active);
         const rt = p2 ? gameState.specialModeObjectDefenseRuntime : null;
+        const rawKey = (action, fallback) => {
+            const raw = String(action && action.Input_Key || '').trim().toUpperCase();
+            return raw.startsWith('KEY_') ? raw.slice(4) : fallback;
+        };
+        const renderKey = p2
+            ? `P2:${rawKey(rt && rt.attackAction, 'X')}:${rawKey(rt && rt.jumpAction, 'C')}:${rawKey(rt && rt.guardAction, 'D')}:${rawKey(rt && rt.skillAction, 'A')}`
+            : 'NORMAL';
+        if (!force && this._hudTooltipRenderKey === renderKey) return;
+        this._hudTooltipRenderKey = renderKey;
         const keyLabel = (action, fallback) => {
             const raw = String(action && action.Input_Key || '').trim().toUpperCase();
             return raw.startsWith('KEY_') ? raw.slice(4) : fallback;
@@ -413,8 +422,12 @@ const GameModeSystem = {
 
     update(gameState, force = false) {
         if (!gameState) return;
-        document.body.classList.toggle('boss-practice-active', !!(gameState.bossPractice && gameState.bossPractice.enabled));
-        this.updateHudTooltips(gameState);
+        const practiceActive = !!(gameState.bossPractice && gameState.bossPractice.enabled);
+        if (force || this._practiceClassState !== practiceActive) {
+            document.body.classList.toggle('boss-practice-active', practiceActive);
+            this._practiceClassState = practiceActive;
+        }
+        this.updateHudTooltips(gameState, force);
         if (this.isGuide(gameState)) this.updateGuidePanel(gameState, force);
     },
 

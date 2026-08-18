@@ -117,6 +117,28 @@ const GameRenderer = {
         return ModelBodyRenderer.drawModelBody.apply(ModelBodyRenderer, arguments);
     },
 
+    getBossObjectRenderMeta: function(obj) {
+        if (!obj) return { objectType: '', renderType: '', traceKey: '', objectId: '' };
+        const data = obj.data || {};
+        const typeSource = data.Object_Type || obj.objectType || '';
+        const renderSource = obj.renderType || data.Object_Render_Type || '';
+        const traceSource = obj.traceKey || data.Trace_Path_Key || '';
+        const idSource = data.Object_ID || obj.objectId || '';
+        const cache = obj._renderMetaCache;
+        if (cache && cache.typeSource === typeSource && cache.renderSource === renderSource && cache.traceSource === traceSource && cache.idSource === idSource) {
+            return cache;
+        }
+        const next = {
+            typeSource, renderSource, traceSource, idSource,
+            objectType: String(typeSource).trim().toUpperCase(),
+            renderType: String(renderSource).trim().toUpperCase(),
+            traceKey: String(traceSource).trim().toUpperCase(),
+            objectId: String(idSource).trim()
+        };
+        obj._renderMetaCache = next;
+        return next;
+    },
+
 
     render: function(gameState) {
         if (!this.ctx) return;
@@ -154,7 +176,8 @@ const GameRenderer = {
         // WARNING 계열 전조는 캐릭터/보스보다 먼저 그린다.
         // 기존처럼 renderables에 함께 넣으면 긴 경로 전조가 캐릭터를 덮어서
         // 캐릭터와 보스가 점멸하거나 거의 안 보이는 것처럼 느껴질 수 있다.
-        const delayedEffects = [];
+        const delayedEffects = this._delayedEffectsBuffer || (this._delayedEffectsBuffer = []);
+        delayedEffects.length = 0;
         for (let eff of effects) {
             if (eff && eff.type === 'warning') {
                 renderer.drawEffectEntity(ctx, eff, player);
@@ -163,7 +186,8 @@ const GameRenderer = {
             }
         }
 
-        let renderables = [];
+        const renderables = this._renderablesBuffer || (this._renderablesBuffer = []);
+        renderables.length = 0;
 
         for (let a of auras) {
             renderables.push({
@@ -224,11 +248,13 @@ const GameRenderer = {
             }
         }
 
+        const bossAttackObjects = gameState.bossAttackObjects || [];
+
         // 지형 붕괴/접근 제한 오브젝트는 바닥 지형 레이어에 먼저 그린다.
         // 기존 렌더 대상(kind=actor/collectible/interactiveSword) 필터에 걸려
         // 판정은 작동하지만 균열/붕괴/차단 지형이 화면에 보이지 않던 문제를 보정한다.
-        for (let obj of (gameState.bossAttackObjects || [])) {
-            const objectTypeRaw = String(obj && obj.data && obj.data.Object_Type || obj && obj.objectType || '').trim().toUpperCase();
+        for (let obj of bossAttackObjects) {
+            const objectTypeRaw = this.getBossObjectRenderMeta(obj).objectType;
             if (obj && obj.active && (obj.kind === 'terrain' || objectTypeRaw.indexOf('TERRAIN_') === 0)) {
                 if (typeof renderer.drawBossPatternObjectEntity === 'function') {
                     renderer.drawBossPatternObjectEntity(ctx, obj);
@@ -236,11 +262,14 @@ const GameRenderer = {
             }
         }
 
-        const airborneBossObjects = [];
-        const p3GiantTraceOverlayObjects = [];
-        for (let obj of (gameState.bossAttackObjects || [])) {
-            const objectTypeRaw = String(obj && obj.data && obj.data.Object_Type || obj && obj.objectType || '').trim().toUpperCase();
-            const objectRenderTypeRaw = String(obj && (obj.renderType || obj.data && obj.data.Object_Render_Type) || '').trim().toUpperCase();
+        const airborneBossObjects = this._airborneBossObjectsBuffer || (this._airborneBossObjectsBuffer = []);
+        const p3GiantTraceOverlayObjects = this._p3GiantTraceOverlayObjectsBuffer || (this._p3GiantTraceOverlayObjectsBuffer = []);
+        airborneBossObjects.length = 0;
+        p3GiantTraceOverlayObjects.length = 0;
+        for (let obj of bossAttackObjects) {
+            const renderMeta = this.getBossObjectRenderMeta(obj);
+            const objectTypeRaw = renderMeta.objectType;
+            const objectRenderTypeRaw = renderMeta.renderType;
             const isAirborneBossObject = obj && obj.active && (
                 obj.kind === 'dimensionPortal' ||
                 obj.kind === 'fallingSwordRain' ||
@@ -270,8 +299,8 @@ const GameRenderer = {
                 });
                 continue;
             }
-            const traceKeyRaw = String(obj && (obj.traceKey || obj.data && obj.data.Trace_Path_Key) || '').trim().toUpperCase();
-            const objectIdRaw = String(obj && obj.data && obj.data.Object_ID || obj && obj.objectId || '').trim();
+            const traceKeyRaw = renderMeta.traceKey;
+            const objectIdRaw = renderMeta.objectId;
             const isP3B5ComboTraceObject = obj && obj.active && obj.kind === 'p3GiantSwordTrace' && (
                 objectIdRaw === '253011' ||
                 traceKeyRaw === 'TRACE_PATH_P3_B5_PREVIOUS_ALL' ||

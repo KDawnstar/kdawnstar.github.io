@@ -10,42 +10,7 @@
         return !!(gameState && gameState.specialMode === 'P3_M3_FINAL_ISSEN' && rt && rt.active && !rt.normalClearStageRestored);
     };
 
-    GameRenderer.drawP3M3WorldBackground = function(ctx, canvas, gameState) {
-        if (!this.isP3M3Active(gameState)) return;
-        const rt = gameState.p3m3Runtime || {};
-        const intro = rt.intro || null;
-        // 이면세계 진입 연출 중에는 검격으로 화면을 깨기 전까지 기존 맵을 유지한다.
-        if (intro && intro.active && !intro.innerWorldVisible) return;
-        const stageName = (typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.getStage)
-            ? ((P3M3FinalIssenSystem.getStage(gameState, rt.currentAreaId) || {}).Stage_Name || '')
-            : '';
-        const worldMode = String(rt.worldMode || 'INVERTED_BLACK_WHITE').trim().toUpperCase();
-        if (worldMode && worldMode !== 'INVERTED_BLACK_WHITE') return;
-        const w = canvas.width;
-        const h = canvas.height;
-        const t = performance.now() * 0.001;
-        ctx.save();
-        ctx.globalCompositeOperation = 'source-over';
-        if (rt.hiddenWhiteBackdrop) {
-            const ret = rt.hiddenClearReturn;
-            const fade = ret && ret.active
-                ? Math.max(0, Math.min(1, (parseFloat(ret.timer) || 0) / Math.max(0.05, parseFloat(ret.duration) || 0.9)))
-                : 0;
-            const whiteBg = ctx.createLinearGradient(0, 0, 0, h);
-            whiteBg.addColorStop(0, 'rgba(255,255,255,0.99)');
-            whiteBg.addColorStop(0.58, 'rgba(251,252,255,0.99)');
-            whiteBg.addColorStop(1, 'rgba(246,248,255,0.99)');
-            ctx.fillStyle = whiteBg;
-            ctx.fillRect(0, 0, w, h);
-            if (fade > 0) {
-                ctx.fillStyle = `rgba(255,255,255,${Math.min(1, 0.25 + fade * 0.75)})`;
-                ctx.fillRect(0, 0, w, h);
-            }
-            ctx.restore();
-            return;
-        }
-
-        // 흑백 이면세계: 빗금/해칭 제거, 검은 면과 흰 구조선 위주로 구성한다.
+    GameRenderer._drawP3M3StaticWorldBase = function(ctx, w, h) {
         const bg = ctx.createLinearGradient(0, 0, 0, h);
         bg.addColorStop(0, 'rgba(0,0,0,0.96)');
         bg.addColorStop(0.56, 'rgba(8,8,10,0.98)');
@@ -73,7 +38,6 @@
         ctx.lineTo(w, floorTop - 18);
         ctx.stroke();
 
-        // 흰 선으로만 보이는 추상 지형. 면은 검정색으로 채워 흑백 대비를 만든다.
         const shapes = [
             [[70, horizon - 42], [190, horizon - 76], [300, horizon - 30], [286, horizon + 15], [82, horizon + 12]],
             [[w * 0.46, horizon - 22], [w * 0.52, horizon - 82], [w * 0.59, horizon - 55], [w * 0.60, horizon + 24], [w * 0.44, horizon + 16]],
@@ -95,7 +59,6 @@
             ctx.restore();
         });
 
-        // 바닥 균열/타일선: 사선 빗금 대신 불규칙한 흰 선 조각만 사용한다.
         ctx.strokeStyle = 'rgba(255,255,255,0.20)';
         ctx.lineWidth = 1.5;
         for (let i = 0; i < 18; i++) {
@@ -109,8 +72,74 @@
             ctx.lineTo(x + len + 14, y + 8);
             ctx.stroke();
         }
+    };
 
-        // 얇은 백색 균열선이 느리게 맥동한다. 빗금처럼 반복되지 않도록 수량을 제한한다.
+    GameRenderer._getP3M3StaticWorldCache = function(canvas) {
+        const key = `${canvas.width}|${canvas.height}|black`;
+        let cache = this._p3m3StaticWorldCache;
+        if (!cache || cache.key !== key || !cache.canvas) {
+            const offscreen = document.createElement('canvas');
+            offscreen.width = canvas.width;
+            offscreen.height = canvas.height;
+            const offctx = offscreen.getContext('2d');
+            this._drawP3M3StaticWorldBase(offctx, offscreen.width, offscreen.height);
+            cache = this._p3m3StaticWorldCache = { key, canvas: offscreen };
+        }
+        return cache.canvas;
+    };
+
+    GameRenderer._getP3M3WhiteBackdropCache = function(canvas) {
+        const key = `${canvas.width}|${canvas.height}|white`;
+        let cache = this._p3m3WhiteBackdropCache;
+        if (!cache || cache.key !== key || !cache.canvas) {
+            const offscreen = document.createElement('canvas');
+            offscreen.width = canvas.width;
+            offscreen.height = canvas.height;
+            const offctx = offscreen.getContext('2d');
+            const whiteBg = offctx.createLinearGradient(0, 0, 0, offscreen.height);
+            whiteBg.addColorStop(0, 'rgba(255,255,255,0.99)');
+            whiteBg.addColorStop(0.58, 'rgba(251,252,255,0.99)');
+            whiteBg.addColorStop(1, 'rgba(246,248,255,0.99)');
+            offctx.fillStyle = whiteBg;
+            offctx.fillRect(0, 0, offscreen.width, offscreen.height);
+            cache = this._p3m3WhiteBackdropCache = { key, canvas: offscreen };
+        }
+        return cache.canvas;
+    };
+
+    GameRenderer.drawP3M3WorldBackground = function(ctx, canvas, gameState) {
+        if (!this.isP3M3Active(gameState)) return;
+        const rt = gameState.p3m3Runtime || {};
+        const intro = rt.intro || null;
+        if (intro && intro.active && !intro.innerWorldVisible) return;
+        const stageName = (typeof P3M3FinalIssenSystem !== 'undefined' && P3M3FinalIssenSystem.getStage)
+            ? ((P3M3FinalIssenSystem.getStage(gameState, rt.currentAreaId) || {}).Stage_Name || '')
+            : '';
+        const worldMode = String(rt.worldMode || 'INVERTED_BLACK_WHITE').trim().toUpperCase();
+        if (worldMode && worldMode !== 'INVERTED_BLACK_WHITE') return;
+        const w = canvas.width;
+        const h = canvas.height;
+        const t = performance.now() * 0.001;
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+
+        if (rt.hiddenWhiteBackdrop) {
+            const ret = rt.hiddenClearReturn;
+            const fade = ret && ret.active
+                ? Math.max(0, Math.min(1, (parseFloat(ret.timer) || 0) / Math.max(0.05, parseFloat(ret.duration) || 0.9)))
+                : 0;
+            ctx.drawImage(this._getP3M3WhiteBackdropCache(canvas), 0, 0);
+            if (fade > 0) {
+                ctx.fillStyle = `rgba(255,255,255,${Math.min(1, 0.25 + fade * 0.75)})`;
+                ctx.fillRect(0, 0, w, h);
+            }
+            ctx.restore();
+            return;
+        }
+
+        // 검은 면/추상 지형/바닥선은 캐시하고, 맥동 균열과 UI 텍스트만 실시간으로 유지한다.
+        ctx.drawImage(this._getP3M3StaticWorldCache(canvas), 0, 0);
+
         ctx.strokeStyle = `rgba(255,255,255,${0.18 + Math.sin(t * 1.4) * 0.04})`;
         ctx.lineWidth = 1.2;
         const cracks = [
@@ -129,6 +158,7 @@
         ctx.fillText(stageName || '카시야스 이면세계', 18, 28);
         ctx.restore();
     };
+
 
     GameRenderer.drawP3M3Portals = function(ctx, gameState) {
         if (!this.isP3M3Active(gameState)) return;

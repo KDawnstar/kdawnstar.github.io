@@ -3865,17 +3865,6 @@ const BossObjectSystem = {
             seed: Math.random() * 1000
         };
         gameState.bossAttackObjects.push(obj);
-        if (Array.isArray(gameState.effects)) {
-            gameState.effects.push({
-                type: 'p3M2GiantSwordWarning',
-                renderType: objData.Warning_Render_Type || 'WARNING_P3_M2_GIANT_SWORD_DROP',
-                x, y, z: 0,
-                w: obj.w, d: obj.d, h: obj.h,
-                life: warningDuration,
-                maxLife: warningDuration,
-                tileNo: obj.tileNo
-            });
-        }
         return obj;
     },
 
@@ -3900,15 +3889,6 @@ const BossObjectSystem = {
             obj.hitFired = true;
             if (!Array.isArray(gameState.hitboxes)) gameState.hitboxes = [];
             gameState.hitboxes.push({ ...hitbox, type: 'circle', life: Math.max(0.10, hitDuration), sourceObject: obj, sourceObjectId: String(data.Object_ID || '') });
-            if (Array.isArray(gameState.effects)) {
-                gameState.effects.push({
-                    type: 'p3M2GiantSwordImpact',
-                    renderType: data.VFX_Type || 'EFT_P3_M2_GIANT_SWORD_DROP',
-                    x: hitbox.x, y: hitbox.y, z: 0,
-                    w: hitbox.w, d: hitbox.d, h: hitbox.h,
-                    life: 0.32, maxLife: 0.32
-                });
-            }
             const p = gameState.player || null;
             if (owner && owner.d && p && p.active && p.hp > 0 && typeof this.isPlayerInsideCircleHitbox === 'function' && this.isPlayerInsideCircleHitbox(hitbox, gameState)) {
                 const dmgRate = this.getBossObjectDamageRate(owner, data, 0.8);
@@ -3994,17 +3974,6 @@ const BossObjectSystem = {
         };
         gameState.bossAttackObjects.push(obj);
 
-        if (Array.isArray(gameState.effects)) {
-            gameState.effects.push({
-                type: 'p3M2ApostleEnergyWarning',
-                renderType: objData.Warning_Render_Type || 'WARNING_P3_M2_APOSTLE_ENERGY_ERUPTION',
-                x, y, z: 0,
-                w: obj.w, d: obj.d, h: obj.h,
-                life: warningDuration,
-                maxLife: warningDuration,
-                tileNo: obj.tileNo
-            });
-        }
         return obj;
     },
 
@@ -4028,20 +3997,6 @@ const BossObjectSystem = {
             d: Math.max(30, parseFloat(obj.d) || parseFloat(data.Hitbox_Size_Y) || 140),
             h: Math.max(80, parseFloat(obj.h) || parseFloat(data.Hitbox_Size_Z) || 300)
         };
-
-        if (!obj.eruptionEffectFired && obj.timer >= hitStart) {
-            obj.eruptionEffectFired = true;
-            if (Array.isArray(gameState.effects)) {
-                gameState.effects.push({
-                    type: 'p3M2ApostleEnergyEruption',
-                    renderType: data.VFX_Type || 'EFT_P3_M2_APOSTLE_ENERGY_ERUPTION',
-                    x: hitbox.x, y: hitbox.y, z: 0,
-                    w: hitbox.w, d: hitbox.d, h: hitbox.h,
-                    life: Math.max(0.28, hitDuration + 0.18),
-                    maxLife: Math.max(0.28, hitDuration + 0.18)
-                });
-            }
-        }
 
         if (obj.timer >= hitStart && obj.timer <= hitEnd && (obj.hitsDone || 0) < hitCount && obj.cycleTimer >= cycle) {
             obj.cycleTimer = 0;

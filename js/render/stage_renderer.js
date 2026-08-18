@@ -55,6 +55,8 @@ GameRenderer.themePresets = {
 };
 
 GameRenderer.rebuildStageBackground = function(stage, worldWidth, worldDepth) {
+    // 정적 배경 오프스크린 캐시는 배경 데이터 재구성 시 무효화한다.
+    this._stageBackgroundCache = null;
     this.currentTheme = (stage && stage.Stage_Background_Type) ? stage.Stage_Background_Type : 'DEFAULT';
 
     this.bgClouds = [];
@@ -124,7 +126,7 @@ GameRenderer.getTheme = function(gameState) {
     return this.themePresets[key] || this.themePresets.DEFAULT;
 };
 
-GameRenderer.drawBackground = function(gameState) {
+GameRenderer._drawBackgroundDirect = function(gameState) {
     const ctx = this.ctx;
     const canvas = this.canvas;
     const camera = gameState.camera;
@@ -313,6 +315,50 @@ GameRenderer.drawBackground = function(gameState) {
             ctx.fillRect(wx, wy, 2, 2);
         }
     }
+};
+
+
+// 2차 성능 최적화: 일반 전장의 정적 배경을 오프스크린 Canvas에 캐시한다.
+// 현재 카시야스 전장은 카메라 X가 대부분 고정이지만, 향후 스테이지 확장을 고려해
+// camera.x까지 키에 포함하므로 카메라가 실제로 움직일 때도 화면 결과는 기존과 동일하다.
+GameRenderer.drawBackground = function(gameState) {
+    const ctx = this.ctx;
+    const canvas = this.canvas;
+    if (!ctx || !canvas) return;
+
+    const cameraX = Number.isFinite(parseFloat(gameState && gameState.camera && gameState.camera.x))
+        ? parseFloat(gameState.camera.x)
+        : 0;
+    const worldDepth = Number.isFinite(parseFloat(gameState && gameState.WORLD_DEPTH))
+        ? parseFloat(gameState.WORLD_DEPTH)
+        : 0;
+    const themeKey = (gameState && gameState.currentStage && gameState.currentStage.Stage_Background_Type)
+        ? gameState.currentStage.Stage_Background_Type
+        : this.currentTheme;
+    const key = [canvas.width, canvas.height, this.GROUND_BASE_Y, worldDepth, themeKey || 'DEFAULT', cameraX].join('|');
+
+    let cache = this._stageBackgroundCache;
+    if (!cache || cache.key !== key || !cache.canvas) {
+        const offscreen = document.createElement('canvas');
+        offscreen.width = canvas.width;
+        offscreen.height = canvas.height;
+        const offctx = offscreen.getContext('2d');
+
+        const prevCanvas = this.canvas;
+        const prevCtx = this.ctx;
+        try {
+            this.canvas = offscreen;
+            this.ctx = offctx;
+            this._drawBackgroundDirect(gameState);
+        } finally {
+            this.canvas = prevCanvas;
+            this.ctx = prevCtx;
+        }
+        cache = this._stageBackgroundCache = { key, canvas: offscreen };
+    }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(cache.canvas, 0, 0);
 };
 
 GameRenderer.drawStageWarp = function(gameState) {
