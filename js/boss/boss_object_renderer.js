@@ -199,19 +199,50 @@ GameRenderer.drawBossPatternObjectEntity = function(ctx, obj) {
     if (objectArmor && typeof this.drawKasiyasArmorOutline === 'function') {
         this.drawKasiyasArmorOutline(ctx, w, h, opacity);
     }
-    this.drawKasiyasModel(ctx, {
-        m: { boss: { action: { Action_Move_Type: action.Move_Type || action.Action_Move_Type || '', Move_Type: action.Move_Type || '', VFX_Type: action.VFX_Type || action.Effect_Render_Type || '', Effect_Render_Type: action.VFX_Type || action.Effect_Render_Type || '' } } },
-        d: d,
-        renderType: d.renderType || d.Model_Render_Type || 'RENDER_KASIYAS_P1',
-        w: w,
-        h: h,
-        face: obj.faceDir || 1,
-        stateKey: 'ATK_MELEE',
-        poseType: poseType,
-        progress: progress,
-        eyeEffectType: action.VFX_Type || action.Effect_Render_Type || '',
-        isUI: false
-    });
+    const actionMoveType = action.Move_Type || action.Action_Move_Type || '';
+    const actionVfxType = action.VFX_Type || action.Effect_Render_Type || '';
+    // P1M1 최초 WAIT는 POSE_DEFAULT + EFT_NOISE_MOVE 조합이다.
+    // EFT_NOISE_MOVE는 모델 외형을 바꾸지 않고 위치 섞기 이펙트가 별도로 렌더되므로 기본 자세 캐시를 그대로 사용할 수 있다.
+    const cloneVfxDoesNotChangeModel = !actionVfxType || actionVfxType === 'EFT_NOISE_MOVE';
+    const canUseDefaultCloneSprite = isCloneObject
+        && poseType === 'POSE_DEFAULT'
+        && cloneVfxDoesNotChangeModel
+        && typeof this.drawKasiyasCloneDefaultPoseSprite === 'function';
+    if (canUseDefaultCloneSprite) {
+        this.drawKasiyasCloneDefaultPoseSprite(ctx, w, h, obj.faceDir || 1);
+    } else {
+        // 분신은 매 프레임 동일한 중첩 파라미터 객체를 새로 만들지 않고 렌더 전용 객체를 재사용한다.
+        let cloneRenderParams = this._kasiyasCloneRenderParams;
+        if (!cloneRenderParams) {
+            cloneRenderParams = this._kasiyasCloneRenderParams = {
+                m: { boss: { action: { Action_Move_Type: '', Move_Type: '', VFX_Type: '', Effect_Render_Type: '' } } },
+                d: null,
+                renderType: 'RENDER_KASIYAS_P1',
+                w: 80,
+                h: 160,
+                face: 1,
+                stateKey: 'ATK_MELEE',
+                poseType: 'POSE_DEFAULT',
+                progress: 0,
+                eyeEffectType: '',
+                isUI: false
+            };
+        }
+        const cloneRenderAction = cloneRenderParams.m.boss.action;
+        cloneRenderAction.Action_Move_Type = actionMoveType;
+        cloneRenderAction.Move_Type = action.Move_Type || '';
+        cloneRenderAction.VFX_Type = actionVfxType;
+        cloneRenderAction.Effect_Render_Type = actionVfxType;
+        cloneRenderParams.d = d;
+        cloneRenderParams.renderType = d.renderType || d.Model_Render_Type || 'RENDER_KASIYAS_P1';
+        cloneRenderParams.w = w;
+        cloneRenderParams.h = h;
+        cloneRenderParams.face = obj.faceDir || 1;
+        cloneRenderParams.poseType = poseType;
+        cloneRenderParams.progress = progress;
+        cloneRenderParams.eyeEffectType = actionVfxType;
+        this.drawKasiyasModel(ctx, cloneRenderParams);
+    }
     ctx.restore();
 
     if ('filter' in ctx) ctx.filter = 'none';
@@ -280,6 +311,24 @@ GameRenderer.drawBossPatternObjectEntity = function(ctx, obj) {
     } else if (actionType === 'WARNING' && rawPose === 'POSE_KASIYAS_SLAM_THE_SWORD_DOWN_READY') {
         this.drawBossObjectSlamGauge(ctx, obj, bodyY, h, progress);
     }
+};
+
+// 분신이 처음 등장하는 프레임에 Canvas filter 초기화 비용이 몰리지 않도록 유휴 시간에 한 번 예열한다.
+GameRenderer.prewarmKasiyasCloneFilter = function() {
+    if (this._kasiyasCloneFilterPrewarmed || typeof document === 'undefined') return;
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    if ('filter' in ctx) {
+        ctx.filter = 'brightness(1.05) saturate(1.15) contrast(1.05)';
+        ctx.fillStyle = '#8c687d';
+        ctx.fillRect(8, 8, 48, 48);
+        ctx.filter = 'none';
+    }
+    this._kasiyasCloneFilterWarmupCanvas = canvas;
+    this._kasiyasCloneFilterPrewarmed = true;
 };
 
 
@@ -3322,6 +3371,27 @@ GameRenderer.getKasiyasP3M2GiantSwordBodySprite = function(swordLen, bladeW) {
     const sprite = { canvas, originX: halfW, originY: top };
     cache.set(key, sprite);
     return sprite;
+};
+
+GameRenderer.prewarmKasiyasP3M2GiantSwordCache = function(gameState) {
+    let data = null;
+    const db = gameState && gameState.DB_BOSS_PATTERN_OBJECT ? gameState.DB_BOSS_PATTERN_OBJECT : null;
+    if (db) {
+        const keys = Object.keys(db);
+        for (let i = 0; i < keys.length; i++) {
+            const row = db[keys[i]];
+            const renderType = String(row && row.Object_Render_Type || '').trim().toUpperCase();
+            const objectType = String(row && row.Object_Type || '').trim().toUpperCase();
+            if (renderType === 'OBJ_P3_M2_GIANT_SWORD_DROP' || objectType === 'GIANT_SWORD_DROP') {
+                data = row;
+                break;
+            }
+        }
+    }
+    const w = Math.max(80, parseFloat(data && data.Hitbox_Size_X) || 450);
+    const swordLen = Math.max(205, w * 1.00);
+    const bladeW = Math.max(22, w * 0.072);
+    return !!this.getKasiyasP3M2GiantSwordBodySprite(swordLen, bladeW);
 };
 
 

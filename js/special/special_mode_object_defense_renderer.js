@@ -10,6 +10,16 @@
     if (typeof GameRenderer === 'undefined' || !GameRenderer) return;
 
     const V = { fieldW: 480, fieldH: 760, spawnY: 78, warningTopY: 44, playerGroundY: 690, floorY: 720 };
+    const SLASH_THEMES = {
+        final: { key: 'final', main: '#ff3c38', light: '#ffe1a0', dark: '#16050a', glow: 'rgba(255,45,35,0.86)', shard: 'rgba(255,72,54,0.95)' },
+        giant: { key: 'giant', main: '#b5182e', light: '#ffad6e', dark: '#10070c', glow: 'rgba(255,45,35,0.82)', shard: 'rgba(255,76,55,0.96)' },
+        apostle: { key: 'apostle', main: '#d5274d', light: '#ff8aa4', dark: '#07030a', glow: 'rgba(225,30,85,0.75)', shard: 'rgba(255,65,115,0.95)' },
+        x: { key: 'x', main: '#ff3838', light: '#ffd4c0', dark: '#3b0710', glow: 'rgba(255,48,48,0.68)', shard: 'rgba(255,85,75,0.94)' },
+        normal: { key: 'normal', main: '#62c9ff', light: '#ecfbff', dark: '#072445', glow: 'rgba(80,180,255,0.65)', shard: 'rgba(135,225,255,0.95)' }
+    };
+    const WARNING_DASH_NORMAL = [12, 8];
+    const WARNING_DASH_GIANT = [16, 7];
+    const WARNING_DASH_FINAL = [18, 6];
 
     GameRenderer.getObjectDefenseLayout = function(canvas, rt) {
         const w = canvas ? canvas.width : 1600;
@@ -21,17 +31,25 @@
         const left = (w - fieldW) / 2;
         const top = (h - fieldH) / 2;
         const laneW = fieldW / 3;
-        const mapY = (y) => top + y * scale;
-        return {
-            w, h, fieldW, fieldH, left, top, laneW, scale,
-            bottom: top + fieldH,
-            spawnY: mapY(rv.spawnY),
-            warningTopY: mapY(rv.warningTopY),
-            playerGroundY: mapY(rv.playerGroundY),
-            floorY: mapY(rv.floorY),
-            v: rv,
-            mapY
-        };
+        // 1차 성능 최적화: 전용 모드에서 매 프레임 layout 객체와 mapY 클로저를 새로 만들지 않는다.
+        const layout = this._objectDefenseLayoutCache || (this._objectDefenseLayoutCache = {
+            mapY: function(y) { return this.top + y * this.scale; }
+        });
+        layout.w = w;
+        layout.h = h;
+        layout.fieldW = fieldW;
+        layout.fieldH = fieldH;
+        layout.left = left;
+        layout.top = top;
+        layout.laneW = laneW;
+        layout.scale = scale;
+        layout.bottom = top + fieldH;
+        layout.spawnY = top + rv.spawnY * scale;
+        layout.warningTopY = top + rv.warningTopY * scale;
+        layout.playerGroundY = top + rv.playerGroundY * scale;
+        layout.floorY = top + rv.floorY * scale;
+        layout.v = rv;
+        return layout;
     };
 
     GameRenderer.getObjectDefenseLaneCenterX = function(layout, lane) {
@@ -43,19 +61,12 @@
     GameRenderer.getObjectDefenseSlashTheme = function(slash, fallbackType) {
         const renderType = String(fallbackType || slash && slash.data && slash.data.Object_Render_Type || '').toUpperCase();
         const category = String(slash && slash.data && slash.data.Object_Type || '').toUpperCase();
-        if (renderType.indexOf('KASIYAS_FINAL') >= 0 || category.indexOf('FINAL') >= 0) {
-            return { key: 'final', main: '#ff3c38', light: '#ffe1a0', dark: '#16050a', glow: 'rgba(255,45,35,0.86)', shard: 'rgba(255,72,54,0.95)' };
-        }
-        if (renderType.indexOf('GIANT') >= 0 || category.indexOf('GIANT') >= 0) {
-            return { key: 'giant', main: '#b5182e', light: '#ffad6e', dark: '#10070c', glow: 'rgba(255,45,35,0.82)', shard: 'rgba(255,76,55,0.96)' };
-        }
-        if (renderType.indexOf('APOSTLE') >= 0 || category.indexOf('APOSTLE') >= 0) {
-            return { key: 'apostle', main: '#d5274d', light: '#ff8aa4', dark: '#07030a', glow: 'rgba(225,30,85,0.75)', shard: 'rgba(255,65,115,0.95)' };
-        }
-        if (renderType.indexOf('X_SLASH') >= 0 || category.indexOf('X') >= 0) {
-            return { key: 'x', main: '#ff3838', light: '#ffd4c0', dark: '#3b0710', glow: 'rgba(255,48,48,0.68)', shard: 'rgba(255,85,75,0.94)' };
-        }
-        return { key: 'normal', main: '#62c9ff', light: '#ecfbff', dark: '#072445', glow: 'rgba(80,180,255,0.65)', shard: 'rgba(135,225,255,0.95)' };
+        // 테마 객체는 불변이므로 매 호출마다 새 객체를 만들지 않는다.
+        if (renderType.indexOf('KASIYAS_FINAL') >= 0 || category.indexOf('FINAL') >= 0) return SLASH_THEMES.final;
+        if (renderType.indexOf('GIANT') >= 0 || category.indexOf('GIANT') >= 0) return SLASH_THEMES.giant;
+        if (renderType.indexOf('APOSTLE') >= 0 || category.indexOf('APOSTLE') >= 0) return SLASH_THEMES.apostle;
+        if (renderType.indexOf('X_SLASH') >= 0 || category.indexOf('X') >= 0) return SLASH_THEMES.x;
+        return SLASH_THEMES.normal;
     };
 
     GameRenderer.drawObjectDefenseHexTiles = function(ctx, x, y, w, h, scale, alpha) {
@@ -258,25 +269,46 @@
         }
     };
 
-    GameRenderer.drawObjectDefenseBackground = function(ctx, canvas, layout, rt) {
-        const t = rt.timer || 0;
-        const introOnlyBackground = !!(rt && rt.phase === 'INTRO' && rt.isPatternLinked);
+    GameRenderer._getObjectDefenseBackgroundCache = function(canvas, layout, introOnlyBackground) {
         const arena = (this.themePresets && this.themePresets.RENDER_KASIYAS_ARENA) || {};
         const key = [
             canvas.width, canvas.height, introOnlyBackground ? 1 : 0,
             layout.left, layout.top, layout.fieldW, layout.fieldH, layout.floorY, layout.bottom, layout.scale,
             arena.skyTop || '', arena.skyBottom || '', arena.groundTop || '', arena.groundBottom || ''
         ].join('|');
-
-        let cache = this._objectDefenseBackgroundCache;
-        if (!cache || cache.key !== key || !cache.canvas) {
+        const cacheMap = this._objectDefenseBackgroundCacheMap || (this._objectDefenseBackgroundCacheMap = new Map());
+        let cache = cacheMap.get(key);
+        if (!cache || !cache.canvas) {
             const offscreen = document.createElement('canvas');
             offscreen.width = canvas.width;
             offscreen.height = canvas.height;
             const offctx = offscreen.getContext('2d');
             this._drawObjectDefenseStaticBackgroundBase(offctx, offscreen, layout, introOnlyBackground);
-            cache = this._objectDefenseBackgroundCache = { key, canvas: offscreen };
+            cache = { key, canvas: offscreen };
+            cacheMap.set(key, cache);
         }
+        return cache;
+    };
+
+    GameRenderer.prewarmObjectDefenseCaches = function(canvas, variant) {
+        if (!canvas || typeof this._getObjectDefenseBackgroundCache !== 'function') return false;
+        const layout = this.getObjectDefenseLayout(canvas, null);
+        const mode = String(variant || 'ALL').trim().toUpperCase();
+        if (mode === 'INTRO') {
+            this._getObjectDefenseBackgroundCache(canvas, layout, true);
+        } else if (mode === 'ACTIVE') {
+            this._getObjectDefenseBackgroundCache(canvas, layout, false);
+        } else {
+            this._getObjectDefenseBackgroundCache(canvas, layout, true);
+            this._getObjectDefenseBackgroundCache(canvas, layout, false);
+        }
+        return true;
+    };
+
+    GameRenderer.drawObjectDefenseBackground = function(ctx, canvas, layout, rt) {
+        const t = rt.timer || 0;
+        const introOnlyBackground = !!(rt && rt.phase === 'INTRO' && rt.isPatternLinked);
+        const cache = this._getObjectDefenseBackgroundCache(canvas, layout, introOnlyBackground);
 
         ctx.save();
         ctx.drawImage(cache.canvas, 0, 0);
@@ -400,7 +432,17 @@
 
 
     GameRenderer.drawObjectDefenseSlashes = function(ctx, layout, rt) {
-        const slashes = (rt.activeSlashes || []).filter(s => s && s.active).slice().sort((a, b) => (a.y || 0) - (b.y || 0));
+        const source = rt.activeSlashes || [];
+        const slashes = this._objectDefenseSlashSortBuffer || (this._objectDefenseSlashSortBuffer = []);
+        slashes.length = 0;
+        for (let i = 0; i < source.length; i++) {
+            const slash = source[i];
+            if (slash && slash.active) slashes.push(slash);
+        }
+        if (slashes.length > 1) {
+            const sortFn = this._objectDefenseSlashSortFn || (this._objectDefenseSlashSortFn = function(a, b) { return (a.y || 0) - (b.y || 0); });
+            slashes.sort(sortFn);
+        }
         for (const slash of slashes) {
             if (slash.state === 'WARNING') this.drawObjectDefenseSlashWarning(ctx, layout, slash);
             else this.drawObjectDefenseSlashEntity(ctx, layout, slash);
@@ -416,7 +458,9 @@
         const w = layout.laneW * (maxLane - minLane + 1) - pad * 2;
         const h = (slash.height || 80) * layout.scale;
         const y = layout.mapY(slash.y || layout.v.spawnY);
-        return { x, y, w, h, cx: x + w / 2, bottom: y + h };
+        const b = this._objectDefenseSlashBoundsScratch || (this._objectDefenseSlashBoundsScratch = {});
+        b.x = x; b.y = y; b.w = w; b.h = h; b.cx = x + w / 2; b.bottom = y + h;
+        return b;
     };
 
     GameRenderer.drawObjectDefenseSlashWarning = function(ctx, layout, slash) {
@@ -438,7 +482,7 @@
             : (lanes.length >= 2 ? 'rgba(166,54,255,0.22)' : 'rgba(255,80,92,0.20)');
         let strokeRgb = '255,230,150';
         let lineWidth = 3;
-        let dash = [12, 8];
+        let dashKey = 'normal';
 
         if (warningType === 'WARNING_P2M3_SLASH_NORMAL') {
             fillStyle = 'rgba(255,80,92,0.20)';
@@ -452,12 +496,12 @@
             fillStyle = 'rgba(255,65,65,0.26)';
             strokeRgb = '255,226,150';
             lineWidth = 4;
-            dash = [16, 7];
+            dashKey = 'giant';
         } else if (warningType === 'WARNING_P2M3_SLASH_KASIYAS_FINAL_ATTACK') {
             fillStyle = 'rgba(112,42,170,0.25)';
             strokeRgb = '255,214,150';
             lineWidth = 4;
-            dash = [18, 6];
+            dashKey = 'final';
         }
 
         ctx.save();
@@ -467,7 +511,14 @@
         ctx.fill();
         ctx.strokeStyle = `rgba(${strokeRgb},${pulse})`;
         ctx.lineWidth = lineWidth * layout.scale;
-        ctx.setLineDash(dash.map(v => v * layout.scale));
+        const dashCache = this._objectDefenseScaledDashCache || (this._objectDefenseScaledDashCache = { scale: NaN, normal: [], giant: [], final: [] });
+        if (dashCache.scale !== layout.scale) {
+            dashCache.scale = layout.scale;
+            dashCache.normal[0] = WARNING_DASH_NORMAL[0] * layout.scale; dashCache.normal[1] = WARNING_DASH_NORMAL[1] * layout.scale;
+            dashCache.giant[0] = WARNING_DASH_GIANT[0] * layout.scale; dashCache.giant[1] = WARNING_DASH_GIANT[1] * layout.scale;
+            dashCache.final[0] = WARNING_DASH_FINAL[0] * layout.scale; dashCache.final[1] = WARNING_DASH_FINAL[1] * layout.scale;
+        }
+        ctx.setLineDash(dashCache[dashKey]);
         this.roundRect(ctx, x, layout.warningTopY, w, layout.floorY - layout.warningTopY, 12 * layout.scale);
         ctx.stroke();
         ctx.setLineDash([]);
@@ -823,30 +874,30 @@
         ctx.save();
         // 기존 플레이어 렌더를 안전하게 재사용한다. 좌표만 특수 모드 필드에 맞춰 가짜 런타임으로 변환한다.
         const source = gameState && gameState.player ? gameState.player : {};
-        const fakePlayer = Object.assign({}, source, {
-            x,
-            y: groundY - (this.GROUND_BASE_Y || 0),
-            z: Math.max(0, groundY - screenY),
-            scale: Math.max(0.82, Math.min(1.05, (source.scale || 1) * layout.scale * 0.94)),
-            state: p.introPose === 'DOWN' ? 'Hit' : (p.introPose === 'VOID_FALL' || p.introPose === 'FIELD_FALL' ? 'Jump' : (p.isGuarding ? 'Guard' : (!p.grounded ? 'Jump' : 'Idle'))),
-            prevState: 'Idle',
-            faceDir: 1,
-            stance: 'Mode_Melee',
-            renderType: source.renderType || 'RENDER_HUMAN',
-            meleeWeaponRenderType: source.meleeWeaponRenderType || 'WEAPON_LARGE_SWORD',
-            rangeWeaponRenderType: source.rangeWeaponRenderType || 'WEAPON_GUN',
-            bodyX: source.bodyX || 60,
-            bodyY: source.bodyY || 40,
-            bodyZ: source.bodyZ || 120,
-            atkTimer: 0,
-            rapidAtkCooldownTimer: 0,
-            rapidAtkAllowTimer: 0,
-            stanceSwapTimer: 0,
-            guardCooldownTimer: 0,
-            kasiyasOniMark: null,
-            kasiyasTemperedBladeReady: !!(rt.requiredResponseBuffKey && p.buffs && p.buffs[rt.requiredResponseBuffKey]),
-            kasiyasTemperedBladeFlashTimer: (rt.requiredResponseBuffKey && p.buffs && p.buffs[rt.requiredResponseBuffKey]) ? 0.35 : 0
-        });
+        const fakePlayer = this._objectDefenseFakePlayer || (this._objectDefenseFakePlayer = {});
+        Object.assign(fakePlayer, source);
+        fakePlayer.x = x;
+        fakePlayer.y = groundY - (this.GROUND_BASE_Y || 0);
+        fakePlayer.z = Math.max(0, groundY - screenY);
+        fakePlayer.scale = Math.max(0.82, Math.min(1.05, (source.scale || 1) * layout.scale * 0.94));
+        fakePlayer.state = p.introPose === 'DOWN' ? 'Hit' : (p.introPose === 'VOID_FALL' || p.introPose === 'FIELD_FALL' ? 'Jump' : (p.isGuarding ? 'Guard' : (!p.grounded ? 'Jump' : 'Idle')));
+        fakePlayer.prevState = 'Idle';
+        fakePlayer.faceDir = 1;
+        fakePlayer.stance = 'Mode_Melee';
+        fakePlayer.renderType = source.renderType || 'RENDER_HUMAN';
+        fakePlayer.meleeWeaponRenderType = source.meleeWeaponRenderType || 'WEAPON_LARGE_SWORD';
+        fakePlayer.rangeWeaponRenderType = source.rangeWeaponRenderType || 'WEAPON_GUN';
+        fakePlayer.bodyX = source.bodyX || 60;
+        fakePlayer.bodyY = source.bodyY || 40;
+        fakePlayer.bodyZ = source.bodyZ || 120;
+        fakePlayer.atkTimer = 0;
+        fakePlayer.rapidAtkCooldownTimer = 0;
+        fakePlayer.rapidAtkAllowTimer = 0;
+        fakePlayer.stanceSwapTimer = 0;
+        fakePlayer.guardCooldownTimer = 0;
+        fakePlayer.kasiyasOniMark = null;
+        fakePlayer.kasiyasTemperedBladeReady = !!(rt.requiredResponseBuffKey && p.buffs && p.buffs[rt.requiredResponseBuffKey]);
+        fakePlayer.kasiyasTemperedBladeFlashTimer = (rt.requiredResponseBuffKey && p.buffs && p.buffs[rt.requiredResponseBuffKey]) ? 0.35 : 0;
         if (typeof this.drawPlayerEntity === 'function') {
             this.drawPlayerEntity(ctx, fakePlayer);
         } else {

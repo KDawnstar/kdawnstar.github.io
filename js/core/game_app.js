@@ -810,6 +810,10 @@ async function loadGameDataAndInit() {
             GameModeSystem.init(gameState);
         }
 
+        if (typeof GameRenderer !== 'undefined' && GameRenderer.schedulePerformanceCacheWarmup) {
+            GameRenderer.schedulePerformanceCacheWarmup(gameState);
+        }
+
         requestAnimationFrame(gameLoop);
 
     } catch (error) {

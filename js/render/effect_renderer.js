@@ -1,4 +1,94 @@
 // [카시야스 보스전] 이펙트 렌더링 (effect_renderer.js)
+GameRenderer.prewarmNoiseTeleportCache = function() {
+    if (this._noiseTeleportSpriteCache || typeof document === 'undefined') return this._noiseTeleportSpriteCache || null;
+    const cache = { size: 192, frames: 6, VANISH: [], APPEAR: [] };
+    const drawFrame = (phase, frameIndex) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = cache.size;
+        canvas.height = cache.size;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return canvas;
+        const t = cache.frames <= 1 ? 1 : frameIndex / (cache.frames - 1);
+        const burst = phase === 'APPEAR' ? t : (1 - t);
+        const coreAlpha = phase === 'APPEAR' ? (0.32 + t * 0.34) : (0.40 - t * 0.18);
+        const noiseAlpha = phase === 'APPEAR' ? (0.22 + t * 0.18) : (0.34 - t * 0.10);
+        const accent = phase === 'APPEAR' ? 'rgba(255,226,196,' : 'rgba(120,0,0,';
+        const primary = phase === 'APPEAR' ? 'rgba(255,104,86,' : 'rgba(255,64,52,';
+        ctx.save();
+        ctx.translate(cache.size / 2, cache.size / 2);
+        ctx.globalCompositeOperation = 'lighter';
+        const glow = ctx.createRadialGradient(0, 0, 6, 0, 0, 56 + burst * 26);
+        glow.addColorStop(0, `${accent}${0.42 * coreAlpha})`);
+        glow.addColorStop(0.28, `${primary}${0.36 * coreAlpha})`);
+        glow.addColorStop(0.72, `${primary}${0.12 * coreAlpha})`);
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 34 + burst * 22, 28 + burst * 18, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = phase === 'APPEAR' ? 'rgba(255,114,96,0.52)' : 'rgba(140,0,0,0.50)';
+        ctx.lineCap = 'round';
+        for (let i = 0; i < 10; i++) {
+            const ang = (Math.PI * 2 / 10) * i + (i % 2 ? -0.16 : 0.16) + burst * 0.22;
+            const r1 = 12 + (i % 3) * 6 + burst * 5;
+            const r2 = 34 + (i % 4) * 7 + burst * 18;
+            ctx.strokeStyle = i % 3 === 0 ? `${accent}${0.52 * noiseAlpha})` : `${primary}${0.68 * noiseAlpha})`;
+            ctx.lineWidth = i % 2 === 0 ? 4.0 : 2.6;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(ang) * r1, Math.sin(ang) * r1 * 0.82);
+            ctx.lineTo(Math.cos(ang) * r2, Math.sin(ang) * r2 * 0.82);
+            ctx.stroke();
+        }
+        ctx.shadowBlur = 0;
+        for (let i = 0; i < 8; i++) {
+            const ang = (Math.PI * 2 / 8) * i - burst * 0.18;
+            const px = Math.cos(ang) * (22 + (i % 3) * 7 + burst * 12);
+            const py = Math.sin(ang) * (18 + (i % 2) * 8 + burst * 10) * 0.82;
+            const rw = i % 2 === 0 ? 8 : 6;
+            const rh = i % 3 === 0 ? 8 : 5;
+            ctx.fillStyle = i % 2 === 0 ? `${primary}${0.54 * noiseAlpha})` : `${accent}${0.44 * noiseAlpha})`;
+            ctx.fillRect(px - rw * 0.5, py - rh * 0.5, rw, rh);
+        }
+        ctx.globalAlpha = 0.26 + burst * 0.10;
+        ctx.fillStyle = phase === 'APPEAR' ? 'rgba(255,218,180,1)' : 'rgba(88,0,0,1)';
+        ctx.fillRect(-16, -42 - burst * 8, 32, 84 + burst * 16);
+        ctx.restore();
+        return canvas;
+    };
+    for (const phase of ['VANISH', 'APPEAR']) {
+        for (let i = 0; i < cache.frames; i++) cache[phase].push(drawFrame(phase, i));
+    }
+    this._noiseTeleportSpriteCache = cache;
+    return cache;
+};
+
+GameRenderer.drawNoiseTeleportCached = function(ctx, eff, alpha) {
+    const cache = this._noiseTeleportSpriteCache || this.prewarmNoiseTeleportCache();
+    if (!cache) return false;
+    const phase = String(eff && eff.phase || '').trim().toUpperCase() === 'APPEAR' ? 'APPEAR' : 'VANISH';
+    const frames = cache[phase] || cache.VANISH;
+    if (!frames || !frames.length) return false;
+    const t = 1 - alpha;
+    const idx = Math.max(0, Math.min(frames.length - 1, Math.floor(t * (frames.length - 0.0001))));
+    const sprite = frames[idx];
+    const w = Math.max(80, eff && (eff.w || 150));
+    const h = Math.max(70, eff && (eff.h || 130));
+    const seed = Math.floor(((eff && eff.x) || 0) * 13 + ((eff && eff.y) || 0) * 7 + ((eff && eff.maxLife) || 1) * 1000);
+    const rot = (((seed % 19) / 19) - 0.5) * 0.24;
+    const mirror = seed % 2 ? -1 : 1;
+    const drawW = w * 1.22;
+    const drawH = h * 1.34;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.rotate(rot);
+    ctx.scale(mirror, 1);
+    ctx.drawImage(sprite, -drawW * 0.5, -drawH * 0.5, drawW, drawH);
+    ctx.restore();
+    return true;
+};
+
 GameRenderer.drawProjectileEntity = function(ctx, p) {
     let drawY = this.GROUND_BASE_Y + p.y;
     let drawZ = drawY - p.z;
@@ -514,6 +604,29 @@ GameRenderer.drawKasiyasCrescentArcSlash = function(ctx, cfg) {
     drawTip(endAngle - 0.03, 0.11, 1);
     drawTip(endAngle - 0.03, 0.075, 0);
     ctx.restore();
+};
+
+GameRenderer._strokeSwordplayArcSet = function(ctx, geom, arcCount, startIndex, step, radiusScale, startInset, endInset) {
+    ctx.beginPath();
+    for (let i = startIndex; i < arcCount; i += step) {
+        const base = i * 7;
+        const offX = geom[base];
+        const offY = geom[base + 1];
+        const rx = geom[base + 2] * radiusScale;
+        const ry = geom[base + 3] * radiusScale;
+        const rot = geom[base + 4];
+        const a0 = geom[base + 5] + startInset;
+        const a1 = geom[base + 6] - endInset;
+        const cosA = Math.cos(a0);
+        const sinA = Math.sin(a0);
+        const cosR = Math.cos(rot);
+        const sinR = Math.sin(rot);
+        const sx = offX + cosR * (rx * cosA) - sinR * (ry * sinA);
+        const sy = offY + sinR * (rx * cosA) + cosR * (ry * sinA);
+        ctx.moveTo(sx, sy);
+        ctx.ellipse(offX, offY, rx, ry, rot, a0, a1);
+    }
+    ctx.stroke();
 };
 
 GameRenderer.drawEffectEntity = function(ctx, eff, player) {
@@ -2554,7 +2667,8 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         const slashH = Math.max(100, eff.h || 150);
         const dir = eff.dir === -1 ? -1 : 1;
         const t = 1 - alpha;
-        const pulse = 0.92 + Math.sin(Date.now() / 36) * 0.08;
+        const now = Date.now();
+        const pulse = 0.92 + Math.sin(now / 36) * 0.08;
         const core = eff.color || `rgba(255,72,58,${0.94 * alpha})`;
         const accent = eff.accentColor || `rgba(18,0,0,${0.92 * alpha})`;
         const hot = `rgba(255,174,128,${0.70 * alpha})`;
@@ -2577,58 +2691,84 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         ctx.ellipse(0, 0, slashW * 0.46, slashH * 0.46, 0, 0, Math.PI * 2);
         ctx.fill();
 
+        // 1차 성능 최적화: 11개 검호마다 save/translate/rotate/stroke를 반복하지 않고
+        // 동일한 선굵기/색상끼리 하나의 경로로 묶어 Canvas 호출 수를 크게 줄인다.
         const arcCount = 11;
+        const geom = renderer._swordplayGeomBuffer || (renderer._swordplayGeomBuffer = new Float64Array(arcCount * 7));
         for (let i = 0; i < arcCount; i++) {
             const ratio = i / Math.max(1, arcCount - 1);
-            const angle = -0.78 + ratio * 1.56 + Math.sin(Date.now() / 80 + i) * 0.045;
-            const rx = slashW * (0.24 + (i % 4) * 0.055) * pulse;
-            const ry = slashH * (0.20 + (i % 3) * 0.055) * pulse;
-            const offX = (Math.sin(i * 1.73 + t * 3.2) * slashW * 0.12);
-            const offY = (Math.cos(i * 1.31 + t * 2.4) * slashH * 0.18) - slashH * 0.05;
-            const start = angle - 1.03;
-            const end = angle + 1.03;
-
-            ctx.save();
-            ctx.translate(offX, offY);
-            ctx.rotate((i % 2 === 0 ? -0.22 : 0.22) + t * (i % 2 === 0 ? 0.20 : -0.20));
-
-            ctx.strokeStyle = accent;
-            ctx.lineWidth = Math.max(7, slashH * (0.050 + (i % 2) * 0.012));
-            ctx.beginPath();
-            ctx.ellipse(0, 0, rx, ry, 0, start, end);
-            ctx.stroke();
-
-            ctx.strokeStyle = core;
-            ctx.lineWidth = Math.max(3.2, slashH * (0.024 + (i % 2) * 0.006));
-            ctx.beginPath();
-            ctx.ellipse(0, 0, rx * 0.98, ry * 0.98, 0, start + 0.05, end - 0.05);
-            ctx.stroke();
-
-            if (i % 3 === 0) {
-                ctx.strokeStyle = hot;
-                ctx.lineWidth = Math.max(1.4, slashH * 0.010);
-                ctx.beginPath();
-                ctx.ellipse(0, 0, rx * 0.82, ry * 0.82, 0, start + 0.36, end - 0.36);
-                ctx.stroke();
-            }
-            ctx.restore();
+            const angle = -0.78 + ratio * 1.56 + Math.sin(now / 80 + i) * 0.045;
+            const base = i * 7;
+            geom[base] = Math.sin(i * 1.73 + t * 3.2) * slashW * 0.12; // offX
+            geom[base + 1] = Math.cos(i * 1.31 + t * 2.4) * slashH * 0.18 - slashH * 0.05; // offY
+            geom[base + 2] = slashW * (0.24 + (i % 4) * 0.055) * pulse; // rx
+            geom[base + 3] = slashH * (0.20 + (i % 3) * 0.055) * pulse; // ry
+            geom[base + 4] = (i % 2 === 0 ? -0.22 : 0.22) + t * (i % 2 === 0 ? 0.20 : -0.20); // rotation
+            geom[base + 5] = angle - 1.03; // start
+            geom[base + 6] = angle + 1.03; // end
         }
 
-        // 주변으로 튀는 짧은 검흔 조각.
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = Math.max(7, slashH * 0.050);
+        renderer._strokeSwordplayArcSet(ctx, geom, arcCount, 0, 2, 1, 0, 0);
+        ctx.lineWidth = Math.max(7, slashH * 0.062);
+        renderer._strokeSwordplayArcSet(ctx, geom, arcCount, 1, 2, 1, 0, 0);
+
+        ctx.strokeStyle = core;
+        ctx.lineWidth = Math.max(3.2, slashH * 0.024);
+        renderer._strokeSwordplayArcSet(ctx, geom, arcCount, 0, 2, 0.98, 0.05, 0.05);
+        ctx.lineWidth = Math.max(3.2, slashH * 0.030);
+        renderer._strokeSwordplayArcSet(ctx, geom, arcCount, 1, 2, 0.98, 0.05, 0.05);
+
+        ctx.strokeStyle = hot;
+        ctx.lineWidth = Math.max(1.4, slashH * 0.010);
+        ctx.beginPath();
+        for (let i = 0; i < arcCount; i += 3) {
+            const base = i * 7;
+            const offX = geom[base];
+            const offY = geom[base + 1];
+            const rx = geom[base + 2] * 0.82;
+            const ry = geom[base + 3] * 0.82;
+            const rot = geom[base + 4];
+            const a0 = geom[base + 5] + 0.36;
+            const a1 = geom[base + 6] - 0.36;
+            const cosA = Math.cos(a0);
+            const sinA = Math.sin(a0);
+            const cosR = Math.cos(rot);
+            const sinR = Math.sin(rot);
+            ctx.moveTo(offX + cosR * (rx * cosA) - sinR * (ry * sinA), offY + sinR * (rx * cosA) + cosR * (ry * sinA));
+            ctx.ellipse(offX, offY, rx, ry, rot, a0, a1);
+        }
+        ctx.stroke();
+
+        // 주변 검흔 조각도 짝/홀 스타일별 경로로 합쳐 10회의 stroke를 2회로 줄인다.
         ctx.shadowBlur = 8;
-        for (let i = 0; i < 10; i++) {
+        ctx.strokeStyle = core;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        for (let i = 0; i < 10; i += 2) {
             const a = (Math.PI * 2 / 10) * i + t * 2.0;
             const r1 = slashW * (0.20 + (i % 3) * 0.035);
             const x1 = Math.cos(a) * r1;
             const y1 = Math.sin(a) * slashH * 0.28;
             const len = 18 + (i % 4) * 7;
-            ctx.strokeStyle = i % 2 === 0 ? core : hot;
-            ctx.lineWidth = i % 2 === 0 ? 2.2 : 1.4;
-            ctx.beginPath();
             ctx.moveTo(x1, y1);
             ctx.lineTo(x1 + Math.cos(a + 0.25) * len, y1 + Math.sin(a + 0.25) * len * 0.55);
-            ctx.stroke();
         }
+        ctx.stroke();
+        ctx.strokeStyle = hot;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        for (let i = 1; i < 10; i += 2) {
+            const a = (Math.PI * 2 / 10) * i + t * 2.0;
+            const r1 = slashW * (0.20 + (i % 3) * 0.035);
+            const x1 = Math.cos(a) * r1;
+            const y1 = Math.sin(a) * slashH * 0.28;
+            const len = 18 + (i % 4) * 7;
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x1 + Math.cos(a + 0.25) * len, y1 + Math.sin(a + 0.25) * len * 0.55);
+        }
+        ctx.stroke();
 
         ctx.restore();
 
@@ -5129,54 +5269,29 @@ GameRenderer.drawEffectEntity = function(ctx, eff, player) {
         }
         ctx.restore();
     } else if (eff.type === 'noiseTeleport') {
-        const w = Math.max(80, eff.w || 150);
-        const h = Math.max(70, eff.h || 130);
-        const phase = String(eff.phase || '').toUpperCase();
-        const t = 1 - alpha;
-        const pulse = 0.5 + Math.sin(Date.now() / 42) * 0.5;
-        const seed = Math.floor((eff.x || 0) * 13 + (eff.y || 0) * 7 + (eff.maxLife || 1) * 1000);
-
-        ctx.save();
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.shadowBlur = 12 + pulse * 8;
-        ctx.shadowColor = phase === 'APPEAR' ? 'rgba(255,72,54,0.54)' : 'rgba(160,0,0,0.52)';
-
-        // 위치 섞기 노이즈는 공격 검흔으로 오해되지 않도록 원형/반월 검기 파츠를 그리지 않는다.
-        // 대신 짧은 붉은 노이즈 조각과 점멸 입자만 사용한다.
-        for (let i = 0; i < 22; i++) {
-            const n = ((Math.sin(seed + i * 19.37) * 43758.5453) % 1 + 1) % 1;
-            const n2 = ((Math.sin(seed * 0.37 + i * 11.91) * 24634.6345) % 1 + 1) % 1;
-            const sx = (n - 0.5) * w * (0.62 + t * 0.25);
-            const sy = (n2 - 0.5) * h * (0.58 + t * 0.18);
-            const len = 8 + n * 18;
+        if (!this.drawNoiseTeleportCached || !this.drawNoiseTeleportCached(ctx, eff, alpha)) {
+            const w = Math.max(80, eff.w || 150);
+            const h = Math.max(70, eff.h || 130);
+            const phase = String(eff.phase || '').toUpperCase();
+            const pulse = 0.5 + Math.sin(Date.now() / 42) * 0.5;
             ctx.save();
-            ctx.translate(sx, sy);
-            ctx.rotate((n2 - 0.5) * 0.95);
-            ctx.strokeStyle = i % 4 === 0
-                ? `rgba(255,210,170,${0.40 * alpha})`
-                : `rgba(255,58,44,${0.34 * alpha})`;
-            ctx.lineWidth = 1.1 + n * 1.2;
-            ctx.beginPath();
-            ctx.moveTo(-len * 0.5, 0);
-            ctx.lineTo(len * 0.5, 0);
-            ctx.stroke();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.shadowBlur = 10 + pulse * 5;
+            ctx.shadowColor = phase === 'APPEAR' ? 'rgba(255,72,54,0.54)' : 'rgba(160,0,0,0.52)';
+            ctx.strokeStyle = phase === 'APPEAR' ? `rgba(255,210,170,${0.40 * alpha})` : `rgba(255,58,44,${0.34 * alpha})`;
+            ctx.lineWidth = 3;
+            for (let i = 0; i < 8; i++) {
+                const ang = (Math.PI * 2 / 8) * i;
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(ang) * w * 0.10, Math.sin(ang) * h * 0.10);
+                ctx.lineTo(Math.cos(ang) * w * 0.28, Math.sin(ang) * h * 0.22);
+                ctx.stroke();
+            }
+            ctx.globalAlpha *= 0.26;
+            ctx.fillStyle = phase === 'APPEAR' ? `rgba(255,216,180,${0.12 * alpha})` : `rgba(90,0,0,${0.12 * alpha})`;
+            ctx.fillRect(-w * 0.18, -h * 0.32, w * 0.36, h * 0.64);
             ctx.restore();
         }
-
-        for (let i = 0; i < 10; i++) {
-            const n = ((Math.sin(seed + i * 7.13) * 13579.1357) % 1 + 1) % 1;
-            const n2 = ((Math.sin(seed + i * 5.71) * 97531.7531) % 1 + 1) % 1;
-            const px = (n - 0.5) * w * 0.48;
-            const py = (n2 - 0.5) * h * 0.44;
-            const r = 2.0 + n * 3.0;
-            ctx.fillStyle = `rgba(255,74,58,${0.18 * alpha + pulse * 0.10 * alpha})`;
-            ctx.fillRect(px - r / 2, py - r / 2, r, r);
-        }
-
-        ctx.globalAlpha *= 0.40;
-        ctx.fillStyle = phase === 'APPEAR' ? `rgba(255,216,180,${0.10 * alpha})` : `rgba(90,0,0,${0.12 * alpha})`;
-        ctx.fillRect(-w * 0.22, -h * 0.38, w * 0.44, h * 0.76);
-        ctx.restore();
     } else if (eff.type === 'afterimageDashTrail') {
         const w = Math.max(80, eff.w || 240);
         const h = Math.max(20, eff.h || 40);

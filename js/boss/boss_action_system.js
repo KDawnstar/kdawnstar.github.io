@@ -242,7 +242,13 @@ const BossActionSystem = {
     chooseUniqueShuffleSlotsForActors: function(actors, slots, bossPrevSlotKey = '') {
         const limitedActors = Array.isArray(actors) ? actors : [];
         const baseSlots = Array.isArray(slots) ? slots : [];
-        const result = this.shuffleArrayInPlace([...baseSlots]).slice(0, limitedActors.length);
+        const pool = this._groupShuffleSlotPool || (this._groupShuffleSlotPool = []);
+        pool.length = baseSlots.length;
+        for (let i = 0; i < baseSlots.length; i++) pool[i] = baseSlots[i];
+        this.shuffleArrayInPlace(pool);
+        const result = this._groupShuffleSlotResult || (this._groupShuffleSlotResult = []);
+        result.length = Math.min(limitedActors.length, pool.length);
+        for (let i = 0; i < result.length; i++) result[i] = pool[i];
 
         // 대형 패턴 1번의 위치 섞기는 본체가 직전 위치에 그대로 남으면
         // 플레이어가 "셔플이 안 됐다"고 느끼기 쉽다. 본체가 포함된 셔플에서는
@@ -414,19 +420,22 @@ const BossActionSystem = {
         }
 
 
-        const actors = [];
+        const scratch = this._groupShuffleScratch || (this._groupShuffleScratch = { actors: [], assignments: [] });
+        const actors = scratch.actors;
+        actors.length = 0;
         if (includeBoss) actors.push({ kind: 'boss', ref: m });
-        objects.forEach(obj => actors.push({ kind: 'object', ref: obj }));
+        for (let i = 0; i < objects.length; i++) actors.push({ kind: 'object', ref: objects[i] });
 
         if (actors.length <= 0 || slots.length <= 0) return null;
 
         // SHUFFLE_UNIQUE는 슬롯 중복을 허용하지 않는다.
         // 대상이 슬롯보다 많으면 초과 오브젝트를 비활성화하고, 남은 대상만 중복 없이 배정한다.
         if (actors.length > slots.length) {
-            const overflow = actors.splice(slots.length);
-            overflow.forEach(actor => {
+            for (let i = slots.length; i < actors.length; i++) {
+                const actor = actors[i];
                 if (actor && actor.kind === 'object' && actor.ref) actor.ref.active = false;
-            });
+            }
+            actors.length = slots.length;
         }
 
         const runtime = boss.majorPattern1Runtime || {};
@@ -438,8 +447,10 @@ const BossActionSystem = {
         const moveType = this.normalizeBossActionMoveType(action.Action_Move_Type || action.Move_Type);
         const useNoiseTeleport = moveType === 'NOISE' || String(action.Action_Move_Type || '').trim().toUpperCase() === 'MOVE_WITH_NOISE';
 
-        const assignments = [];
-        actors.forEach((actor, idx) => {
+        const assignments = scratch.assignments;
+        assignments.length = 0;
+        for (let idx = 0; idx < actors.length; idx++) {
+            const actor = actors[idx];
             const target = shuffledSlots[idx] || slots[idx];
             const ref = actor.ref;
             const startX = parseFloat(ref.x) || 0;
@@ -514,9 +525,11 @@ const BossActionSystem = {
                 fromSlotKey: actor.kind === 'boss' ? previousBossSlotKey : String(ref.previousSlotKey || '').trim(),
                 slotKey: move.slotKey
             });
-        });
+        }
 
-        this.pushBossDebugLog(gameState, 'GROUP_MOVE', `${String(action.Action_ID || '').trim()} ${this.getBossDebugName(action)}`, assignments.map(a => `${a.id || a.actor}:${a.fromSlotKey || '-'}>${a.slotKey}`).join(', '));
+        if (typeof this.isBossDebugLoggingEnabled === 'function' && this.isBossDebugLoggingEnabled(gameState)) {
+            this.pushBossDebugLog(gameState, 'GROUP_MOVE', `${String(action.Action_ID || '').trim()} ${this.getBossDebugName(action)}`, assignments.map(a => `${a.id || a.actor}:${a.fromSlotKey || '-'}>${a.slotKey}`).join(', '));
+        }
         return boss.actionMove;
     },
 

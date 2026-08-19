@@ -1,9 +1,5 @@
 // [카시야스 보스전] 보스/몬스터 본체 렌더링 담당 파일 (boss_renderer.js)
-GameRenderer.normalizeKasiyasPoseType = function(value) {
-    const raw = String(value || '').trim().toUpperCase();
-    if (!raw) return 'POSE_DEFAULT';
-
-    const map = {
+GameRenderer.KASIYAS_POSE_TYPE_MAP = Object.freeze({
         POSE_KASIYAS_STABBING: 'POSE_STABBING',
         POSE_KASIYAS_SLASH_UP: 'POSE_SLASH_UP',
         POSE_KASIYAS_SLASH_DOWN: 'POSE_SLASH_DOWN',
@@ -140,9 +136,12 @@ GameRenderer.normalizeKasiyasPoseType = function(value) {
         POSE_KASIYAS_FULL_POWER_DIAGONAL_SLASH: 'POSE_KASIYAS_P3_DIAGONAL_SLASH',
         POSE_KASIYAS_FULL_POWER_SLASH_DOWN: 'POSE_KASIYAS_P3_SLASH_DOWN',
         POSE_DEFAULT: 'POSE_DEFAULT'
-    };
+    });
 
-    return map[raw] || raw;
+GameRenderer.normalizeKasiyasPoseType = function(value) {
+    const raw = String(value || '').trim().toUpperCase();
+    if (!raw) return 'POSE_DEFAULT';
+    return this.KASIYAS_POSE_TYPE_MAP[raw] || raw;
 };
 
 GameRenderer.resolveKasiyasPoseType = function(m) {
@@ -227,6 +226,55 @@ GameRenderer.drawKasiyasGroundShadow = function(ctx, x, drawY, w, dY, drawScale 
     ctx.ellipse(parseFloat(x) || 0, parseFloat(drawY) || 0, radiusX, radiusY, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+};
+
+// P1M1 첫 분신 생성 시점에는 네 분신이 모두 POSE_DEFAULT 상태라서 같은 모델을 반복해서 벡터 렌더링한다.
+// 이 포즈만 별도 Offscreen Canvas에 캐시해 두고 drawImage로 출력해 최초 스파이크를 줄인다.
+GameRenderer.prewarmKasiyasCloneDefaultPoseCache = function() {
+    if (this._kasiyasCloneDefaultPoseCache || typeof document === 'undefined') return this._kasiyasCloneDefaultPoseCache || null;
+    const canvas = document.createElement('canvas');
+    canvas.width = 240;
+    canvas.height = 340;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    const originX = 120;
+    const originY = 284;
+    ctx.save();
+    ctx.translate(originX, originY);
+    this.drawKasiyasModel(ctx, {
+        m: { boss: { action: { Action_Move_Type: '', Move_Type: '', VFX_Type: '', Effect_Render_Type: '' } } },
+        renderType: 'RENDER_KASIYAS_P1',
+        w: 80,
+        h: 160,
+        face: 1,
+        stateKey: 'ATK_MELEE',
+        poseType: 'POSE_DEFAULT',
+        progress: 0,
+        eyeEffectType: '',
+        isUI: false
+    });
+    ctx.restore();
+    this._kasiyasCloneDefaultPoseCache = {
+        canvas: canvas,
+        originX: originX,
+        originY: originY,
+        baseW: 80,
+        baseH: 160
+    };
+    return this._kasiyasCloneDefaultPoseCache;
+};
+
+GameRenderer.drawKasiyasCloneDefaultPoseSprite = function(ctx, w, h, face) {
+    const cache = this._kasiyasCloneDefaultPoseCache || this.prewarmKasiyasCloneDefaultPoseCache();
+    if (!cache || !cache.canvas) return false;
+    const scaleX = Math.max(0.1, (parseFloat(w) || cache.baseW) / cache.baseW);
+    const scaleY = Math.max(0.1, (parseFloat(h) || cache.baseH) / cache.baseH);
+    ctx.save();
+    if ((face || 1) === -1) ctx.scale(-1, 1);
+    ctx.scale(scaleX, scaleY);
+    ctx.drawImage(cache.canvas, -cache.originX, -cache.originY);
+    ctx.restore();
+    return true;
 };
 
 GameRenderer.getKasiyasActionProgress = function(m, gameState) {
@@ -316,6 +364,66 @@ GameRenderer.drawKasiyasArmorOutline = function(ctx, w, h, alpha = 1) {
     ctx.restore();
 };
 
+// 카시야스 모델 렌더에서 매 프레임 새로 만들 필요가 없는 공용 데이터/헬퍼.
+GameRenderer.KASIYAS_P2_BARE_HAND_POSES = new Set(['POSE_P2_GROUND_PUNCH', 'POSE_P2_GROUND_PUNCH_CHARGE', 'POSE_P2_GROUND_PUNCH_STRONG']);
+GameRenderer.KASIYAS_P2_DOUBLE_EDGED_POSES = new Set(['POSE_P2_DOUBLE_EDGED_SWORD_STANCE', 'POSE_P2_DOUBLE_EDGED_SWORD_DEFENCE_READY', 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN', 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN_SLASH', 'POSE_P2_DOUBLE_EDGED_SWORD_ARC_SLASH', 'POSE_P2_JUMP_WITH_DOUBLE_EDGED_SWORD', 'POSE_P2_DOUBLE_EDGED_SWORD_JUMP_SLASH']);
+
+GameRenderer.drawKasiyasModelLimb = function(ctx, line, x1, y1, x2, y2, width, color, outline = true) {
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (outline) {
+        ctx.strokeStyle = line;
+        ctx.lineWidth = width + 2.4;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.restore();
+};
+
+GameRenderer.drawKasiyasModelPlate = function(ctx, line, points, fill, stroke, lw) {
+    ctx.fillStyle = fill;
+    ctx.strokeStyle = stroke == null ? line : stroke;
+    ctx.lineWidth = lw == null ? 1.8 : lw;
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+};
+
+GameRenderer.drawKasiyasModelClawHand = function(ctx, skinLight, line, bone, x, y, size, dir = 1) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(dir, 1);
+    ctx.fillStyle = skinLight;
+    ctx.strokeStyle = line;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, size * 0.46, size * 0.32, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = bone;
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    for (let i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        ctx.moveTo(size * 0.18, i * size * 0.10);
+        ctx.lineTo(size * 0.52, i * size * 0.14 - size * 0.03);
+        ctx.stroke();
+    }
+    ctx.restore();
+};
+
 GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
     const m = params.m || {};
     const w = Math.max(50, params.w || 80);
@@ -339,10 +447,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
     // 단, 오라만 별도 full-power 분기로 처리한다.
     const isKasiyasPhase3 = renderType === 'RENDER_KASIYAS_P3' || isKasiyasFullPower;
     const poseType = this.normalizeKasiyasPoseType(String(params.poseType || 'POSE_DEFAULT').trim().toUpperCase());
-    const p2BareHandPoseSet = new Set(['POSE_P2_GROUND_PUNCH', 'POSE_P2_GROUND_PUNCH_CHARGE', 'POSE_P2_GROUND_PUNCH_STRONG']);
-    const p2DoubleEdgedPoseSet = new Set(['POSE_P2_DOUBLE_EDGED_SWORD_STANCE', 'POSE_P2_DOUBLE_EDGED_SWORD_DEFENCE_READY', 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN', 'POSE_P2_DOUBLE_EDGED_SWORD_SPIN_SLASH', 'POSE_P2_DOUBLE_EDGED_SWORD_ARC_SLASH', 'POSE_P2_JUMP_WITH_DOUBLE_EDGED_SWORD', 'POSE_P2_DOUBLE_EDGED_SWORD_JUMP_SLASH']);
-    const isP2BareHandPose = isKasiyasPhase2 && p2BareHandPoseSet.has(poseType);
-    const isP2DoubleEdgedPose = isKasiyasPhase2 && p2DoubleEdgedPoseSet.has(poseType);
+    const isP2BareHandPose = isKasiyasPhase2 && this.KASIYAS_P2_BARE_HAND_POSES.has(poseType);
+    const isP2DoubleEdgedPose = isKasiyasPhase2 && this.KASIYAS_P2_DOUBLE_EDGED_POSES.has(poseType);
     const suppressP2SwordsForP3Transition = isP2ToP3TransitionCutscene && transitionTimer < 1.28;
     const progress = Math.max(0, Math.min(1, params.progress || 0));
     const isDead = stateKey === 'DIE' || stateKey === 'P_DIE';
@@ -450,62 +556,6 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         poseType === 'POSE_KASIYAS_P3_M2_FINAL_SLASH_CHARGE' ? -0.08 :
         poseType === 'POSE_KASIYAS_P3_M2_FINAL_SLASH' ? (0.18 + attackPulse * 0.05) :
         poseType === 'POSE_SLASH_DOWN' || poseType === 'POSE_HEAVY_SLASH_DOWN' ? 0.06 : 0));
-
-    const drawLimb = (x1, y1, x2, y2, width, color, outline = true) => {
-        ctx.save();
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        if (outline) {
-            ctx.strokeStyle = line;
-            ctx.lineWidth = width + 2.4;
-            ctx.beginPath();
-            ctx.moveTo(x1, y1);
-            ctx.lineTo(x2, y2);
-            ctx.stroke();
-        }
-        ctx.strokeStyle = color;
-        ctx.lineWidth = width;
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-        ctx.restore();
-    };
-
-    const drawPlate = (points, fill, stroke = line, lw = 1.8) => {
-        ctx.fillStyle = fill;
-        ctx.strokeStyle = stroke;
-        ctx.lineWidth = lw;
-        ctx.beginPath();
-        ctx.moveTo(points[0][0], points[0][1]);
-        for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-    };
-
-    const drawClawHand = (x, y, size, dir = 1) => {
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.scale(dir, 1);
-        ctx.fillStyle = skinLight;
-        ctx.strokeStyle = line;
-        ctx.lineWidth = 1.4;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, size * 0.46, size * 0.32, -0.2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.strokeStyle = bone;
-        ctx.lineWidth = 2.2;
-        ctx.lineCap = 'round';
-        for (let i = -1; i <= 1; i++) {
-            ctx.beginPath();
-            ctx.moveTo(size * 0.18, i * size * 0.10);
-            ctx.lineTo(size * 0.52, i * size * 0.14 - size * 0.03);
-            ctx.stroke();
-        }
-        ctx.restore();
-    };
 
     const drawKatana = (handX, handY, angle, length, handleLen = 22, curve = 7, energyType = '') => {
         const bx = Math.cos(angle);
@@ -1117,8 +1167,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
     }
 
     // 다리와 발. 맨발 느낌을 작게 남기고 위에 갑주판을 덮는다.
-    drawLimb(-w * 0.16, -h * 0.33, -w * 0.28, -h * 0.04, w * 0.12, skinDark);
-    drawLimb(w * 0.18, -h * 0.33, w * 0.28, -h * 0.04, w * 0.12, skinDark);
+    this.drawKasiyasModelLimb(ctx, line, -w * 0.16, -h * 0.33, -w * 0.28, -h * 0.04, w * 0.12, skinDark);
+    this.drawKasiyasModelLimb(ctx, line, w * 0.18, -h * 0.33, w * 0.28, -h * 0.04, w * 0.12, skinDark);
     ctx.fillStyle = skinDark;
     ctx.strokeStyle = line;
     ctx.lineWidth = 1.5;
@@ -1131,8 +1181,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
 
     if (poseType === 'POSE_P2_GROGGY') {
         // 2페이즈 그로기: 무릎을 꿇고 양팔을 벌려 두 검을 지면에 꽂은 실루엣.
-        drawPlate([[-w * 0.50, -h * 0.28], [-w * 0.15, -h * 0.35], [-w * 0.03, -h * 0.17], [-w * 0.40, -h * 0.08]], '#6f2e2c', line, 1.7);
-        drawPlate([[w * 0.15, -h * 0.35], [w * 0.50, -h * 0.28], [w * 0.40, -h * 0.08], [w * 0.03, -h * 0.17]], '#6f2e2c', line, 1.7);
+        this.drawKasiyasModelPlate(ctx, line, [[-w * 0.50, -h * 0.28], [-w * 0.15, -h * 0.35], [-w * 0.03, -h * 0.17], [-w * 0.40, -h * 0.08]], '#6f2e2c', line, 1.7);
+        this.drawKasiyasModelPlate(ctx, line, [[w * 0.15, -h * 0.35], [w * 0.50, -h * 0.28], [w * 0.40, -h * 0.08], [w * 0.03, -h * 0.17]], '#6f2e2c', line, 1.7);
         ctx.save();
         ctx.fillStyle = 'rgba(0,0,0,0.22)';
         ctx.beginPath();
@@ -1142,13 +1192,13 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
     }
 
     // 하카마/갑주 하반신: 초록 천 + 붉은 무사 갑주판으로 읽히게 한다.
-    drawPlate([
+    this.drawKasiyasModelPlate(ctx, line, [
         [-w * 0.36, -h * 0.52], [w * 0.33, -h * 0.52], [w * 0.44, -h * 0.19],
         [w * 0.18, -h * 0.12], [0, -h * 0.22], [-w * 0.18, -h * 0.12], [-w * 0.45, -h * 0.19]
     ], clothGreen, line, 2);
 
-    drawPlate([[-w * 0.38, -h * 0.49], [-w * 0.13, -h * 0.48], [-w * 0.17, -h * 0.14], [-w * 0.42, -h * 0.20]], redArmor, line, 1.6);
-    drawPlate([[w * 0.13, -h * 0.48], [w * 0.38, -h * 0.49], [w * 0.42, -h * 0.20], [w * 0.17, -h * 0.14]], redArmor, line, 1.6);
+    this.drawKasiyasModelPlate(ctx, line, [[-w * 0.38, -h * 0.49], [-w * 0.13, -h * 0.48], [-w * 0.17, -h * 0.14], [-w * 0.42, -h * 0.20]], redArmor, line, 1.6);
+    this.drawKasiyasModelPlate(ctx, line, [[w * 0.13, -h * 0.48], [w * 0.38, -h * 0.49], [w * 0.42, -h * 0.20], [w * 0.17, -h * 0.14]], redArmor, line, 1.6);
     ctx.strokeStyle = redArmorLight;
     ctx.lineWidth = 1.1;
     for (let i = 0; i < 3; i++) {
@@ -1158,10 +1208,10 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
     }
 
     // 허리띠와 칼집 느낌의 어두운 장식.
-    drawPlate([[-w * 0.38, -h * 0.55], [w * 0.36, -h * 0.55], [w * 0.34, -h * 0.50], [-w * 0.36, -h * 0.50]], '#b78a42', line, 1.5);
+    this.drawKasiyasModelPlate(ctx, line, [[-w * 0.38, -h * 0.55], [w * 0.36, -h * 0.55], [w * 0.34, -h * 0.50], [-w * 0.36, -h * 0.50]], '#b78a42', line, 1.5);
     ctx.save();
     ctx.rotate(-0.15);
-    drawPlate([[w * 0.06, -h * 0.50], [w * 0.62, -h * 0.56], [w * 0.64, -h * 0.50], [w * 0.08, -h * 0.43]], '#1e2630', line, 1.5);
+    this.drawKasiyasModelPlate(ctx, line, [[w * 0.06, -h * 0.50], [w * 0.62, -h * 0.56], [w * 0.64, -h * 0.50], [w * 0.08, -h * 0.43]], '#1e2630', line, 1.5);
     ctx.restore();
 
     // 노출된 상체. 검은 갑옷이 아니라 보라빛 피부와 문양으로 카시야스 느낌을 우선한다.
@@ -1251,9 +1301,9 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         const offElbowY = -h * (0.60 + 0.02 * easedExtend);
         const offHandX = -w * (0.42 + 0.34 * easedExtend);
         const offHandY = -h * (0.46 + 0.05 * easedExtend);
-        drawLimb(offShoulderX, offShoulderY, offElbowX, offElbowY, w * 0.12, skinDark);
-        drawLimb(offElbowX, offElbowY, offHandX, offHandY, w * 0.11, skinDark);
-        drawClawHand(offHandX, offHandY, w * 0.16, -1);
+        this.drawKasiyasModelLimb(ctx, line, offShoulderX, offShoulderY, offElbowX, offElbowY, w * 0.12, skinDark);
+        this.drawKasiyasModelLimb(ctx, line, offElbowX, offElbowY, offHandX, offHandY, w * 0.11, skinDark);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, offHandX, offHandY, w * 0.16, -1);
         if (transitionGrabProgress > 0.02) {
             // 검을 잡은 직후에는 손에 같은 디자인의 검이 잠시 붙어 보이게 한다.
             drawKatana(offHandX - w * 0.02, offHandY + h * 0.01, 2.46, h * (0.58 + 0.28 * transitionGrabProgress), 20, 5);
@@ -1439,9 +1489,9 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
             offCurve = 4;
         }
 
-        drawLimb(offShoulderX, offShoulderY, offElbowX, offElbowY, w * 0.12, skinDark);
-        drawLimb(offElbowX, offElbowY, offHandX, offHandY, w * 0.11, skinDark);
-        drawClawHand(offHandX, offHandY, w * 0.15, -1);
+        this.drawKasiyasModelLimb(ctx, line, offShoulderX, offShoulderY, offElbowX, offElbowY, w * 0.12, skinDark);
+        this.drawKasiyasModelLimb(ctx, line, offElbowX, offElbowY, offHandX, offHandY, w * 0.11, skinDark);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, offHandX, offHandY, w * 0.15, -1);
         if (!isP2BareHandPose && !isP2DoubleEdgedPose && !suppressP2SwordsForP3Transition) {
             drawKatana(offHandX - w * 0.02, offHandY + h * 0.01, offSwordAngle, offSwordLen, 22, offCurve, p2M1SwordEnergyActive ? 'RED' : '');
         }
@@ -1588,14 +1638,14 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
             offHandY = -h * 0.58;
         }
 
-        drawLimb(offShoulderX, offShoulderY, offElbowX, offElbowY, w * 0.12, skinDark);
-        drawLimb(offElbowX, offElbowY, offHandX, offHandY, w * 0.11, skinDark);
-        drawClawHand(offHandX, offHandY, w * 0.14, -1);
+        this.drawKasiyasModelLimb(ctx, line, offShoulderX, offShoulderY, offElbowX, offElbowY, w * 0.12, skinDark);
+        this.drawKasiyasModelLimb(ctx, line, offElbowX, offElbowY, offHandX, offHandY, w * 0.11, skinDark);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, offHandX, offHandY, w * 0.14, -1);
     } else {
         // 1페이즈: 큰 손과 날카로운 손톱만 읽히게 간결화.
-        drawLimb(-w * 0.27, -h * 0.74, -w * 0.47, -h * 0.58, w * 0.13, skinDark);
-        drawLimb(-w * 0.47, -h * 0.58, -w * 0.39, -h * 0.40, w * 0.13, skinDark);
-        drawClawHand(-w * 0.39, -h * 0.40, w * 0.24, -1);
+        this.drawKasiyasModelLimb(ctx, line, -w * 0.27, -h * 0.74, -w * 0.47, -h * 0.58, w * 0.13, skinDark);
+        this.drawKasiyasModelLimb(ctx, line, -w * 0.47, -h * 0.58, -w * 0.39, -h * 0.40, w * 0.13, skinDark);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, -w * 0.39, -h * 0.40, w * 0.24, -1);
     }
 
     // 앞 팔과 내장형 일본도: 1페이즈는 한 손에 든 하나의 검만 사용한다.
@@ -1611,11 +1661,11 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
     if (poseType === 'POSE_P1_GROGGY') {
         handX = w * 0.22;
         handY = -h * 0.36;
-        drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.12, skinBase);
-        drawClawHand(handX, handY, w * 0.14, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX, shoulderY, handX, handY, w * 0.12, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.14, 1);
         // 검을 바닥에 꽂고 기대며 살짝 주저앉은 실루엣.
         drawKatana(handX + w * 0.05, -h * 0.38, 1.42, h * 0.70, 16, 2);
-        drawPlate([[-w * 0.30, -h * 0.31], [w * 0.18, -h * 0.28], [w * 0.24, -h * 0.17], [-w * 0.20, -h * 0.16]], skinDark, line, 1.5);
+        this.drawKasiyasModelPlate(ctx, line, [[-w * 0.30, -h * 0.31], [w * 0.18, -h * 0.28], [w * 0.24, -h * 0.17], [-w * 0.20, -h * 0.16]], skinDark, line, 1.5);
         ctx.save();
         ctx.strokeStyle = 'rgba(255,225,100,0.55)';
         ctx.lineWidth = 2;
@@ -1629,8 +1679,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         handY = -h * (0.52 - 0.02 * attackPulse);
         // 차지 크래시처럼 상체와 어깨가 먼저 밀고 들어가는 실루엣.
         // 팔/주먹을 강조하지 않고 어깨, 뿔, 몸통의 전방 압박을 크게 보이게 한다.
-        drawLimb(shoulderFrontX - w * 0.03, shoulderY + h * 0.02, w * 0.24, -h * 0.59, w * 0.13, skinBase);
-        drawClawHand(w * 0.20, -h * 0.57, w * 0.13, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX - w * 0.03, shoulderY + h * 0.02, w * 0.24, -h * 0.59, w * 0.13, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, w * 0.20, -h * 0.57, w * 0.13, 1);
         drawKatana(handX, -h * 0.37, 0.30, h * 0.48, 18, 5);
 
         ctx.save();
@@ -1655,17 +1705,17 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
     } else if (poseType === 'POSE_FIST_BUMPING') {
         handX = w * (0.50 + 0.08 * attackPulse);
         handY = -h * 0.60;
-        drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.13, skinBase);
-        drawClawHand(handX + w * 0.03, handY, w * 0.22, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX, shoulderY, handX, handY, w * 0.13, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX + w * 0.03, handY, w * 0.22, 1);
         drawKatana(w * 0.16, -h * 0.43, 0.38, h * 0.54, 18, 4);
     } else if (poseType === 'POSE_STOMP') {
         handX = w * 0.28;
         handY = -h * 0.54;
-        drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.11, skinBase);
-        drawClawHand(handX, handY, w * 0.15, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX, shoulderY, handX, handY, w * 0.11, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.15, 1);
         drawKatana(handX, handY, -0.30, h * 0.70, 20, 7);
         // 발 내려찍기 준비: 한쪽 다리를 들어올린 듯한 짧은 실루엣 보강.
-        drawPlate([[w * 0.08, -h * 0.27], [w * 0.28, -h * 0.22], [w * 0.22, -h * 0.11], [w * 0.04, -h * 0.16]], skinDark, line, 1.6);
+        this.drawKasiyasModelPlate(ctx, line, [[w * 0.08, -h * 0.27], [w * 0.28, -h * 0.22], [w * 0.22, -h * 0.11], [w * 0.04, -h * 0.16]], skinDark, line, 1.6);
     } else if (poseType === 'POSE_P1_M3_LOW_RUSH_READY') {
         // 대형 패턴 3번 돌진 전조: 자세를 낮추고 검을 뒤로 빼며 지면을 박차기 직전의 실루엣.
         const coil = 0.5 + Math.sin(Date.now() / 90) * 0.5;
@@ -1674,10 +1724,10 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         swordAngle = 0.22;
         swordLen = h * 1.10;
         curve = 4;
-        drawLimb(shoulderFrontX - w * 0.08, shoulderY + h * 0.08, handX, handY, w * 0.13, skinBase);
-        drawClawHand(handX, handY, w * 0.16, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX - w * 0.08, shoulderY + h * 0.08, handX, handY, w * 0.13, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.16, 1);
         drawKatana(handX, handY, swordAngle, swordLen, 18, curve);
-        drawPlate([[-w * 0.34, -h * 0.36], [w * 0.28, -h * 0.33], [w * 0.34, -h * 0.22], [-w * 0.24, -h * 0.20]], skinDark, line, 1.6);
+        this.drawKasiyasModelPlate(ctx, line, [[-w * 0.34, -h * 0.36], [w * 0.28, -h * 0.33], [w * 0.34, -h * 0.22], [-w * 0.24, -h * 0.20]], skinDark, line, 1.6);
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
         ctx.strokeStyle = `rgba(255,68,52,${0.25 + coil * 0.20})`;
@@ -1698,10 +1748,10 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         swordAngle = -0.02;
         swordLen = h * 1.18;
         curve = 3;
-        drawLimb(shoulderFrontX - w * 0.08, shoulderY + h * 0.09, handX, handY, w * 0.13, skinBase);
-        drawClawHand(handX, handY, w * 0.16, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX - w * 0.08, shoulderY + h * 0.09, handX, handY, w * 0.13, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.16, 1);
         drawKatana(handX, handY, swordAngle, swordLen, 18, curve);
-        drawPlate([[-w * 0.38, -h * 0.34], [w * 0.30, -h * 0.32], [w * 0.40, -h * 0.20], [-w * 0.22, -h * 0.18]], skinDark, line, 1.6);
+        this.drawKasiyasModelPlate(ctx, line, [[-w * 0.38, -h * 0.34], [w * 0.30, -h * 0.32], [w * 0.40, -h * 0.20], [-w * 0.22, -h * 0.18]], skinDark, line, 1.6);
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
         ctx.strokeStyle = `rgba(255,42,36,${0.34 + attackPulse * 0.22})`;
@@ -1719,8 +1769,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         swordAngle = isRush ? -0.01 : -0.05;
         swordLen = h * (isRush ? 1.08 : 0.92);
         curve = isRush ? 3 : 5;
-        drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.11, skinBase);
-        drawClawHand(handX, handY, w * 0.15, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX, shoulderY, handX, handY, w * 0.11, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.15, 1);
         drawKatana(handX, handY, swordAngle, swordLen, 20, curve);
     } else if (poseType === 'POSE_LOW_AREA_SLASH') {
         // 잔상 하단 휩쓸기: 몸을 낮추고 아래를 크게 쓸어 올리는 원호형 베기.
@@ -1729,8 +1779,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         swordAngle = 1.08 - smooth * 1.34;
         swordLen = h * 0.98;
         curve = 8;
-        drawLimb(shoulderFrontX - w * 0.04, shoulderY + h * 0.02, handX, handY, w * 0.12, skinBase);
-        drawClawHand(handX, handY, w * 0.15, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX - w * 0.04, shoulderY + h * 0.02, handX, handY, w * 0.12, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.15, 1);
         drawKatana(handX, handY, swordAngle, swordLen, 20, curve);
     } else if (poseType === 'POSE_ATK_READY_01') {
         // 2차 본체 판별용 자세: 낮게 몸을 틀고 검을 뒤쪽 낮은 위치에 둔다.
@@ -1739,8 +1789,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         swordAngle = 0.36;
         swordLen = h * 1.02;
         curve = 5;
-        drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.12, skinBase);
-        drawClawHand(handX, handY, w * 0.15, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX, shoulderY, handX, handY, w * 0.12, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.15, 1);
         drawKatana(handX, handY, swordAngle, swordLen, 20, curve);
     } else if (poseType === 'POSE_ATK_READY_02') {
         // 2차 분신 A 자세: 검을 머리 위로 크게 치켜든다.
@@ -1749,8 +1799,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         swordAngle = -1.62;
         swordLen = h * 1.04;
         curve = 6;
-        drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.11, skinBase);
-        drawClawHand(handX, handY, w * 0.15, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX, shoulderY, handX, handY, w * 0.11, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.15, 1);
         drawKatana(handX, handY, swordAngle, swordLen, 20, curve);
     } else if (poseType === 'POSE_ATK_READY_03') {
         // 2차 분신 B 자세: 검을 옆으로 길게 눕혀 잡는다.
@@ -1759,8 +1809,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         swordAngle = -0.04;
         swordLen = h * 1.08;
         curve = 3;
-        drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.11, skinBase);
-        drawClawHand(handX, handY, w * 0.15, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX, shoulderY, handX, handY, w * 0.11, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.15, 1);
         drawKatana(handX, handY, swordAngle, swordLen, 20, curve);
     } else if (poseType === 'POSE_HORIZONTAL_SLASH_READY') {
         // 3차 차지 자세: 횡베기를 준비하며 검에 사도의 기운을 모은다.
@@ -1769,8 +1819,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         swordAngle = -0.18;
         swordLen = h * 1.02;
         curve = 4;
-        drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.12, skinBase);
-        drawClawHand(handX, handY, w * 0.15, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX, shoulderY, handX, handY, w * 0.12, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.15, 1);
         drawKatana(handX, handY, swordAngle, swordLen, 22, curve);
     } else if (poseType === 'POSE_P1_M2_FINAL_SLASH') {
         // 대형 패턴 2번 최종 참격: 몸을 크게 비틀었다가 전방 전체를 베어내는 과장된 일격.
@@ -1782,8 +1832,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         swordAngle = -1.42 + finalSwing * 2.12;
         swordLen = h * 1.34;
         curve = 12;
-        drawLimb(shoulderFrontX - w * 0.08, shoulderY + h * 0.02, handX, handY, w * 0.145, skinBase);
-        drawClawHand(handX, handY, w * 0.17, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX - w * 0.08, shoulderY + h * 0.02, handX, handY, w * 0.145, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.17, 1);
         drawKatana(handX, handY, swordAngle, swordLen, 26, curve);
 
         ctx.save();
@@ -1806,8 +1856,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         swordAngle = -1.18 + smooth * 1.86;
         swordLen = h * 1.18;
         curve = 10;
-        drawLimb(shoulderFrontX - w * 0.03, shoulderY, handX, handY, w * 0.13, skinBase);
-        drawClawHand(handX, handY, w * 0.16, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX - w * 0.03, shoulderY, handX, handY, w * 0.13, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.16, 1);
         drawKatana(handX, handY, swordAngle, swordLen, 23, curve);
     } else if (poseType === 'POSE_HORIZONTAL_SLASH') {
         // 기본 횡베기: 찌르기가 아니라 검을 가로 방향으로 크게 휘두르는 원형 베기.
@@ -1816,16 +1866,16 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         swordAngle = -1.02 + smooth * 1.62;
         swordLen = h * 1.06;
         curve = 8;
-        drawLimb(shoulderFrontX - w * 0.02, shoulderY, handX, handY, w * 0.12, skinBase);
-        drawClawHand(handX, handY, w * 0.15, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX - w * 0.02, shoulderY, handX, handY, w * 0.12, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.15, 1);
         drawKatana(handX, handY, swordAngle, swordLen, 21, curve);
     } else if (poseType === 'POSE_SLASH_UP') {
         handX = w * (0.12 + 0.15 * attackPulse);
         handY = -h * (0.47 + 0.14 * attackPulse);
         swordAngle = -0.70 + smooth * 1.92;
         swordLen = h * 0.84;
-        drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.11, skinBase);
-        drawClawHand(handX, handY, w * 0.15, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX, shoulderY, handX, handY, w * 0.11, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.15, 1);
         drawKatana(handX, handY, swordAngle, swordLen, 21, 8);
     } else if (poseType === 'POSE_SLAM_THE_SWORD_DOWN_READY') {
         // 대형 패턴 2번 잔상 전용: 베는 동작이 아니라, 검을 지면에 꽂기 위해 높이 들어 올리는 준비 자세.
@@ -1833,8 +1883,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         handY = -h * (0.92 + 0.02 * attackPulse);
         swordAngle = -1.72 + 0.12 * attackPulse;
         swordLen = h * 1.02;
-        drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.12, skinBase);
-        drawClawHand(handX, handY, w * 0.15, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX, shoulderY, handX, handY, w * 0.12, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.15, 1);
         drawKatana(handX, handY, swordAngle, swordLen, 18, 3);
     } else if (poseType === 'POSE_SLAM_THE_SWORD_DOWN') {
         // 대형 패턴 2번 잔상 전용: 검 끝이 지면을 찍는 수직 내려찍기. 일반 내려베기보다 검이 땅에 박히는 실루엣을 우선한다.
@@ -1842,8 +1892,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         handY = -h * (0.47 - 0.05 * attackPulse);
         swordAngle = 1.36 - 0.06 * attackPulse;
         swordLen = h * 0.62;
-        drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.12, skinBase);
-        drawClawHand(handX, handY, w * 0.15, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX, shoulderY, handX, handY, w * 0.12, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.15, 1);
         drawKatana(handX, handY, swordAngle, swordLen, 17, 1);
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
@@ -1858,8 +1908,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         handY = -h * (0.80 - 0.25 * smooth);
         swordAngle = -1.28 + smooth * 1.72;
         swordLen = h * (poseType === 'POSE_HEAVY_SLASH_DOWN' ? 0.93 : 0.84);
-        drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.11, skinBase);
-        drawClawHand(handX, handY, w * 0.15, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX, shoulderY, handX, handY, w * 0.11, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.15, 1);
         drawKatana(handX, handY, swordAngle, swordLen, 21, 8);
     } else if (poseType === 'POSE_SWORDPLAY') {
         const swing = Math.sin(progress * Math.PI * 8);
@@ -1869,8 +1919,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
         swordAngle = -0.72 + swing * 0.82 + smooth * 0.35;
         swordLen = h * 0.96;
         curve = 5;
-        drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.12, skinBase);
-        drawClawHand(handX, handY, w * 0.15, 1);
+        this.drawKasiyasModelLimb(ctx, line, shoulderFrontX, shoulderY, handX, handY, w * 0.12, skinBase);
+        this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.15, 1);
         drawKatana(handX, handY, swordAngle, swordLen, 20, curve);
         ctx.save();
         ctx.strokeStyle = `rgba(255,82,64,${0.32 + attackPulse * 0.24})`;
@@ -2109,14 +2159,14 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
                 curve = 2.5;
             }
 
-            drawLimb(shoulderFrontX - w * 0.03, shoulderY + h * 0.01, handX, handY, w * 0.12, skinBase);
-            drawClawHand(handX, handY, w * 0.15, 1);
+            this.drawKasiyasModelLimb(ctx, line, shoulderFrontX - w * 0.03, shoulderY + h * 0.01, handX, handY, w * 0.12, skinBase);
+            this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.15, 1);
 
             // 짧은 칼집/검초는 기본 자세에서만 은근히 보이도록 줄여, 손잡이 위치를 흐리지 않게 한다.
             if (!isP2ToP3TransitionCutscene || transitionTimer >= 5.35) {
                 ctx.save();
                 ctx.rotate(-0.14);
-                drawPlate([[w * 0.04, -h * 0.54], [w * 0.42, -h * 0.57], [w * 0.44, -h * 0.52], [w * 0.06, -h * 0.49]], '#100b16', line, 1.3);
+                this.drawKasiyasModelPlate(ctx, line, [[w * 0.04, -h * 0.54], [w * 0.42, -h * 0.57], [w * 0.44, -h * 0.52], [w * 0.06, -h * 0.49]], '#100b16', line, 1.3);
                 ctx.restore();
             }
 
@@ -2299,8 +2349,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
                 curve = 4;
             }
 
-            drawLimb(shoulderFrontX - w * 0.01, shoulderY + h * 0.02, handX, handY, w * 0.11, skinBase);
-            drawClawHand(handX, handY, w * 0.15, 1);
+            this.drawKasiyasModelLimb(ctx, line, shoulderFrontX - w * 0.01, shoulderY + h * 0.02, handX, handY, w * 0.11, skinBase);
+            this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.15, 1);
             if (isP2BareHandPose) {
                 // 검을 지면에 꽂아둔 맨손 난타 구간.
             } else if (isP2DoubleEdgedPose && !suppressP2SwordsForP3Transition) {
@@ -2314,8 +2364,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
             handY = -h * 0.52;
             swordAngle = -0.48;
             swordLen = h * 0.80;
-            drawLimb(shoulderFrontX, shoulderY, handX, handY, w * 0.11, skinBase);
-            drawClawHand(handX, handY, w * 0.15, 1);
+            this.drawKasiyasModelLimb(ctx, line, shoulderFrontX, shoulderY, handX, handY, w * 0.11, skinBase);
+            this.drawKasiyasModelClawHand(ctx, skinLight, line, bone, handX, handY, w * 0.15, 1);
             drawKatana(handX, handY, swordAngle, swordLen, 22, 8);
         }
     }
@@ -2333,8 +2383,8 @@ GameRenderer.drawKasiyasModel = function(ctx, params = {}) {
     ctx.strokeRect(-w * 0.07, -h * 0.88, w * 0.14, h * 0.08);
 
     // 뿔
-    drawPlate([[headCx - headR * 0.52, headCy - headR * 0.52], [headCx - headR * 0.95, headCy - headR * 1.02], [headCx - headR * 0.24, headCy - headR * 0.72]], bone, line, 1.3);
-    drawPlate([[headCx + headR * 0.42, headCy - headR * 0.54], [headCx + headR * 0.72, headCy - headR * 1.08], [headCx + headR * 0.68, headCy - headR * 0.42]], bone, line, 1.3);
+    this.drawKasiyasModelPlate(ctx, line, [[headCx - headR * 0.52, headCy - headR * 0.52], [headCx - headR * 0.95, headCy - headR * 1.02], [headCx - headR * 0.24, headCy - headR * 0.72]], bone, line, 1.3);
+    this.drawKasiyasModelPlate(ctx, line, [[headCx + headR * 0.42, headCy - headR * 0.54], [headCx + headR * 0.72, headCy - headR * 1.08], [headCx + headR * 0.68, headCy - headR * 0.42]], bone, line, 1.3);
 
     // 귀면족 얼굴: 인간형 원보다 앞쪽으로 뾰족한 주둥이와 붉은 눈.
     ctx.fillStyle = skinBase;

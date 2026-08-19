@@ -332,6 +332,10 @@ const MonsterManager = {
         return BossDebugSystem.getBossDebugName.apply(this, arguments);
     },
 
+    isBossDebugLoggingEnabled: function() {
+        return BossDebugSystem.isBossDebugLoggingEnabled.apply(BossDebugSystem, arguments);
+    },
+
     pushBossDebugLog: function() {
         return BossDebugSystem.pushBossDebugLog.apply(this, arguments);
     },
@@ -723,6 +727,26 @@ const MonsterManager = {
 
     getBossPatternObjectGroupCandidates: function() {
         return BossObjectSystem.getBossPatternObjectGroupCandidates.apply(this, arguments);
+    },
+
+    getKasiyasP1CloneGroupSpawnActions: function() {
+        return BossObjectSystem.getKasiyasP1CloneGroupSpawnActions.apply(this, arguments);
+    },
+
+    prewarmKasiyasP1CloneGroupData: function() {
+        return BossObjectSystem.prewarmKasiyasP1CloneGroupData.apply(this, arguments);
+    },
+
+    buildKasiyasP1PreparedCloneActor: function() {
+        return BossObjectSystem.buildKasiyasP1PreparedCloneActor.apply(this, arguments);
+    },
+
+    prewarmKasiyasP1CloneActorPool: function() {
+        return BossObjectSystem.prewarmKasiyasP1CloneActorPool.apply(this, arguments);
+    },
+
+    activateKasiyasP1PreparedCloneActor: function() {
+        return BossObjectSystem.activateKasiyasP1PreparedCloneActor.apply(this, arguments);
     },
 
     pickRandomBossObjectCandidate: function() {

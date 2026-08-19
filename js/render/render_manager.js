@@ -74,6 +74,46 @@ const GameRenderer = {
 
         this.rebuildStageBackground(null, worldWidth || 2000, 300);
     },
+
+    // 대형 패턴에서 처음 사용되는 정적 Canvas 캐시는 전투 시작 전에 유휴 시간에 분산 생성한다.
+    schedulePerformanceCacheWarmup: function(gameState) {
+        if (this._performanceCacheWarmupScheduled || !this.canvas) return;
+        this._performanceCacheWarmupScheduled = true;
+        const renderer = this;
+        const tasks = [
+            function() { if (typeof renderer.prewarmKasiyasCloneFilter === 'function') renderer.prewarmKasiyasCloneFilter(); },
+            function() { if (typeof renderer.prewarmKasiyasCloneDefaultPoseCache === 'function') renderer.prewarmKasiyasCloneDefaultPoseCache(); },
+            function() { if (typeof renderer.prewarmNoiseTeleportCache === 'function') renderer.prewarmNoiseTeleportCache(); },
+            function() { if (typeof BossObjectSystem !== 'undefined' && typeof BossObjectSystem.prewarmKasiyasP1CloneGroupData === 'function') BossObjectSystem.prewarmKasiyasP1CloneGroupData(gameState); },
+            function() { if (typeof renderer.prewarmObjectDefenseCaches === 'function') renderer.prewarmObjectDefenseCaches(renderer.canvas, 'INTRO'); },
+            function() { if (typeof renderer.prewarmObjectDefenseCaches === 'function') renderer.prewarmObjectDefenseCaches(renderer.canvas, 'ACTIVE'); },
+            function() { if (typeof renderer.prewarmKasiyasP3M2GiantSwordCache === 'function') renderer.prewarmKasiyasP3M2GiantSwordCache(gameState); },
+            function() { if (typeof renderer.prewarmP3M3Caches === 'function') renderer.prewarmP3M3Caches(renderer.canvas); }
+        ];
+        let index = 0;
+        const scheduleNext = function() {
+            if (index >= tasks.length) {
+                renderer._performanceCacheWarmupComplete = true;
+                return;
+            }
+            const run = function() {
+                try { tasks[index](); } catch (err) {
+                    if (typeof console !== 'undefined' && console.warn) console.warn('[Kasiyas] cache prewarm skipped:', err);
+                }
+                index += 1;
+                scheduleNext();
+            };
+            if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+                window.requestIdleCallback(run, { timeout: 350 });
+            } else if (typeof window !== 'undefined' && typeof window.setTimeout === 'function') {
+                window.setTimeout(run, 24);
+            } else {
+                run();
+            }
+        };
+        if (typeof window !== 'undefined' && typeof window.setTimeout === 'function') window.setTimeout(scheduleNext, 120);
+        else scheduleNext();
+    },
     
     // 색상/팔레트 해석은 render_palette_system.js로 분리
     clampColorChannel: function() {
@@ -139,6 +179,85 @@ const GameRenderer = {
         return next;
     },
 
+    // 1차 성능 최적화: 깊이 정렬용 렌더 엔트리를 매 프레임 새 객체/클로저로 만들지 않고 재사용한다.
+    appendRenderEntry: function(renderables, y, kind, entity) {
+        const pool = this._renderEntryPool || (this._renderEntryPool = []);
+        const index = this._renderEntryUseCount || 0;
+        let entry = pool[index];
+        if (!entry) {
+            entry = { y: 0, kind: 0, entity: null };
+            pool[index] = entry;
+        }
+        const parsedY = parseFloat(y);
+        entry.y = Number.isFinite(parsedY) ? parsedY : 0;
+        entry.kind = kind;
+        entry.entity = entity;
+        renderables.push(entry);
+        this._renderEntryUseCount = index + 1;
+        return entry;
+    },
+
+    drawRenderEntry: function(entry, ctx, player) {
+        if (!entry || !entry.entity) return;
+        const entity = entry.entity;
+        if (entry.kind === 1) {
+            const a = entity;
+            const owner = a && a.owner;
+            if (!owner) return;
+            const drawY = this.GROUND_BASE_Y + owner.y;
+            const drawZ = drawY - owner.z;
+            ctx.save();
+            ctx.translate(owner.x, drawZ);
+            ctx.strokeStyle = "rgba(0, 255, 255, 0.8)";
+            ctx.lineWidth = 6;
+            ctx.setLineDash(this._auraDashPattern || (this._auraDashPattern = [20, 15]));
+            ctx.beginPath();
+            ctx.ellipse(0, 0, a.w / 2, a.d / 2, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            const t = Date.now() / 200;
+            const pulse = 0.7 + Math.sin(t) * 0.2;
+            ctx.scale(pulse, pulse);
+            ctx.fillStyle = "rgba(173, 216, 230, 0.4)";
+            ctx.beginPath();
+            ctx.ellipse(0, 0, a.w / 2 - 10, a.d / 2 - 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            return;
+        }
+        if (entry.kind === 2) {
+            const p = entity;
+            const prevAlpha = ctx.globalAlpha;
+            if (p.hp > 0 && p.invincibleTimer > 0) ctx.globalAlpha = Math.min(prevAlpha, 0.62);
+            if (typeof this.drawPlayerEntity === 'function') this.drawPlayerEntity(ctx, p);
+            ctx.globalAlpha = prevAlpha;
+            return;
+        }
+        if (entry.kind === 3) {
+            if (typeof this.drawMonsterEntity === 'function') this.drawMonsterEntity(ctx, entity);
+            return;
+        }
+        if (entry.kind === 4) {
+            if (typeof this.drawBossPatternObjectEntity !== 'function') return;
+            try {
+                this.drawBossPatternObjectEntity(ctx, entity);
+            } catch (err) {
+                if (!entity._renderErrorLogged && typeof console !== 'undefined' && console.warn) {
+                    entity._renderErrorLogged = true;
+                    const meta = this.getBossObjectRenderMeta(entity);
+                    console.warn('[Kasiyas] boss object render failed:', meta.renderType || entity.kind, err);
+                }
+            }
+            return;
+        }
+        if (entry.kind === 5) {
+            this.drawProjectileEntity(ctx, entity);
+            return;
+        }
+        if (entry.kind === 6) {
+            this.drawEffectEntity(ctx, entity, player);
+        }
+    },
+
 
     render: function(gameState) {
         if (!this.ctx) return;
@@ -188,64 +307,20 @@ const GameRenderer = {
 
         const renderables = this._renderablesBuffer || (this._renderablesBuffer = []);
         renderables.length = 0;
+        this._renderEntryUseCount = 0;
 
         for (let a of auras) {
-            renderables.push({
-                y: a.owner.y - 1,
-                draw: function() {
-                    let drawY = renderer.GROUND_BASE_Y + a.owner.y;
-                    let drawZ = drawY - a.owner.z;
-                    ctx.save();
-                    ctx.translate(a.owner.x, drawZ);
-                    ctx.strokeStyle = "rgba(0, 255, 255, 0.8)";
-                    ctx.lineWidth = 6;
-                    ctx.setLineDash([20, 15]);
-                    ctx.beginPath();
-                    ctx.ellipse(0, 0, a.w / 2, a.d / 2, 0, 0, Math.PI * 2);
-                    ctx.stroke();
-                    let t = Date.now() / 200;
-                    let pulse = 0.7 + Math.sin(t) * 0.2;
-                    ctx.scale(pulse, pulse);
-                    ctx.fillStyle = "rgba(173, 216, 230, 0.4)";
-                    ctx.beginPath();
-                    ctx.ellipse(0, 0, a.w / 2 - 10, a.d / 2 - 5, 0, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.restore();
-                }
-            });
+            if (a && a.owner) this.appendRenderEntry(renderables, a.owner.y - 1, 1, a);
         }
 
         if (player.active) {
-            renderables.push({
-                y: player.y,
-                draw: function() {
-                    // 피격 무적 중에도 완전히 사라지지 않게 반투명으로 표시한다.
-                    // 보스전에서는 연속 피격/가드불가 장판 때문에 깜빡임이 길어져
-                    // 캐릭터가 안 보이는 것처럼 느껴질 수 있다.
-                    const prevAlpha = ctx.globalAlpha;
-                    if (player.hp > 0 && player.invincibleTimer > 0) {
-                        ctx.globalAlpha = Math.min(prevAlpha, 0.62);
-                    }
-                    if (typeof renderer.drawPlayerEntity === 'function') {
-                        renderer.drawPlayerEntity(ctx, player);
-                    }
-                    ctx.globalAlpha = prevAlpha;
-                }
-            });
+            // 피격 무적 알파 처리까지 drawRenderEntry에서 그대로 수행한다.
+            this.appendRenderEntry(renderables, player.y, 2, player);
         }
 
         for (let m of monsters) {
             const suppressP3M3BossModel = gameState && gameState.specialMode === 'P3_M3_FINAL_ISSEN' && m && m.p3m3MainBossSuppressed;
-            if (m.active && !suppressP3M3BossModel) {
-                renderables.push({
-                    y: m.y,
-                    draw: function() {
-                        if (typeof renderer.drawMonsterEntity === 'function') {
-                            renderer.drawMonsterEntity(ctx, m);
-                        }
-                    }
-                });
-            }
+            if (m.active && !suppressP3M3BossModel) this.appendRenderEntry(renderables, m.y, 3, m);
         }
 
         const bossAttackObjects = gameState.bossAttackObjects || [];
@@ -289,14 +364,12 @@ const GameRenderer = {
                 objectRenderTypeRaw === 'OBJ_PATH_ONI_SLASH_BURST'
             );
             if (isPathBossObject) {
-                renderables.push({
-                    y: (obj.path ? (Math.max(obj.path.startY || 0, obj.path.endY || 0)) : (obj.y || 0)) + 2,
-                    draw: function() {
-                        if (typeof renderer.drawBossPatternObjectEntity === 'function') {
-                            renderer.drawBossPatternObjectEntity(ctx, obj);
-                        }
-                    }
-                });
+                this.appendRenderEntry(
+                    renderables,
+                    (obj.path ? (Math.max(obj.path.startY || 0, obj.path.endY || 0)) : (obj.y || 0)) + 2,
+                    4,
+                    obj
+                );
                 continue;
             }
             const traceKeyRaw = renderMeta.traceKey;
@@ -334,44 +407,26 @@ const GameRenderer = {
                 objectRenderTypeRaw.indexOf('P2_M2_AIMING_GIANT_SWORD') >= 0 ||
                 objectRenderTypeRaw.indexOf('P2_M2_FIRE_GIANT_SWORD') >= 0
             ) && !(obj.kind === 'terrain' || objectTypeRaw.indexOf('TERRAIN_') === 0)) {
-                renderables.push({
-                    y: obj.y,
-                    draw: function() {
-                        if (typeof renderer.drawBossPatternObjectEntity === 'function') {
-                            try {
-                                renderer.drawBossPatternObjectEntity(ctx, obj);
-                            } catch (err) {
-                                if (!obj._renderErrorLogged && typeof console !== 'undefined' && console.warn) {
-                                    obj._renderErrorLogged = true;
-                                    console.warn('[Kasiyas] boss object render failed:', objectRenderTypeRaw || obj.kind, err);
-                                }
-                            }
-                        }
-                    }
-                });
+                this.appendRenderEntry(renderables, obj.y, 4, obj);
             }
         }
 
         for (let p of projectiles) {
-            renderables.push({
-                y: p.y,
-                draw: function() {
-                    renderer.drawProjectileEntity(ctx, p);
-                }
-            });
+            this.appendRenderEntry(renderables, p.y, 5, p);
         }
 
         for (let eff of delayedEffects) {
-            renderables.push({
-                y: eff.y,
-                draw: function() {
-                    renderer.drawEffectEntity(ctx, eff, player);
-                }
-            });
+            this.appendRenderEntry(renderables, eff.y, 6, eff);
         }
 
-        renderables.sort((a, b) => a.y - b.y);
-        renderables.forEach(r => r.draw());
+        const renderSort = this._renderEntrySortFn || (this._renderEntrySortFn = function(a, b) { return a.y - b.y; });
+        renderables.sort(renderSort);
+        for (let i = 0; i < renderables.length; i++) {
+            const entry = renderables[i];
+            this.drawRenderEntry(entry, ctx, player);
+            // 풀 엔트리가 종료된 이펙트/오브젝트를 붙잡아 GC를 방해하지 않도록 즉시 참조를 비운다.
+            entry.entity = null;
+        }
 
         // 3페이즈 기본 패턴 5번의 통합 재타격 검흔(253011)은 기존 잔류 검흔 253007~253009를
         // 다시 붉게 점멸시키는 역할이다. 일반 y 깊이 정렬에 맡기면 하단에 가까운 원형 횡베기

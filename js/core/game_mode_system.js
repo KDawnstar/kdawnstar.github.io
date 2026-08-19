@@ -105,6 +105,7 @@ const GameModeSystem = {
         this.bindClearButton(gameState);
         this.renderControlGuide(document.getElementById('sideGuideContent'));
         this.renderHelpContent();
+        this.prepareGuidePanelViews();
         this.prepareHudSlots();
         this.applyBodyMode(null);
         this.update(gameState, true);
@@ -452,6 +453,71 @@ const GameModeSystem = {
         return patternId;
     },
 
+    prepareGuidePanelViews() {
+        const panel = document.getElementById('guideStrategyContent');
+        if (!panel) return null;
+        const cached = this._guidePanelViewCache;
+        if (cached && cached.panel === panel) return cached;
+
+        // 1차 성능 최적화: 대형 패턴이 시작되는 프레임에 innerHTML 파싱/DOM 재생성을 하지 않는다.
+        // 모든 가이드 노드는 초기화 시 한 번만 만들고 이후에는 표시 상태만 전환한다.
+        panel.textContent = '';
+        const views = Object.create(null);
+        const fragment = document.createDocumentFragment();
+
+        const appendMultilineText = (target, value) => {
+            const lines = String(value == null ? '' : value).split('\n');
+            for (let i = 0; i < lines.length; i++) {
+                if (i > 0) target.appendChild(document.createElement('br'));
+                target.appendChild(document.createTextNode(lines[i]));
+            }
+        };
+        const makeInfoCard = (heading, text, solve) => {
+            const card = document.createElement('div');
+            card.className = solve ? 'guide-info-card solve' : 'guide-info-card';
+            const h4 = document.createElement('h4');
+            h4.textContent = heading;
+            const p = document.createElement('p');
+            appendMultilineText(p, text);
+            card.appendChild(h4);
+            card.appendChild(p);
+            return card;
+        };
+        const makeView = (renderKey) => {
+            const view = document.createElement('div');
+            view.className = 'guide-panel-view';
+            view.dataset.guideRenderKey = renderKey;
+            view.style.display = 'none';
+            views[renderKey] = view;
+            fragment.appendChild(view);
+            return view;
+        };
+
+        const basicView = makeView('basic');
+        for (const item of this.basicGuide) basicView.appendChild(makeInfoCard(item.title, item.text, false));
+        const idle = document.createElement('div');
+        idle.className = 'guide-idle-note';
+        idle.textContent = '대형 패턴이 시작되면 진행 과정과 대응 방법이 표시됩니다.';
+        basicView.appendChild(idle);
+
+        Object.keys(this.patternGuides).forEach(key => {
+            const guide = this.patternGuides[key];
+            if (!guide) return;
+            const renderKey = `pattern:${key}`;
+            const view = makeView(renderKey);
+            const name = document.createElement('div');
+            name.className = 'guide-pattern-name';
+            name.textContent = guide.title;
+            view.appendChild(name);
+            if (guide.flow) view.appendChild(makeInfoCard('패턴 흐름', guide.flow, false));
+            if (guide.solve) view.appendChild(makeInfoCard('패턴 파훼 방법', guide.solve, true));
+        });
+
+        panel.appendChild(fragment);
+        this._guidePanelViewCache = { panel, views, current: null };
+        return this._guidePanelViewCache;
+    },
+
     updateGuidePanel(gameState, force = false) {
         const panel = document.getElementById('guideStrategyContent');
         const title = document.getElementById('guideStrategyTitle');
@@ -460,16 +526,17 @@ const GameModeSystem = {
         const guide = this.patternGuides[key] || null;
         const renderKey = guide ? `pattern:${key}` : 'basic';
         if (!force && panel.dataset.renderKey === renderKey) return;
+
+        const cache = this.prepareGuidePanelViews();
+        if (!cache) return;
+        const nextView = cache.views[renderKey] || cache.views.basic;
+        if (cache.current && cache.current !== nextView) cache.current.style.display = 'none';
+        if (nextView) nextView.style.display = '';
+        cache.current = nextView || null;
+
         panel.dataset.renderKey = renderKey;
-        if (!guide) {
-            title.textContent = '카시야스 기본 공략';
-            panel.innerHTML = this.basicGuide.map(item => `<div class="guide-info-card"><h4>${item.title}</h4><p>${this.escapeHtml(item.text)}</p></div>`).join('') + '<div class="guide-idle-note">대형 패턴이 시작되면 진행 과정과 대응 방법이 표시됩니다.</div>';
-            return;
-        }
-        title.textContent = '대형 패턴 가이드';
-        panel.innerHTML = `<div class="guide-pattern-name">${this.escapeHtml(guide.title)}</div>
-            ${guide.flow ? `<div class="guide-info-card"><h4>패턴 흐름</h4><p>${this.escapeHtml(guide.flow).replace(/\n/g, '<br>')}</p></div>` : ''}
-            ${guide.solve ? `<div class="guide-info-card solve"><h4>패턴 파훼 방법</h4><p>${this.escapeHtml(guide.solve).replace(/\n/g, '<br>')}</p></div>` : ''}`;
+        panel.scrollTop = 0;
+        title.textContent = guide ? '대형 패턴 가이드' : '카시야스 기본 공략';
     },
 
     escapeHtml(value) {

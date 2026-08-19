@@ -35,7 +35,14 @@ const BossDebugSystem = {
         ).trim();
     },
 
+    // 제출용 Normal / Guide에서는 상세 로그 패널을 표시하지 않으므로 시간 문자열/로그 객체 생성 비용을 생략한다.
+    // Developer 모드에서만 기존 디버그 로그를 그대로 유지한다.
+    isBossDebugLoggingEnabled: function(gameState) {
+        return String(gameState && gameState.presentationMode || '').trim().toUpperCase() === 'DEVELOPER';
+    },
+
     pushBossDebugLog: function(gameState, type, message, detail) {
+        if (!this.isBossDebugLoggingEnabled(gameState)) return;
         const debug = this.ensureBossDebug(gameState);
         const msg = String(message || '').trim();
         if (!msg) return;

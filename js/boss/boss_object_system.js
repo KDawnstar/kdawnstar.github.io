@@ -1108,23 +1108,212 @@ const BossObjectSystem = {
 
     getBossPatternObjectGroupCandidates: function(gameState, objectGroup) {
         const group = String(objectGroup || '').trim();
-        if (!group || !gameState || !gameState.DB_BOSS_PATTERN_OBJECT) return [];
+        const db = gameState && gameState.DB_BOSS_PATTERN_OBJECT;
+        if (!group || !db) return [];
+
+        // 오브젝트 DB는 전투 중 고정이므로 그룹 후보 목록을 최초 1회만 구성해 재사용한다.
+        if (!gameState._bossPatternObjectGroupCandidateCache || gameState._bossPatternObjectGroupCandidateCacheSource !== db) {
+            gameState._bossPatternObjectGroupCandidateCache = Object.create(null);
+            gameState._bossPatternObjectGroupCandidateCacheSource = db;
+        }
+        const cache = gameState._bossPatternObjectGroupCandidateCache;
+        if (cache[group]) return cache[group];
+
         const candidates = [];
-        Object.keys(gameState.DB_BOSS_PATTERN_OBJECT).forEach(key => {
-            const data = gameState.DB_BOSS_PATTERN_OBJECT[key];
-            if (!data) return;
-            if (String(data.Object_Group || data.Spawn_Object_Group || '').trim() !== group) return;
+        const seenIds = new Set();
+        const keys = Object.keys(db);
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            const data = db[key];
+            if (!data) continue;
+            if (String(data.Object_Group || data.Spawn_Object_Group || '').trim() !== group) continue;
             const id = String(data.Object_ID || data.Attack_Object_ID || key).trim();
-            if (!id) return;
+            if (!id || seenIds.has(id)) continue;
+            seenIds.add(id);
             candidates.push({ id, data });
-        });
+        }
         candidates.sort((a, b) => {
             const ai = parseFloat(a.id);
             const bi = parseFloat(b.id);
             if (!isNaN(ai) && !isNaN(bi)) return ai - bi;
             return String(a.id).localeCompare(String(b.id));
         });
+        cache[group] = candidates;
         return candidates;
+    },
+
+    getKasiyasP1CloneGroupSpawnActions: function(gameState, action) {
+        if (!gameState || !action) return [];
+        const group = 'CLONE_GROUP_01';
+        const actionId = String(action.Action_ID || action.Dev_Name || 'P1M1_CLONE_SPAWN').trim();
+        const cacheKey = actionId + '|' + group;
+        if (!gameState._kasiyasP1CloneGroupSpawnActionCache) gameState._kasiyasP1CloneGroupSpawnActionCache = Object.create(null);
+        if (gameState._kasiyasP1CloneGroupSpawnActionCache[cacheKey]) return gameState._kasiyasP1CloneGroupSpawnActionCache[cacheKey];
+
+        const candidates = this.getBossPatternObjectGroupCandidates(gameState, group);
+        const variants = new Array(candidates.length);
+        for (let i = 0; i < candidates.length; i++) {
+            const id = candidates[i].id;
+            variants[i] = { ...action, Spawn_Object_ID: id, Object_ID: id, Spawn_Object_Group: '' };
+        }
+        gameState._kasiyasP1CloneGroupSpawnActionCache[cacheKey] = variants;
+        return variants;
+    },
+
+    buildKasiyasP1PreparedCloneActor: function(objData) {
+        if (!objData) return null;
+        const objectType = String(objData.Object_Type || '').trim().toUpperCase();
+        const actions = Array.isArray(objData.Runtime_Actions) ? objData.Runtime_Actions : [];
+        const scriptedLife = actions.length > 0
+            ? actions.reduce((sum, act) => sum + Math.max(0.001, parseFloat(act.Action_Anim_Duration) || 0.001), 0) + 2.0
+            : 0;
+        const explicitLife = parseFloat(objData.Object_Max_Life);
+        const actorMaxLife = actions.length > 0
+            ? Math.max(4, scriptedLife, (!isNaN(explicitLife) && explicitLife > 0 ? explicitLife : 0))
+            : Math.max(4, (!isNaN(explicitLife) && explicitLife > 0 ? explicitLife : 8));
+        const baseOpacity = objData.Object_Opacity !== '' && objData.Object_Opacity != null ? parseFloat(objData.Object_Opacity) : 0.78;
+        const baseBrightness = objData.Object_Brightness !== '' && objData.Object_Brightness != null ? parseFloat(objData.Object_Brightness) : 1.05;
+        const firstAction = actions[0] || null;
+        return {
+            kind: 'actor',
+            owner: null,
+            data: objData,
+            active: false,
+            x: 0,
+            y: 0,
+            z: 0,
+            faceDir: 1,
+            scale: 1,
+            timer: 0,
+            maxLife: actorMaxLife,
+            actionIndex: firstAction ? 0 : -1,
+            action: firstAction,
+            actionTimer: 0,
+            actionDuration: null,
+            actionHitFired: false,
+            actionObjectSpawnFired: false,
+            actionHitsDone: 0,
+            actionCycleTimer: 999,
+            actionCancelled: false,
+            cancelledByGuard: false,
+            actions: actions,
+            keepAliveAfterActions: false,
+            poseType: firstAction ? String(firstAction.Action_Pose_Type || 'POSE_KASIYAS_DEFAULT').trim() : 'POSE_KASIYAS_DEFAULT',
+            defaultPoseType: 'POSE_DEFAULT',
+            targetSnapshotX: 0,
+            targetSnapshotY: 0,
+            opacity: baseOpacity,
+            baseOpacity: baseOpacity,
+            brightness: baseBrightness,
+            baseBrightness: baseBrightness,
+            renderType: objData.Object_Render_Type || 'OBJ_KASIYAS_CLONE',
+            objectType: objectType || 'KASIYAS_CLONE',
+            w: Math.max(40, parseFloat(objData.Hitbox_Size_X) || 150),
+            d: Math.max(30, parseFloat(objData.Hitbox_Size_Y) || 400),
+            h: Math.max(40, parseFloat(objData.Hitbox_Size_Z) || 400),
+            p2m2SwordWall: false,
+            objectMaxHp: (Number.isFinite(parseFloat(objData.Object_HP)) && parseFloat(objData.Object_HP) > 0) ? parseFloat(objData.Object_HP) : null,
+            objectHp: (Number.isFinite(parseFloat(objData.Object_HP)) && parseFloat(objData.Object_HP) > 0) ? parseFloat(objData.Object_HP) : null,
+            objectGroup: String(objData.Object_Group || '').trim(),
+            slotKey: '',
+            cornerKey: '',
+            _p1m1PreparedClone: true
+        };
+    },
+
+    prewarmKasiyasP1CloneActorPool: function(gameState) {
+        if (!gameState || !gameState.DB_BOSS_PATTERN_OBJECT) return null;
+        if (!gameState._kasiyasP1CloneActorPool) gameState._kasiyasP1CloneActorPool = Object.create(null);
+        const pool = gameState._kasiyasP1CloneActorPool;
+        const candidates = this.getBossPatternObjectGroupCandidates(gameState, 'CLONE_GROUP_01');
+        for (let i = 0; i < candidates.length; i++) {
+            const id = String(candidates[i].id || '').trim();
+            if (!id || pool[id]) continue;
+            const actor = this.buildKasiyasP1PreparedCloneActor(candidates[i].data);
+            if (actor) pool[id] = actor;
+        }
+        return pool;
+    },
+
+    activateKasiyasP1PreparedCloneActor: function(m, objData, action, pos, gameState) {
+        if (!gameState || !objData || !m) return null;
+        const objectId = String(objData.Object_ID || objData.Attack_Object_ID || '').trim();
+        const pool = this.prewarmKasiyasP1CloneActorPool(gameState) || {};
+        let actor = pool[objectId];
+        if (!actor) {
+            actor = this.buildKasiyasP1PreparedCloneActor(objData);
+            if (!actor) return null;
+            pool[objectId] = actor;
+        }
+
+        const actions = Array.isArray(objData.Runtime_Actions) ? objData.Runtime_Actions : [];
+        const firstAction = actions[0] || null;
+        const p = pos || { x: m.x, y: m.y, z: m.z };
+        actor.owner = m;
+        actor.data = objData;
+        actor.active = true;
+        actor.x = Number.isFinite(parseFloat(p.x)) ? parseFloat(p.x) : (parseFloat(m.x) || 0);
+        actor.y = Number.isFinite(parseFloat(p.y)) ? parseFloat(p.y) : (parseFloat(m.y) || 0);
+        actor.z = Number.isFinite(parseFloat(p.z)) ? parseFloat(p.z) : (parseFloat(m.z) || 0);
+        actor.faceDir = gameState.player && gameState.player.x < actor.x ? -1 : 1;
+        actor.scale = m.scale || 1;
+        actor.timer = 0;
+        actor.actionIndex = firstAction ? 0 : -1;
+        actor.action = firstAction;
+        actor.actionTimer = 0;
+        actor.actionDuration = null;
+        actor.actionHitFired = false;
+        actor.actionObjectSpawnFired = false;
+        actor.actionHitsDone = 0;
+        actor.actionCycleTimer = 999;
+        actor.actionCancelled = false;
+        actor.cancelledByGuard = false;
+        actor.actions = actions;
+        actor.keepAliveAfterActions = false;
+        actor.removeAfterCalledAction = false;
+        actor.poseType = firstAction ? String(firstAction.Action_Pose_Type || actor.defaultPoseType || 'POSE_DEFAULT').trim() : 'POSE_KASIYAS_DEFAULT';
+        actor.targetSnapshotX = gameState.player ? gameState.player.x : actor.x + (m.faceDir || 1) * 400;
+        actor.targetSnapshotY = gameState.player ? gameState.player.y : actor.y;
+        actor.opacity = actor.baseOpacity;
+        actor.brightness = actor.baseBrightness;
+        actor.slotKey = p.slotKey || p.cornerKey || '';
+        actor.cornerKey = p.cornerKey || '';
+        actor.groupMove = null;
+        actor.previousSlotKey = '';
+        actor.currentDashPath = null;
+        actor.previewDashPath = null;
+        actor.lastDashPath = null;
+        actor.fadeOut = false;
+        actor.kasiyasP1M3RushHidden = false;
+        actor.kasiyasRushBodyVfxTimer = -999;
+        if (actor.objectMaxHp != null) actor.objectHp = actor.objectMaxHp;
+
+        // 현재 P1M1 첫 액션은 단순 WAIT + EFT_NOISE_MOVE라서 사전 준비된 상태를 바로 사용할 수 있다.
+        // 데이터가 변경되어 첫 액션이 다른 동작이 되면 기존 초기화 경로로 안전하게 되돌린다.
+        if (firstAction) {
+            const firstType = String(firstAction.Action_Type || '').trim().toUpperCase();
+            const firstVfx = String(firstAction.VFX_Type || firstAction.Effect_Render_Type || '').trim().toUpperCase();
+            const safePreparedFirstAction = firstType === 'WAIT' && (!firstVfx || firstVfx === 'EFT_NOISE_MOVE');
+            const debugLoggingEnabled = typeof this.isBossDebugLoggingEnabled === 'function' && this.isBossDebugLoggingEnabled(gameState);
+            if (safePreparedFirstAction && !debugLoggingEnabled) {
+                this.applyBossObjectActionGaze(actor, firstAction, gameState);
+            } else {
+                // Developer 모드에서는 기존 OBJECT_ACTION 추적을 그대로 보존한다.
+                actor.actionIndex = -1;
+                actor.action = null;
+                this.startNextBossObjectAction(actor, gameState);
+            }
+        }
+        return actor;
+    },
+
+    prewarmKasiyasP1CloneGroupData: function(gameState) {
+        if (!gameState || !gameState.DB_BOSS_PATTERN_OBJECT) return;
+        this.getBossPatternObjectGroupCandidates(gameState, 'CLONE_GROUP_01');
+        this.prewarmKasiyasP1CloneActorPool(gameState);
+        const db = gameState.DB_BOSS_PATTERN_ACTION || {};
+        const action = db['241025'] || Object.values(db).find(a => a && String(a.Dev_Name || '').trim() === 'Act_P1M1_03_CloneSpawn');
+        if (action) this.getKasiyasP1CloneGroupSpawnActions(gameState, action);
     },
 
     pickRandomBossObjectCandidate: function(candidates) {
@@ -1409,25 +1598,32 @@ const BossObjectSystem = {
             this.onBossObjectActionStart(obj, action, gameState);
 
             const debug = this.ensureBossDebug(gameState);
-            debug.currentObjectAction = {
-                objectId: String(obj.data && (obj.data.Object_ID || obj.data.Attack_Object_ID) || '').trim(),
-                objectName: this.getBossDebugName(obj.data),
-                actionId: String(action.Object_Action_ID || '').trim(),
-                actionName: this.getBossDebugName(action),
-                actionType: String(action.Action_Type || '').trim().toUpperCase(),
-                order: parseFloat(action.Action_Order) || (obj.actionIndex + 1),
-                hitboxType: String(action.Hitbox_Type || '').trim() || 'NONE',
-                hitStart: this.getBossObjectActionHitWindow(obj, action).start,
-                hitEnd: this.getBossObjectActionHitWindow(obj, action).end,
-                canGuard: action.ATK_Can_Guard === true || String(action.ATK_Can_Guard || '').trim().toLowerCase() === 'true',
-                duration: this.getBossObjectCurrentActionDuration(obj, action)
-            };
-            this.pushBossDebugLog(
-                gameState,
-                'OBJECT_ACTION',
-                `${String(action.Object_Action_ID || '').trim()} ${this.getBossDebugName(action)}`,
-                `object ${String(obj.data && (obj.data.Object_ID || obj.data.Attack_Object_ID) || '').trim()}, type ${debug.currentObjectAction.actionType}`
-            );
+            const debugLoggingEnabled = typeof this.isBossDebugLoggingEnabled === 'function'
+                ? this.isBossDebugLoggingEnabled(gameState)
+                : (String(gameState && gameState.presentationMode || '').trim().toUpperCase() === 'DEVELOPER');
+            if (debugLoggingEnabled) {
+                debug.currentObjectAction = {
+                    objectId: String(obj.data && (obj.data.Object_ID || obj.data.Attack_Object_ID) || '').trim(),
+                    objectName: this.getBossDebugName(obj.data),
+                    actionId: String(action.Object_Action_ID || '').trim(),
+                    actionName: this.getBossDebugName(action),
+                    actionType: String(action.Action_Type || '').trim().toUpperCase(),
+                    order: parseFloat(action.Action_Order) || (obj.actionIndex + 1),
+                    hitboxType: String(action.Hitbox_Type || '').trim() || 'NONE',
+                    hitStart: this.getBossObjectActionHitWindow(obj, action).start,
+                    hitEnd: this.getBossObjectActionHitWindow(obj, action).end,
+                    canGuard: action.ATK_Can_Guard === true || String(action.ATK_Can_Guard || '').trim().toLowerCase() === 'true',
+                    duration: this.getBossObjectCurrentActionDuration(obj, action)
+                };
+                this.pushBossDebugLog(
+                    gameState,
+                    'OBJECT_ACTION',
+                    `${String(action.Object_Action_ID || '').trim()} ${this.getBossDebugName(action)}`,
+                    `object ${String(obj.data && (obj.data.Object_ID || obj.data.Attack_Object_ID) || '').trim()}, type ${debug.currentObjectAction.actionType}`
+                );
+            } else {
+                debug.currentObjectAction = null;
+            }
             return;
         }
     },
@@ -1932,26 +2128,34 @@ const BossObjectSystem = {
             // 같은 그룹 분신을 먼저 정리한다. 그렇지 않으면 위치 섞기 대상이 5명을 초과해
             // 본체와 분신이 같은 슬롯에 겹쳐 배치될 수 있다.
             if (Array.isArray(gameState.bossAttackObjects)) {
-                gameState.bossAttackObjects.forEach(obj => {
+                const objects = gameState.bossAttackObjects;
+                let writeIndex = 0;
+                for (let readIndex = 0; readIndex < objects.length; readIndex++) {
+                    const obj = objects[readIndex];
                     const data = obj && obj.data ? obj.data : {};
                     const group = String(obj && (obj.objectGroup || data.Object_Group || data.Spawn_Object_Group) || '').trim();
                     if (obj && obj.active && obj.kind === 'actor' && group === objectGroup) {
                         obj.active = false;
                     }
-                });
-                gameState.bossAttackObjects = gameState.bossAttackObjects.filter(obj => obj && obj.active);
+                    if (obj && obj.active) objects[writeIndex++] = obj;
+                }
+                objects.length = writeIndex;
             }
 
-            const allObjects = gameState.DB_BOSS_PATTERN_OBJECT || {};
-            const spawnedIds = new Set();
-            Object.keys(allObjects).forEach(key => {
-                const data = allObjects[key];
-                if (String(data.Object_Group || data.Spawn_Object_Group || '').trim() !== objectGroup) return;
-                const id = String(data.Object_ID || key).trim();
-                if (!id || spawnedIds.has(id)) return;
-                spawnedIds.add(id);
+            // P1M1 분신 4종은 유휴 시간에 후보 탐색과 액션 복사를 끝내 두고 소환 순간에는 재사용한다.
+            if (objectGroup === 'CLONE_GROUP_01') {
+                const spawnActions = this.getKasiyasP1CloneGroupSpawnActions(gameState, action);
+                for (let i = 0; i < spawnActions.length; i++) {
+                    this.spawnBossAttackObjectFromAction(m, spawnActions[i], gameState);
+                }
+                return;
+            }
+
+            const candidates = this.getBossPatternObjectGroupCandidates(gameState, objectGroup);
+            for (let i = 0; i < candidates.length; i++) {
+                const id = candidates[i].id;
                 this.spawnBossAttackObjectFromAction(m, { ...action, Spawn_Object_ID: id, Object_ID: id, Spawn_Object_Group: '' }, gameState);
-            });
+            }
             return;
         }
         if (!objectId) return;
@@ -2344,6 +2548,22 @@ const BossObjectSystem = {
 
             for (let spawnIndex = 0; spawnIndex < positions.length; spawnIndex++) {
                 const pos = positions[spawnIndex] || { x: m.x, y: m.y };
+                const objectGroupName = String(objData.Object_Group || '').trim();
+                if (objectGroupName === 'CLONE_GROUP_01' && (objectType === 'KASIYAS_CLONE' || objectType === 'CLONE')) {
+                    const preparedActor = this.activateKasiyasP1PreparedCloneActor(m, objData, action, pos, gameState);
+                    if (preparedActor) {
+                        gameState.bossAttackObjects.push(preparedActor);
+                        if (typeof this.isBossDebugLoggingEnabled === 'function' && this.isBossDebugLoggingEnabled(gameState)) {
+                            this.pushBossDebugLog(
+                                gameState,
+                                'OBJECT',
+                                `${objectId} ${this.getBossDebugName(objData)}`,
+                                `type ${objectType || 'OBJECT'}, ${spawnIndex + 1}/${positions.length}, actions ${preparedActor.actions.length}, prepared`
+                            );
+                        }
+                        continue;
+                    }
+                }
                 const commandOnly = this.isKasiyasMajorPattern3CloneObject(objData);
                 const effectiveHasActions = hasObjectActions && !commandOnly;
                 const scriptedLife = effectiveHasActions
@@ -2374,7 +2594,9 @@ const BossObjectSystem = {
                     action: null,
                     actionTimer: 0,
                     actionHitFired: false,
-                    actions: effectiveHasActions ? [...objData.Runtime_Actions] : [],
+                    actions: effectiveHasActions
+                        ? ((objectType === 'KASIYAS_CLONE' || objectType === 'CLONE') ? objData.Runtime_Actions : [...objData.Runtime_Actions])
+                        : [],
                     keepAliveAfterActions: commandOnly,
                     poseType: 'POSE_KASIYAS_DEFAULT',
                     targetSnapshotX: gameState.player ? gameState.player.x : pos.x + (m.faceDir || 1) * 400,

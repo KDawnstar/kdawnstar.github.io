@@ -107,6 +107,13 @@
         return cache.canvas;
     };
 
+    GameRenderer.prewarmP3M3Caches = function(canvas) {
+        if (!canvas) return false;
+        this._getP3M3StaticWorldCache(canvas);
+        this._getP3M3WhiteBackdropCache(canvas);
+        return true;
+    };
+
     GameRenderer.drawP3M3WorldBackground = function(ctx, canvas, gameState) {
         if (!this.isP3M3Active(gameState)) return;
         const rt = gameState.p3m3Runtime || {};
