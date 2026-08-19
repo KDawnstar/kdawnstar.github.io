@@ -62,7 +62,8 @@ const PlayerAction = {
             EFT_THUNDERBOLT: 'lightning',
             EFT_LIGHTNING_SLASH: 'slash',
             EFT_ICE_NIDDLE: 'ice_needle',
-            EFT_ICE_AURA: 'particle'
+            EFT_ICE_AURA: 'particle',
+            EFT_HEAL: 'particle'
         };
 
         return map[v] || fallbackType;
@@ -185,6 +186,7 @@ const PlayerAction = {
             const color =
                 effectEnum === 'EFT_MODE_CHANGE' ? 'rgba(241, 196, 15, 0.95)' :
                 effectEnum === 'EFT_JUMP' ? 'rgba(220, 220, 220, 0.95)' :
+                effectEnum === 'EFT_HEAL' ? 'rgba(76, 214, 126, 0.95)' :
                 'rgba(255, 255, 255, 0.95)';
 
             gameState.effects.push({
@@ -513,14 +515,62 @@ const PlayerAction = {
                     const actionTypeRaw = String(act.Action_Type || '').trim();
 
                     if (actionTypeRaw === 'ACT_RUN' || actionTypeRaw === 'ACT_GUARD') continue;
-                    if (oniCurseActive && actionType !== 'Normal_ATK_Melee') continue;
+                    if (oniCurseActive && actionType !== 'Normal_ATK_Melee' && actionTypeRaw !== 'ACT_HEAL') continue;
 
                     let isOnCd = player.skillCooldowns[act.Action_Name] > 0;
 
                     if (keys[engineKey] && player.level >= reqLv && !isOnCd) {
                         if (actionType === 'Move_Character') continue;
 
-                        if (actionType === 'Change_Mode') {
+                        if (actionTypeRaw === 'ACT_HEAL') {
+                            const potionBlocked = !!(gameState && gameState.specialMode === 'SPECIAL_MODE_OBJECT_DEFENSE' && gameState.specialModeObjectDefenseRuntime && gameState.specialModeObjectDefenseRuntime.active);
+                            const limitState = typeof getPlayerActionUseState === 'function'
+                                ? getPlayerActionUseState(act)
+                                : { limited: false, remaining: Number.POSITIVE_INFINITY };
+                            const hasUses = !limitState.limited || limitState.remaining > 0;
+                            const canHeal = !potionBlocked && hasUses && (parseFloat(player.hp) || 0) > 0 && (parseFloat(player.hp) || 0) < ((parseFloat(player.maxHp) || 0) - 0.01);
+                            if (canHeal) {
+                                const healRate = Math.max(0, parseFloat(act.Heal_HP_Rate) || 0);
+                                const healAmount = (parseFloat(player.maxHp) || 0) * healRate;
+                                const beforeHp = Math.max(0, parseFloat(player.hp) || 0);
+                                player.hp = Math.min(parseFloat(player.maxHp) || beforeHp, beforeHp + healAmount);
+                                const actualHeal = Math.max(0, (parseFloat(player.hp) || 0) - beforeHp);
+                                if (actualHeal > 0.01) {
+                                    player.skillCooldowns[act.Action_Name] = cd;
+                                    if (typeof consumePlayerActionUse === 'function') consumePlayerActionUse(act, 1);
+                                    this.spawnActionEffect(act, player, gameState, {
+                                        x: player.x,
+                                        y: player.y,
+                                        z: player.z + (player.bodyZ * player.scale) * 0.55
+                                    });
+                                    if (gameState && Array.isArray(gameState.effects)) {
+                                        gameState.effects.push({
+                                            type: 'hitSpark',
+                                            renderType: 'EFT_HEAL',
+                                            x: player.x,
+                                            y: player.y,
+                                            z: player.z + (player.bodyZ * player.scale) * 0.62,
+                                            life: 0.28,
+                                            maxLife: 0.28,
+                                            color: 'rgba(76,214,126,0.95)'
+                                        });
+                                    }
+                                    if (gameState && Array.isArray(gameState.floatingTexts)) {
+                                        gameState.floatingTexts.push({
+                                            x: player.x,
+                                            y: player.y,
+                                            z: player.z + (player.bodyZ * player.scale) + 32,
+                                            text: `회복 +${actualHeal.toFixed(0)}`,
+                                            color: '#5ef59a',
+                                            size: '24px',
+                                            timer: 0.7
+                                        });
+                                    }
+                                }
+                            }
+                            keys[engineKey] = false;
+                            if (canHeal) break;
+                        } else if (actionType === 'Change_Mode') {
                             if (
                                 player.stanceSwapTimer <= 0 &&
                                 player.rapidAtkCooldownTimer <= 0 &&

@@ -725,7 +725,7 @@
 
 .boss-ai-log-type {
     display: inline-block;
-    min-width: 48px;
+    min-width: 44px;
     color: #f4d36a;
     font-weight: 800;
 }
@@ -2498,6 +2498,116 @@ body.game-mode-guide .guide-info-card p { font-size: 15px !important; line-heigh
 .hud-mini-meter { height: 31px !important; }
 .hud-mini-meter-label { font-size: 14px !important; }
 
+
+.hud-center-main {
+    gap: 9px !important;
+    align-items: stretch !important;
+}
+.hud-adventurer-line {
+    width: 100% !important;
+    max-width: none !important;
+    margin: -1px 0 -1px !important;
+    font-size: 16px !important;
+    color: rgba(236,244,252,0.90) !important;
+}
+.hud-center-lower {
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: stretch;
+    gap: 14px;
+    padding: 0 3px;
+    box-sizing: border-box;
+}
+.hud-potion-panel {
+    flex: 0 0 94px;
+    width: 94px;
+    min-height: 90px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.hud-status-stack {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    margin-left: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 9px;
+}
+.hud-primary-status {
+    width: 100% !important;
+    min-height: 46px !important;
+    padding: 7px 16px !important;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px !important;
+    border-radius: 12px !important;
+}
+.hud-primary-label {
+    font-size: 13px !important;
+}
+.hud-primary-value {
+    font-size: 20px !important;
+}
+.hud-combat-status-wrap {
+    width: 100% !important;
+    max-width: none !important;
+}
+.hud-combat-status-row {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0 !important;
+}
+.hud-mini-meter {
+    height: 31px !important;
+}
+.hud-mini-meter-label {
+    font-size: 13px !important;
+}
+.potion-slot {
+    width: 58px !important;
+    height: 58px !important;
+    border-width: 2px !important;
+}
+.potion-slot .skill-key {
+    bottom: -20px !important;
+}
+.potion-count {
+    position: absolute;
+    left: 50%;
+    top: -19px;
+    transform: translateX(-50%);
+    min-width: 48px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(8, 10, 16, 0.88);
+    border: 1px solid rgba(241, 196, 15, 0.48);
+    color: #f8f4d8;
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1.2;
+    text-align: center;
+    letter-spacing: 0.2px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.22);
+    pointer-events: none;
+    z-index: 12;
+}
+.potion-icon {
+    filter: drop-shadow(0 2px 2px rgba(0,0,0,0.55));
+}
+.potion-slot.disabled {
+    opacity: 0.46;
+    filter: saturate(0.6);
+}
+.potion-slot.unavailable {
+    opacity: 0.58;
+}
+
 /* Skill key below icon, cooldown number in icon center. */
 .hud-skill-body { padding: 10px 12px 28px !important; }
 #hudSkills { gap: 10px !important; }
@@ -2787,6 +2897,7 @@ body.game-mode-normal #gameModeHelpOverlay.visible { display:flex !important; }
                         <div class="control-row"><span class="keycap">X</span><span>기본 공격</span></div>
                         <div class="control-row"><span class="keycap">F</span><span>근거리 / 원거리 모드 전환</span></div>
                         <div class="control-row"><span class="keycap guard">D</span><span>타이밍 가드</span></div>
+                        <div class="control-row"><span class="keycap">1</span><span>회복 물약</span></div>
                         <div class="control-row"><span class="keycap">A</span><span>웨이브</span></div>
                         <div class="control-row"><span class="keycap">S</span><span>캐논볼</span></div>
                     </div>
@@ -2821,7 +2932,7 @@ body.game-mode-normal #gameModeHelpOverlay.visible { display:flex !important; }
             <div id="guideContent">
                 <span class="key-hint">방향키</span> 8방향 이동 / 더블 탭 유지 시 달리기<br>
                 <span class="key-hint">C</span> 점프 &nbsp; <span class="key-hint">Z</span> 대쉬 &nbsp; <span class="key-hint">D</span> 타이밍 가드<br>
-                <span class="key-hint">X</span> 평타 &nbsp; <span class="key-hint">F</span> 무기 스왑<br>
+                <span class="key-hint">X</span> 평타 &nbsp; <span class="key-hint">F</span> 무기 스왑 &nbsp; <span class="key-hint">1</span> 회복 물약<br>
                 <span class="key-hint">A</span> 웨이브 (Lv.4) &nbsp; <span class="key-hint">S</span> 캐논볼 (Lv.5)<br>
                 <span class="key-hint">1~9</span> 몬스터 스포너 / 보스 강림<br>
                 <span class="key-hint" style="background:#e74c3c;">F12</span> 3D 히트박스 표시
@@ -2882,15 +2993,39 @@ body.game-mode-normal #gameModeHelpOverlay.visible { display:flex !important; }
 
             <div class="hud-center-main">
                 <div class="hud-adventurer-line" id="hudPlayerName">Lv.10 모험가</div>
-                <div class="hud-primary-status" id="hudPrimaryStatus">
-                    <span class="hud-primary-label" id="hudPrimaryLabel">공격 모드</span>
-                    <strong class="hud-primary-value melee" id="hudPrimaryValue">근거리</strong>
-                </div>
-                <div class="hud-combat-status-wrap">
-                    <div class="hud-combat-status-row">
-                        <div class="hud-mini-meter guard ready" id="combatMeterGuard">
-                            <div class="hud-mini-meter-fill" id="combatMeterGuardFill"></div>
-                            <div class="hud-mini-meter-label" id="combatMeterGuardText">가드 준비</div>
+                <div class="hud-center-lower">
+                    <div class="hud-potion-panel" id="hudPotionPanel">
+                        <div class="skill-slot potion-slot" id="hudPotionSlot" aria-label="회복 물약">
+                            <svg class="skill-icon potion-icon" viewbox="0 0 100 100" aria-hidden="true">
+                                <g transform="rotate(-17 50 50)">
+                                    <path d="M40 10 L60 10 L62 23 L58 28 L66 38 C73 47 77 58 74 69 C71 81 61 89 49 89 C36 89 26 80 25 68 C24 56 30 46 36 38 L43 29 L39 24 Z" fill="#dceaf0" stroke="#182028" stroke-width="5" stroke-linejoin="round"></path>
+                                    <path d="M38 10 L62 10 L62 22 L38 22 Z" fill="#a8843f" stroke="#182028" stroke-width="5" stroke-linejoin="round"></path>
+                                    <path d="M31 55 C39 51 61 51 70 55 L73 66 C71 78 61 85 49 85 C37 85 29 78 28 67 Z" fill="#d90012"></path>
+                                    <path d="M31 55 C42 59 60 58 70 55" fill="none" stroke="#ff3847" stroke-width="4" stroke-linecap="round"></path>
+                                    <path d="M47 29 C55 32 62 37 66 44" fill="none" stroke="rgba(255,255,255,0.95)" stroke-width="7" stroke-linecap="round"></path>
+                                    <path d="M64 47 C69 52 71 57 71 61" fill="none" stroke="rgba(255,255,255,0.75)" stroke-width="4" stroke-linecap="round"></path>
+                                    <path d="M34 38 L41 29" stroke="#b9ccd5" stroke-width="4" stroke-linecap="round"></path>
+                                </g>
+                            </svg>
+                            <div class="potion-count" id="hudPotionCount">8/8</div>
+                            <div class="skill-cd-mask" id="maskPotion"></div>
+                            <div class="skill-lock" id="lockPotion">🔒</div>
+                            <div class="skill-cooldown-number"></div>
+                            <div class="skill-key">1</div>
+                        </div>
+                    </div>
+                    <div class="hud-status-stack">
+                        <div class="hud-primary-status" id="hudPrimaryStatus">
+                            <span class="hud-primary-label" id="hudPrimaryLabel">공격 모드</span>
+                            <strong class="hud-primary-value melee" id="hudPrimaryValue">근거리</strong>
+                        </div>
+                        <div class="hud-combat-status-wrap">
+                            <div class="hud-combat-status-row">
+                                <div class="hud-mini-meter guard ready" id="combatMeterGuard">
+                                    <div class="hud-mini-meter-fill" id="combatMeterGuardFill"></div>
+                                    <div class="hud-mini-meter-label" id="combatMeterGuardText">가드 준비</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2906,7 +3041,7 @@ body.game-mode-normal #gameModeHelpOverlay.visible { display:flex !important; }
 <svg class="skill-icon" viewbox="0 0 100 100">
 <path d="M70,10 A40,40 0 0,0 70,90 A50,50 0 0,1 70,10 Z" fill="#3498db" stroke="#2980b9" stroke-width="3"></path>
 </svg>
-<div class="skill-cd-mask" id="maskWave"></div><div class="skill-lock" id="lockWave">🔒</div><div class="skill-key">A</div>
+<div class="skill-cd-mask" id="maskWave"></div><div class="skill-lock" id="lockWave">🔒</div><div class="skill-cooldown-number"></div><div class="skill-key">A</div>
 </div>
 <div class="skill-slot">
 <svg class="skill-icon" viewbox="0 0 100 100">
@@ -2914,7 +3049,7 @@ body.game-mode-normal #gameModeHelpOverlay.visible { display:flex !important; }
 <path d="M65,35 Q75,20 90,10 Q80,30 75,40" fill="#e74c3c"></path>
 <circle cx="70" cy="30" fill="#f1c40f" r="5"></circle>
 </svg>
-<div class="skill-cd-mask" id="maskCannon"></div><div class="skill-lock" id="lockCannon">🔒</div><div class="skill-key">S</div>
+<div class="skill-cd-mask" id="maskCannon"></div><div class="skill-lock" id="lockCannon">🔒</div><div class="skill-cooldown-number"></div><div class="skill-key">S</div>
 </div>
 <div class="skill-slot">
 <svg class="skill-icon" viewbox="0 0 100 100">
@@ -2922,7 +3057,7 @@ body.game-mode-normal #gameModeHelpOverlay.visible { display:flex !important; }
 <path d="M50,20 L63,28 L59,56 Q56,68 50,75 Q44,68 41,56 L37,28 Z" fill="rgba(255,255,255,0.20)" stroke="rgba(255,255,255,0.35)" stroke-width="2"></path>
 <path d="M50,24 L50,72" opacity="0.85" stroke="#f1c40f" stroke-linecap="round" stroke-width="4"></path>
 </svg>
-<div class="skill-cd-mask" id="maskGuard"></div><div class="skill-lock" id="lockGuard">🔒</div><div class="skill-key">D</div>
+<div class="skill-cd-mask" id="maskGuard"></div><div class="skill-lock" id="lockGuard">🔒</div><div class="skill-cooldown-number"></div><div class="skill-key">D</div>
 </div>
 <div class="skill-slot">
 <svg class="skill-icon" viewbox="0 0 100 100">
@@ -2931,14 +3066,14 @@ body.game-mode-normal #gameModeHelpOverlay.visible { display:flex !important; }
 <path d="M20,20 L80,80" stroke="#7f8c8d" stroke-linecap="round" stroke-width="12"></path>
 <path d="M60,60 L90,90" stroke="#2c3e50" stroke-linecap="round" stroke-width="18"></path>
 </svg>
-<div class="skill-cd-mask" id="maskSwap"></div><div class="skill-lock" id="lockSwap">🔒</div><div class="skill-key">F</div>
+<div class="skill-cd-mask" id="maskSwap"></div><div class="skill-lock" id="lockSwap">🔒</div><div class="skill-cooldown-number"></div><div class="skill-key">F</div>
 </div>
 <div class="skill-slot">
 <svg class="skill-icon" viewbox="0 0 100 100">
 <path d="M10,40 L40,40 M20,60 L50,60 M15,80 L45,80" stroke="#2ecc71" stroke-linecap="round" stroke-width="6"></path>
 <path d="M50,20 L80,50 L50,80" fill="none" stroke="#2ecc71" stroke-linecap="round" stroke-linejoin="round" stroke-width="10"></path>
 </svg>
-<div class="skill-cd-mask" id="maskDash"></div><div class="skill-lock" id="lockDash">🔒</div><div class="skill-key">Z</div>
+<div class="skill-cd-mask" id="maskDash"></div><div class="skill-lock" id="lockDash">🔒</div><div class="skill-cooldown-number"></div><div class="skill-key">Z</div>
 </div>
         </div>
     </div>

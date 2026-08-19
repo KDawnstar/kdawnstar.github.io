@@ -57,7 +57,7 @@ const PlayerManager = {
             fightingSpiritRewardLocks: {},
             kasiyasApostleEnergies: [], kasiyasApostleGuardBuffs: [], kasiyasApostleEnergyGetLockTimer: 0, kasiyasApostleEnergyFlashTimer: 0,
             kasiyasOniMark: null, kasiyasTemperedBladeReady: false, kasiyasTemperedBladeFlashTimer: 0,
-            skillCooldowns: {}, freezeTimer: 0, maxFreezeTimer: 0, mashReduced: 0
+            skillCooldowns: {}, actionUseLimits: {}, actionUseLimitMax: {}, freezeTimer: 0, maxFreezeTimer: 0, mashReduced: 0
         };
         gameState.allPlayerActions = (actionData || []).map(a => ({
             ...a,

@@ -24,6 +24,7 @@ function getEngineKeyCode(excelKey) {
         'Key_C': 'KeyC',
         'Key_V': 'KeyV',
         'Key_F': 'KeyF',
+        'Key_1': 'Digit1',
         'Key_A': 'KeyA',
         'Key_S': 'KeyS',
         'Key_D': 'KeyD',
@@ -34,6 +35,7 @@ function getEngineKeyCode(excelKey) {
         'KEY_C': 'KeyC',
         'KEY_V': 'KeyV',
         'KEY_F': 'KeyF',
+        'KEY_1': 'Digit1',
         'KEY_A': 'KeyA',
         'KEY_S': 'KeyS',
         'KEY_D': 'KeyD',
@@ -55,6 +57,7 @@ function getEngineKeyCode(excelKey) {
         'KEYC': 'KeyC',
         'KEYV': 'KeyV',
         'KEYF': 'KeyF',
+        'KEY1': 'Digit1',
         'KEYA': 'KeyA',
         'KEYS': 'KeyS',
         'KEYD': 'KeyD'
@@ -65,6 +68,9 @@ function getEngineKeyCode(excelKey) {
 
     const letterKey = upper.match(/^KEY_?([A-Z])$/);
     if (letterKey) return 'Key' + letterKey[1];
+
+    const digitKey = upper.match(/^KEY_?([0-9])$/);
+    if (digitKey) return 'Digit' + digitKey[1];
 
     return raw.replace(/_/g, '');
 }
@@ -261,6 +267,81 @@ function getStageById(stageId) {
     return (gameState.DB_STAGE || []).find(s => s.Stage_ID === stageId) || null;
 }
 
+
+function getPlayerActionUseLimitKey(action) {
+    return String(action && (action.Action_Name || action.Dev_Name || action.Action_ID) || '').trim();
+}
+
+function getPlayerActionUseLimitType(action) {
+    return String(action && action.Action_Use_Limit_Type || '').trim().toUpperCase();
+}
+
+function getPlayerActionUseLimitValue(action) {
+    const value = Math.floor(parseFloat(action && action.Action_Use_Limit_Value));
+    return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function ensurePlayerActionUseLimitState(player) {
+    if (!player) return;
+    if (!player.actionUseLimits) player.actionUseLimits = {};
+    if (!player.actionUseLimitMax) player.actionUseLimitMax = {};
+}
+
+function getPlayerActionUseState(action) {
+    const player = gameState && gameState.player ? gameState.player : null;
+    const type = getPlayerActionUseLimitType(action);
+    const value = getPlayerActionUseLimitValue(action);
+    const key = getPlayerActionUseLimitKey(action);
+    ensurePlayerActionUseLimitState(player);
+    if (!player || !type || type === 'NONE' || value <= 0 || !key) {
+        return { key, type: type || 'NONE', max: value, remaining: Number.POSITIVE_INFINITY, limited: false };
+    }
+    if (!Number.isFinite(parseFloat(player.actionUseLimitMax[key])) || player.actionUseLimitMax[key] <= 0) {
+        player.actionUseLimitMax[key] = value;
+    }
+    if (!Number.isFinite(parseFloat(player.actionUseLimits[key]))) {
+        player.actionUseLimits[key] = player.actionUseLimitMax[key];
+    }
+    return {
+        key,
+        type,
+        max: Math.max(0, Math.floor(parseFloat(player.actionUseLimitMax[key]) || value || 0)),
+        remaining: Math.max(0, Math.floor(parseFloat(player.actionUseLimits[key]) || 0)),
+        limited: true
+    };
+}
+
+function resetPlayerActionUseLimits(scope = 'ALL') {
+    const player = gameState && gameState.player ? gameState.player : null;
+    const actions = gameState && Array.isArray(gameState.actions) ? gameState.actions : [];
+    if (!player || !actions.length) return;
+    ensurePlayerActionUseLimitState(player);
+    for (const action of actions) {
+        const type = getPlayerActionUseLimitType(action);
+        const value = getPlayerActionUseLimitValue(action);
+        const key = getPlayerActionUseLimitKey(action);
+        if (!key || !type || type === 'NONE' || value <= 0) continue;
+        player.actionUseLimitMax[key] = value;
+        const shouldReset = scope === 'ALL' || type === scope || (scope === 'PER_PHASE' && type === 'PER_PHASE');
+        if (shouldReset) {
+            player.actionUseLimits[key] = value;
+            if (player.skillCooldowns) player.skillCooldowns[key] = 0;
+        } else if (!Number.isFinite(parseFloat(player.actionUseLimits[key]))) {
+            player.actionUseLimits[key] = value;
+        }
+    }
+}
+
+function consumePlayerActionUse(action, amount = 1) {
+    const player = gameState && gameState.player ? gameState.player : null;
+    if (!player) return false;
+    const state = getPlayerActionUseState(action);
+    if (!state.limited || !state.key) return true;
+    const next = Math.max(0, state.remaining - Math.max(1, Math.floor(parseFloat(amount) || 1)));
+    player.actionUseLimits[state.key] = next;
+    return next >= 0;
+}
+
 function getStageDepth(stage) {
     if (!stage) return 300;
     const depth = parseFloat(stage.Map_Size_Y);
@@ -354,6 +435,8 @@ function loadBossStage(stageId = null) {
         gameState.player.isGrounded = true;
         gameState.player.state = 'Idle';
     }
+
+    resetPlayerActionUseLimits('PER_PHASE');
 
     const firstBossData = Object.values(gameState.DB_MONSTER || {})
         .filter((data, index, rows) => {
@@ -464,6 +547,8 @@ function resetBossBattleToTitle() {
         p.fightingSpiritHitLoseCooldownTimer = 0;
         p.fightingSpiritRewardLocks = {};
         p.skillCooldowns = {};
+        p.actionUseLimits = {};
+        p.actionUseLimitMax = {};
         p.kasiyasApostleEnergies = [];
         p.kasiyasApostleGuardBuffs = [];
         p.hasP2M2ApostleSwordEnergy = false;
@@ -600,6 +685,8 @@ function loadStage(stageId) {
         gameState.player.isGrounded = true;
         gameState.player.state = 'Idle';
     }
+
+    resetPlayerActionUseLimits('PER_PHASE');
 
     const generalSpawnCenterX = parseFloat(stage.Spawn_Center_X) || 1400;
     const generalSpawnRangeX = parseFloat(stage.Spawn_Range_X) || 0;
@@ -1730,6 +1817,8 @@ function switchKasiyasBossToPhaseDebug(targetPhase, options = {}) {
         resetBossPracticePositions(false);
     }
 
+    resetPlayerActionUseLimits('PER_PHASE');
+
     if (gameState.bossPractice) {
         gameState.bossPractice.enabled = practiceWasEnabled;
         gameState.bossPractice.lastPatternId = null;
@@ -2177,9 +2266,9 @@ function setBossPracticeModeEnabled(enabled) {
 function handleBossPracticeKeyInput(e) {
     if (!gameState.bossPractice || !gameState.bossPractice.enabled) return false;
 
-    const digitMatch = String(e.code || '').match(/^(Digit|Numpad)([1-9])$/);
+    const digitMatch = String(e.code || '').match(/^Numpad([1-9])$/);
     if (digitMatch) {
-        const index = parseInt(digitMatch[2], 10) - 1;
+        const index = parseInt(digitMatch[1], 10) - 1;
         const runnable = getBossPracticePatternList().filter(item => isBossPracticePatternReady(item.id) && !item.disabledText);
         if (runnable[index]) {
             forceStartBossPracticePattern(runnable[index].id);
@@ -2943,6 +3032,53 @@ function updateHUD() {
             if (textEl) textEl.innerText = text;
         };
 
+        const updatePotionUi = (options = {}) => {
+            const slot = getEl('hudPotionSlot');
+            if (!slot) return;
+            const countEl = getEl('hudPotionCount');
+            const lockEl = getEl('lockPotion');
+            const maskEl = getEl('maskPotion');
+            const parts = getHudSkillSlotParts(slot) || {};
+            const cooldownEl = parts.cooldownEl;
+            const potionAct = (gameState.actions || []).find(a => String(a && (a.Dev_Name || '')).trim() === 'Player_Act_HP_PotionDrink' || String(a && (a.Action_Type || '')).trim().toUpperCase() === 'ACT_HEAL') || null;
+            const forceDisabled = !!options.forceDisabled;
+
+            if (lockEl) lockEl.style.display = 'none';
+
+            if (!potionAct) {
+                if (countEl) countEl.innerText = '-/-';
+                if (maskEl) maskEl.style.height = '0%';
+                if (cooldownEl) cooldownEl.innerText = '';
+                slot.classList.add('disabled');
+                slot.classList.add('unavailable');
+                return;
+            }
+
+            const useState = typeof getPlayerActionUseState === 'function'
+                ? getPlayerActionUseState(potionAct)
+                : { limited: false, remaining: Number.POSITIVE_INFINITY, max: 0 };
+            const remain = Math.max(0, parseFloat(p.skillCooldowns[potionAct.Action_Name]) || 0);
+            const maxCd = Math.max(0.01, parseFloat(potionAct.Cooltime) || 1);
+            const ratio = remain > 0 ? clamp((remain / maxCd) * 100, 0, 100) : 0;
+            const fullHp = (parseFloat(p.hp) || 0) >= ((parseFloat(p.maxHp) || 0) - 0.01);
+            const noUses = !!useState.limited && useState.remaining <= 0;
+            const unavailable = forceDisabled || fullHp;
+
+            if (countEl) {
+                countEl.innerText = useState.limited
+                    ? `${useState.remaining}/${Math.max(0, useState.max)}`
+                    : '∞';
+            }
+            if (maskEl) maskEl.style.height = ratio + '%';
+            if (cooldownEl) {
+                cooldownEl.innerText = remain > 0.04
+                    ? (remain >= 10 ? String(Math.ceil(remain)) : remain.toFixed(1))
+                    : '';
+            }
+            slot.classList.toggle('disabled', noUses || forceDisabled);
+            slot.classList.toggle('unavailable', unavailable || noUses);
+        };
+
         const objectDefenseRt = (gameState.specialMode === 'SPECIAL_MODE_OBJECT_DEFENSE' && gameState.specialModeObjectDefenseRuntime && gameState.specialModeObjectDefenseRuntime.active)
             ? gameState.specialModeObjectDefenseRuntime
             : null;
@@ -2994,6 +3130,7 @@ function updateHUD() {
             skillSlots.forEach(slot=>{if(slot){slot.style.display='none';slot.style.order='';}});
             p2SpecialSlots.forEach((entry,index)=>{const slot=entry.slot;if(!slot)return;slot.style.display='';slot.style.order=String(index+1);const parts=getHudSkillSlotParts(slot)||{};const keyEl=parts.keyEl,lockEl=parts.lockEl,maskEl=parts.maskEl,cooldownEl=parts.cooldownEl;if(keyEl)keyEl.innerText=entry.key;if(lockEl)lockEl.style.display='none';if(maskEl){if(entry.skill&&skillCooldown>0){const maxCd=Math.max(0.01,parseFloat(dp.skillCooldownMax)||skillCooldown||1);maskEl.style.height=clamp((skillCooldown/maxCd)*100,0,100)+'%';}else maskEl.style.height='0%';}if(cooldownEl)cooldownEl.innerText=(entry.skill&&skillCooldown>0.04)?(skillCooldown>=10?String(Math.ceil(skillCooldown)):skillCooldown.toFixed(1)):'';});
             const bossGroggyGauge=getEl('bossGroggyGauge'),bossCastGauge=getEl('bossCastGauge'),bossGroggyGaugeFill=getEl('bossGroggyGaugeFill'),bossCastGaugeFill=getEl('bossCastGaugeFill');if(bossGroggyGauge)bossGroggyGauge.classList.add('hidden');if(bossCastGauge)bossCastGauge.classList.add('hidden');if(bossGroggyGaugeFill)bossGroggyGaugeFill.style.width='0%';if(bossCastGaugeFill)bossCastGaugeFill.style.width='0%';
+            updatePotionUi({ forceDisabled: true });
             return;
         }
 
@@ -3016,6 +3153,8 @@ function updateHUD() {
             if (keyEl) keyEl.innerText = key;
             if (lockEl) lockEl.style.display = '';
         });
+
+        updatePotionUi({ forceDisabled: false });
 
         let swapAct = gameState.actions.find(a => a.Dev_Name === 'Player_Act_StanceChange');
         let swapReq = swapAct ? (parseFloat(swapAct.Require_Level) || 0) : 0;
